@@ -1,12 +1,12 @@
 /**
  * Chat message display component.
  *
- * Renders the conversation as a scrollable list of messages
- * with role indicators and basic markdown formatting.
+ * Renders the conversation as a list of messages with role indicators.
+ * Supports a streaming partial message at the end.
  */
 
 import React from "react";
-import { Box, Text } from "ink";
+import { Box, Text, Newline } from "ink";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -16,36 +16,47 @@ export interface ChatMessage {
 
 export interface ChatProps {
   messages: ChatMessage[];
+  /** Partial streaming text from the assistant (shown below messages) */
+  streamingText?: string;
 }
 
 function RoleLabel({ role }: { role: ChatMessage["role"] }) {
   switch (role) {
     case "user":
-      return <Text color="green" bold>you: </Text>;
+      return <Text color="green" bold>{"you "}</Text>;
     case "assistant":
-      return <Text color="blue" bold>clark: </Text>;
+      return <Text color="blue" bold>{"clark "}</Text>;
     case "system":
-      return <Text color="gray" bold>system: </Text>;
+      return <Text color="gray" dimColor>{"system "}</Text>;
   }
 }
 
 function MessageBubble({ message }: { message: ChatMessage }) {
   return (
-    <Box flexDirection="row" marginBottom={1}>
+    <Box flexDirection="column" marginBottom={1}>
       <RoleLabel role={message.role} />
-      <Box flexShrink={1}>
+      <Box marginLeft={2} flexDirection="column">
         <Text wrap="wrap">{message.content}</Text>
       </Box>
     </Box>
   );
 }
 
-export function Chat({ messages }: ChatProps) {
+export function Chat({ messages, streamingText }: ChatProps) {
   return (
-    <Box flexDirection="column" flexGrow={1} overflow="hidden">
+    <Box flexDirection="column" flexGrow={1} paddingX={1}>
       {messages.map((msg, i) => (
         <MessageBubble key={i} message={msg} />
       ))}
+
+      {streamingText !== undefined && (
+        <Box flexDirection="column" marginBottom={1}>
+          <Text color="blue" bold>{"clark "}</Text>
+          <Box marginLeft={2}>
+            <Text wrap="wrap">{streamingText}<Text color="cyan">{"_"}</Text></Text>
+          </Box>
+        </Box>
+      )}
     </Box>
   );
 }

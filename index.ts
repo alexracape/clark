@@ -1,16 +1,21 @@
 /**
  * Clark — Socratic Tutoring Assistant
  *
- * Entry point: parses CLI args, starts the canvas server,
- * initializes the MCP server and LLM provider, and renders the TUI.
+ * Entry point: loads config, runs onboarding if needed,
+ * starts the canvas server, initializes the LLM, and renders the TUI.
  */
 
+import React from "react";
+import { render } from "ink";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { CanvasBroker, startCanvasServer } from "./src/canvas/index.ts";
 import { createTools } from "./src/mcp/index.ts";
 import { createProvider } from "./src/llm/index.ts";
 import { Conversation } from "./src/llm/messages.ts";
+import { App } from "./src/tui/app.tsx";
+import { Onboarding } from "./src/tui/onboarding.tsx";
+import { loadConfig, applyConfigToEnv, needsOnboarding, type ClarkConfig } from "./src/config.ts";
 import { networkInterfaces } from "node:os";
 
 // --- CLI args ---
@@ -26,7 +31,6 @@ const argv = await yargs(hideBin(process.argv))
   })
   .option("provider", {
     type: "string",
-    default: "anthropic",
     describe: "LLM provider (anthropic or openai)",
   })
   .option("model", {
@@ -55,45 +59,148 @@ function getLanIP(): string {
   return "localhost";
 }
 
-// --- Bootstrap ---
+// --- Load config ---
 
-const broker = new CanvasBroker();
-const lanIP = getLanIP();
-const canvasUrl = `http://${lanIP}:${argv.port}`;
+const config = await loadConfig();
+applyConfigToEnv(config);
 
-// Start canvas server
-const canvasServer = startCanvasServer({ port: argv.port, broker });
-console.log(`Canvas server running at ${canvasUrl}`);
+// --- Check if onboarding is needed ---
 
-// Initialize tools
-const tools = createTools({
-  broker,
-  notesDir: argv.notes,
-  problemPath: argv.problem,
-});
-
-// Initialize LLM provider
-const provider = createProvider(argv.provider);
-console.log(`LLM provider: ${provider.name}`);
-
-// Load system prompt
-const systemPrompt = await Bun.file(new URL("./src/prompts/system.md", import.meta.url).pathname).text();
-
-// Initialize conversation
-const conversation = new Conversation();
-
-// Load problem set context if provided
-if (argv.problem) {
-  console.log(`Problem set: ${argv.problem}`);
-}
-if (argv.notes) {
-  console.log(`Notes directory: ${argv.notes}`);
+if (needsOnboarding(config)) {
+  // Render onboarding flow, then start the app
+  const { waitUntilExit } = render(
+    React.createElement(Onboarding, {
+      onComplete: (newConfig: ClarkConfig) => {
+        applyConfigToEnv(newConfig);
+        // Re-render with the main app after a brief delay
+        setTimeout(() => startApp(newConfig), 100);
+      },
+    }),
+  );
+} else {
+  startApp(config);
 }
 
-console.log("\nClark is ready. TUI rendering coming soon.");
-console.log(`Open ${canvasUrl} on your iPad to start drawing.`);
+// --- Main app startup ---
 
-// TODO: Render Ink TUI app with:
-// - onMessage: send to LLM provider with conversation history + tools
-// - onSlashCommand: handle /canvas, /snapshot, /export, /save, /clear, /model, /help
-// - canvasConnected: broker.isConnected
+function startApp(activeConfig: ClarkConfig) {
+  const resolvedProvider = argv.provider ?? activeConfig.provider ?? "anthropic";
+
+  const broker = new CanvasBroker();
+  const lanIP = getLanIP();
+  const canvasUrl = `http://${lanIP}:${argv.port}`;
+
+  // Start canvas server
+  startCanvasServer({ port: argv.port, broker });
+
+  // Initialize tools
+  const tools = createTools({
+    broker,
+    notesDir: argv.notes,
+    problemPath: argv.problem,
+  });
+
+  // Initialize LLM provider
+  const provider = createProvider(resolvedProvider);
+  const modelName = argv.model
+    ?? process.env.CLARK_MODEL
+    ?? activeConfig.model
+    ?? (resolvedProvider === "openai" ? "gpt-4o" : "claude-sonnet-4-5-20250929");
+
+  // Load system prompt
+  const systemPromptPath = new URL("./src/prompts/system.md", import.meta.url).pathname;
+
+  Bun.file(systemPromptPath).text().then((systemPrompt) => {
+    const conversation = new Conversation();
+
+    // --- Slash command handler ---
+    async function handleSlashCommand(name: string, args: string): Promise<string | null> {
+      switch (name) {
+        case "help":
+          return [
+            "Available commands:",
+            "  /help              Show this help message",
+            "  /canvas            Show canvas URL for iPad",
+            "  /snapshot [page]   Capture canvas and send to assistant",
+            "  /export [path]     Export canvas as A4 PDF",
+            "  /save              Save canvas state to disk",
+            "  /problem <path>    Load a problem set",
+            "  /notes <path>      Set notes directory",
+            "  /model <provider>  Show or switch LLM provider",
+            "  /clear             Clear conversation history",
+            "  Ctrl+C             Exit",
+          ].join("\n");
+
+        case "canvas":
+          return `Canvas URL: ${canvasUrl}\nOpen this on your iPad to start drawing.`;
+
+        case "snapshot": {
+          if (!broker.isConnected) {
+            return "No iPad connected. Open the canvas URL on your iPad first.";
+          }
+          try {
+            const response = await broker.requestSnapshot(args || undefined);
+            conversation.addUserImageMessage(
+              "Here is my current work on the canvas:",
+              response.png,
+            );
+            return `Snapshot captured (page: ${response.page}). The assistant can now see your work.`;
+          } catch (err) {
+            return `Snapshot failed: ${err instanceof Error ? err.message : String(err)}`;
+          }
+        }
+
+        case "export": {
+          if (!broker.isConnected) {
+            return "No iPad connected. Open the canvas URL on your iPad first.";
+          }
+          try {
+            const { exportPDFToFile } = await import("./src/canvas/pdf-export.ts");
+            const response = await broker.requestExport();
+            const outputPath = args || "./clark-export.pdf";
+            await exportPDFToFile(response.pages, outputPath);
+            return `PDF exported to: ${outputPath}`;
+          } catch (err) {
+            return `Export failed: ${err instanceof Error ? err.message : String(err)}`;
+          }
+        }
+
+        case "save":
+          return "Canvas save not yet implemented.";
+
+        case "problem":
+          if (!args) return "Usage: /problem <path>";
+          return `Problem set loaded: ${args}`;
+
+        case "notes":
+          if (!args) return "Usage: /notes <path>";
+          return `Notes directory set: ${args}`;
+
+        case "model":
+          if (!args) return `Current: ${provider.name}/${modelName}`;
+          return `Provider switching not yet implemented. Restart with --provider ${args}`;
+
+        case "clear":
+          conversation.clear();
+          return "Conversation cleared.";
+
+        default:
+          return `Unknown command: /${name}. Type /help for available commands.`;
+      }
+    }
+
+    // --- Render TUI ---
+    render(
+      React.createElement(App, {
+        provider,
+        model: modelName,
+        conversation,
+        systemPrompt,
+        tools,
+        canvasUrl,
+        isCanvasConnected: () => broker.isConnected,
+        onSlashCommand: handleSlashCommand,
+      }),
+    );
+  });
+}

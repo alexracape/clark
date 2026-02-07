@@ -2,96 +2,191 @@
  * Root TUI application component.
  *
  * Composes the chat, input, and status bar into the full terminal UI.
- * Manages conversation state and dispatches to the LLM + MCP tools.
+ * Handles the streaming LLM conversation loop including tool dispatch.
  */
 
 import React, { useState, useCallback } from "react";
-import { Box } from "ink";
+import { Box, Text, Newline } from "ink";
 import { Chat, type ChatMessage } from "./chat.tsx";
 import { Input, parseSlashCommand } from "./input.tsx";
 import { StatusBar } from "./status.tsx";
+import type { LLMProvider, Tool, StreamChunk, MessageContent } from "../llm/provider.ts";
+import { Conversation } from "../llm/messages.ts";
+import type { ToolDefinition, ToolResult } from "../mcp/tools.ts";
 
 export interface AppProps {
-  provider: string;
+  provider: LLMProvider;
   model: string;
+  conversation: Conversation;
+  systemPrompt: string;
+  tools: ToolDefinition[];
   canvasUrl: string;
-  canvasConnected: boolean;
-  onMessage: (text: string) => Promise<string>;
+  isCanvasConnected: () => boolean;
   onSlashCommand: (name: string, args: string) => Promise<string | null>;
+}
+
+/** Convert our MCP tool definitions to LLM tool format */
+function toLLMTools(tools: ToolDefinition[]): Tool[] {
+  return tools.map((t) => ({
+    name: t.name,
+    description: t.description,
+    parameters: {
+      type: "object" as const,
+      properties: Object.fromEntries(
+        Object.entries(t.inputSchema.properties).map(([key, val]) => [
+          key,
+          { type: val.type, description: val.description, ...(val.enum ? { enum: val.enum } : {}) },
+        ]),
+      ),
+      required: t.inputSchema.required,
+    },
+  }));
 }
 
 export function App({
   provider,
   model,
+  conversation,
+  systemPrompt,
+  tools,
   canvasUrl,
-  canvasConnected,
-  onMessage,
+  isCanvasConnected,
   onSlashCommand,
 }: AppProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "system",
-      content: "Welcome to Clark! I'm your Socratic tutor. Show me what you're working on and I'll help guide you through it.",
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([{
+    role: "system",
+    content: "Welcome to Clark. I'm here to help guide you through your work — not to give you answers. Type a question, or use /help for commands.",
+    timestamp: new Date(),
+  }]);
+  const [streamingText, setStreamingText] = useState<string | undefined>(undefined);
   const [isThinking, setIsThinking] = useState(false);
 
-  const handleSubmit = useCallback(
-    async (text: string) => {
-      // Check for slash command
-      const command = parseSlashCommand(text);
-      if (command) {
-        const result = await onSlashCommand(command.name, command.args);
-        if (result) {
-          setMessages((prev) => [
-            ...prev,
-            { role: "system", content: result, timestamp: new Date() },
-          ]);
+  const addMessage = useCallback((role: ChatMessage["role"], content: string) => {
+    setMessages((prev) => [...prev, { role, content, timestamp: new Date() }]);
+  }, []);
+
+  /**
+   * Run the LLM, streaming text to the UI.
+   * Returns the collected chunks and full text when done.
+   */
+  const streamLLM = useCallback(async (): Promise<{ chunks: StreamChunk[]; text: string }> => {
+    const llmTools = toLLMTools(tools);
+    const chunks: StreamChunk[] = [];
+    let text = "";
+
+    setStreamingText("");
+
+    for await (const chunk of provider.chat(conversation.getMessages(), llmTools, systemPrompt)) {
+      chunks.push(chunk);
+      if (chunk.type === "text_delta") {
+        text += chunk.text;
+        setStreamingText(text);
+      }
+    }
+
+    setStreamingText(undefined);
+    return { chunks, text };
+  }, [provider, conversation, tools, systemPrompt]);
+
+  /**
+   * Dispatch a tool call and return the result.
+   */
+  const dispatchTool = useCallback(async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
+    const tool = tools.find((t) => t.name === name);
+    if (!tool) {
+      return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
+    }
+    return tool.handler(input);
+  }, [tools]);
+
+  /**
+   * Full conversation turn: stream LLM → handle tool calls → loop until done.
+   */
+  const runConversationTurn = useCallback(async () => {
+    setIsThinking(true);
+
+    try {
+      let continueLoop = true;
+
+      while (continueLoop) {
+        const { chunks, text } = await streamLLM();
+
+        // Collect the assistant message content
+        const assistantContent = conversation.collectStreamResponse(chunks);
+        conversation.addAssistantMessage(assistantContent);
+
+        // Check if there are tool calls
+        const toolUses = assistantContent.filter((c) => c.type === "tool_use");
+
+        if (toolUses.length === 0) {
+          // No tool calls — show the final text and stop
+          if (text) addMessage("assistant", text);
+          continueLoop = false;
+        } else {
+          // Show any text before tool calls
+          if (text) addMessage("assistant", text);
+
+          // Dispatch each tool call
+          for (const toolUse of toolUses) {
+            if (toolUse.type !== "tool_use") continue;
+
+            addMessage("system", `Using tool: ${toolUse.name}`);
+
+            const result = await dispatchTool(toolUse.name, toolUse.input);
+            const resultText = result.content
+              .filter((c): c is { type: "text"; text: string } => c.type === "text")
+              .map((c) => c.text)
+              .join("\n");
+
+            conversation.addToolResult(toolUse.id, resultText, result.isError);
+          }
+
+          // Loop: send tool results back to the LLM
         }
-        return;
       }
+    } catch (err) {
+      setStreamingText(undefined);
+      const msg = err instanceof Error ? err.message : String(err);
+      addMessage("system", `Error: ${msg}`);
+    } finally {
+      setIsThinking(false);
+    }
+  }, [streamLLM, conversation, dispatchTool, addMessage]);
 
-      // Regular message — send to LLM
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", content: text, timestamp: new Date() },
-      ]);
-      setIsThinking(true);
+  const handleSubmit = useCallback(async (text: string) => {
+    // Check for slash command
+    const command = parseSlashCommand(text);
+    if (command) {
+      const result = await onSlashCommand(command.name, command.args);
+      if (result) addMessage("system", result);
+      return;
+    }
 
-      try {
-        const response = await onMessage(text);
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: response, timestamp: new Date() },
-        ]);
-      } catch (err) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "system",
-            content: `Error: ${err instanceof Error ? err.message : String(err)}`,
-            timestamp: new Date(),
-          },
-        ]);
-      } finally {
-        setIsThinking(false);
-      }
-    },
-    [onMessage, onSlashCommand],
-  );
+    // Regular message
+    addMessage("user", text);
+    conversation.addUserMessage(text);
+    await runConversationTurn();
+  }, [conversation, runConversationTurn, onSlashCommand, addMessage]);
 
   return (
-    <Box flexDirection="column" height="100%">
+    <Box flexDirection="column">
       <StatusBar
-        provider={provider}
+        provider={provider.name}
         model={model}
-        canvasConnected={canvasConnected}
+        canvasConnected={isCanvasConnected()}
         canvasUrl={canvasUrl}
         isThinking={isThinking}
       />
 
-      <Chat messages={messages} />
+      <Box marginY={1}>
+        <Text color="gray" dimColor>{"─".repeat(60)}</Text>
+      </Box>
+
+      <Chat messages={messages} streamingText={streamingText} />
+
+      <Box marginTop={1}>
+        <Text color="gray" dimColor>{"─".repeat(60)}</Text>
+      </Box>
 
       <Input onSubmit={handleSubmit} disabled={isThinking} />
     </Box>

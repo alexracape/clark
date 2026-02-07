@@ -2,7 +2,7 @@
  * Status bar component — shows model, canvas connection, and current state.
  */
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 
 export interface StatusBarProps {
@@ -13,23 +13,39 @@ export interface StatusBarProps {
   isThinking: boolean;
 }
 
+const SPINNER_FRAMES = [".", "..", "..."];
+
 export function StatusBar({ provider, model, canvasConnected, canvasUrl, isThinking }: StatusBarProps) {
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    if (!isThinking) return;
+    const timer = setInterval(() => {
+      setFrame((f) => (f + 1) % SPINNER_FRAMES.length);
+    }, 400);
+    return () => clearInterval(timer);
+  }, [isThinking]);
+
   return (
-    <Box borderStyle="single" borderColor="gray" paddingX={1} flexDirection="row" justifyContent="space-between">
+    <Box paddingX={1} flexDirection="row" justifyContent="space-between">
       <Text>
-        <Text color="blue">{provider}</Text>
-        <Text color="gray">/{model}</Text>
+        <Text color="blue" bold>{provider}</Text>
+        <Text color="gray" dimColor>{"/"}{model}</Text>
       </Text>
 
-      <Text>
+      <Box>
         {canvasConnected ? (
-          <Text color="green">canvas: connected</Text>
+          <Text color="green">{"[canvas connected]"}</Text>
         ) : (
-          <Text color="yellow">canvas: {canvasUrl}</Text>
+          <Text color="gray" dimColor>{"[canvas: "}{canvasUrl}{"]"}</Text>
         )}
-      </Text>
+      </Box>
 
-      {isThinking && <Text color="cyan">thinking...</Text>}
+      <Box width={14}>
+        {isThinking && (
+          <Text color="cyan">{"thinking"}{SPINNER_FRAMES[frame]}</Text>
+        )}
+      </Box>
     </Box>
   );
 }
