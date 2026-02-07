@@ -6,6 +6,7 @@
  */
 
 import React from "react";
+import { resolve } from "node:path";
 import { test, expect, describe, afterEach } from "bun:test";
 import { render, cleanup } from "ink-testing-library";
 import { App } from "../src/tui/app.tsx";
@@ -15,6 +16,8 @@ import { MockProvider } from "../src/llm/mock.ts";
 import { Conversation } from "../src/llm/messages.ts";
 import { createTools } from "../src/mcp/tools.ts";
 import { CanvasBroker } from "../src/canvas/server.ts";
+
+const TEST_VAULT = resolve(import.meta.dir, "test_vault");
 
 afterEach(() => {
   cleanup();
@@ -134,7 +137,7 @@ describe("App", () => {
     const provider = new MockProvider(mockResponses);
     const conversation = new Conversation();
     const broker = new CanvasBroker();
-    const tools = createTools({ broker });
+    const tools = createTools({ broker, vaultDir: TEST_VAULT });
 
     return {
       provider,
@@ -326,7 +329,7 @@ describe("App", () => {
 
     const conversation = new Conversation();
     const broker = new CanvasBroker();
-    const tools = createTools({ broker });
+    const tools = createTools({ broker, vaultDir: TEST_VAULT });
 
     const { lastFrame, stdin } = render(
       <App

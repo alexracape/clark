@@ -1,8 +1,10 @@
 ---
-description: Use Bun instead of Node.js, npm, pnpm, or vite.
-globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
+description: Use Bun instead of Node.js. Reference local SDK documentation for tldraw and MCP.
+globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json, docs/dependencies/**/*.txt"
 alwaysApply: false
 ---
+
+# Project Guidelines
 
 Default to using Bun instead of Node.js.
 
@@ -13,6 +15,19 @@ Default to using Bun instead of Node.js.
 - Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
 - Use `bunx <package> <command>` instead of `npx <package> <command>`
 - Bun automatically loads .env, so don't use dotenv.
+
+## External Dependencies & Documentation
+
+To avoid context bloat, do not read these files in their entirety unless a specific API detail is missing. Use `grep` or read specific sections when needed.
+
+### tldraw SDK (docs/dependencies/tldraw/)
+- **Index:** `llms.txt` — Start here to find links to specific resources.
+- **Core Docs:** `llms-docs.txt` — Use this for feature documentation and standard SDK usage.
+- **Agent Docs:** `llms-agent-kit.txt` — Use for agentic features and visual understanding of the canvas.
+- **Full Reference:** `llms-full.txt` — Use only for deep troubleshooting, releases, or complex examples.
+
+### Model Context Protocol (docs/dependencies/mcp/)
+- **Full Reference:** `llms-full.txt` — Contains the entire MCP spec, lifecycle, and tool definitions.
 
 ## APIs
 

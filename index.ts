@@ -21,13 +21,9 @@ import { networkInterfaces } from "node:os";
 // --- CLI args ---
 
 const argv = await yargs(hideBin(process.argv))
-  .option("problem", {
-    type: "string",
-    describe: "Path to problem set file (PDF or markdown)",
-  })
   .option("notes", {
     type: "string",
-    describe: "Path to notes directory",
+    describe: "Path to notes vault directory",
   })
   .option("provider", {
     type: "string",
@@ -94,10 +90,10 @@ function startApp(activeConfig: ClarkConfig) {
   startCanvasServer({ port: argv.port, broker });
 
   // Initialize tools
+  const vaultDir = argv.notes ?? ".";
   const tools = createTools({
     broker,
-    notesDir: argv.notes,
-    problemPath: argv.problem,
+    vaultDir,
   });
 
   // Initialize LLM provider
@@ -124,8 +120,7 @@ function startApp(activeConfig: ClarkConfig) {
             "  /snapshot [page]   Capture canvas and send to assistant",
             "  /export [path]     Export canvas as A4 PDF",
             "  /save              Save canvas state to disk",
-            "  /problem <path>    Load a problem set",
-            "  /notes <path>      Set notes directory",
+            "  /notes [path]      Show or set notes vault directory",
             "  /model <provider>  Show or switch LLM provider",
             "  /clear             Clear conversation history",
             "  Ctrl+C             Exit",
@@ -168,13 +163,9 @@ function startApp(activeConfig: ClarkConfig) {
         case "save":
           return "Canvas save not yet implemented.";
 
-        case "problem":
-          if (!args) return "Usage: /problem <path>";
-          return `Problem set loaded: ${args}`;
-
         case "notes":
-          if (!args) return "Usage: /notes <path>";
-          return `Notes directory set: ${args}`;
+          if (!args) return `Current vault: ${vaultDir}`;
+          return `Vault directory set: ${args}`;
 
         case "model":
           if (!args) return `Current: ${provider.name}/${modelName}`;

@@ -6,6 +6,7 @@
  */
 
 import { test, expect, describe } from "bun:test";
+import { resolve } from "node:path";
 import { MockProvider, type MockResponse } from "../src/llm/mock.ts";
 import { Conversation } from "../src/llm/messages.ts";
 import { createTools, type ToolDefinition } from "../src/mcp/tools.ts";
@@ -89,7 +90,7 @@ async function runConversationTurn(
 describe("Conversation Loop", () => {
   const systemPrompt = "You are a helpful tutor.";
   const broker = new CanvasBroker();
-  const tools = createTools({ broker });
+  const tools = createTools({ broker, vaultDir: resolve(import.meta.dir, "test_vault") });
 
   test("simple text response", async () => {
     const provider = new MockProvider([

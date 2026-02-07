@@ -77,19 +77,18 @@ This is the simplest approach and always works during active tutoring sessions (
 
 **Session lifecycle:**
 - Student launches `clark` from the terminal
-- Optionally provides a problem set file: `clark --problem ./pset3.pdf`
+- On first run, an onboarding flow prompts for API keys (saved to `~/.clark/config.json`)
 - Optionally configures the notes directory: `clark --notes ~/Notes/CS229`
 - Session is ephemeral — conversation is not persisted across runs (v1)
 
 **Slash commands:**
-- `/problem <path>` — Load a problem set file (PDF or markdown)
-- `/notes <path>` — Set the notes directory to search
-- `/canvas` — Open the tldraw canvas URL (prints the LAN URL, or opens browser)
+- `/notes [path]` — Show or set notes vault directory
+- `/canvas` — Show the tldraw canvas LAN URL for iPad
 - `/snapshot [page]` — Manually trigger a canvas snapshot and send to the LLM
-- `/export [path]` — Export canvas pages as A4 PDF to the given path (or default location)
+- `/export [path]` — Export canvas pages as A4 PDF (default: `./clark-export.pdf`)
 - `/save` — Manually save canvas state to disk
 - `/clear` — Clear conversation history
-- `/model <provider>` — Switch LLM provider mid-session
+- `/model [provider]` — Show or switch LLM provider
 - `/help` — Show available commands
 
 ### 2. Canvas System (tldraw)
@@ -183,37 +182,47 @@ The Agent SDK's `PromptPartUtil` pattern — modular classes that each contribut
 - The iPad client iterates through all pages, calling `editor.toImage()` on each with the frame bounds and print resolution (300 DPI)
 - Page images are sent back to the server via WebSocket
 - The server composes them into a multi-page A4 PDF using `pdf-lib`
-- PDF is written to disk (default: alongside the problem set file, or a user-specified path)
+- PDF is written to disk (default: `./clark-export.pdf` for the slash command, `./output.pdf` for the `export_pdf` tool)
+
+#### Implementation Status
+
+The canvas system described above is the target architecture. Current state:
+- **Built:** `CanvasBroker` — request/response message broker for WebSocket communication between the MCP server and iPad client. Handles snapshot requests, export requests, and PDF composition via `pdf-lib`.
+- **Pending:** `TLSocketRoom` integration (sync), tldraw React frontend (`app.tsx`, `index.html`), persistence via `InMemorySyncStorage`, BlurryShape/SimpleShape extraction on the iPad client.
+
+The `CanvasBroker` is an interim implementation to unblock tool development. Once the tldraw frontend is built, the broker will be replaced by direct `TLSocketRoom` integration for state and WebSocket messages for rendering operations.
 
 ### 3. MCP Server (Context + Canvas Tools)
 
 **Protocol:** Model Context Protocol (MCP) over stdio
 
 **Resources:**
-- `notes://` — Access to the configured notes directory (Obsidian vault or any folder of markdown/PDF files)
-- `problem://` — Access to the loaded problem set file
+- `notes://` — Access to the configured notes vault (Obsidian vault or any folder of markdown/PDF/image files)
 
 **Tools exposed to the LLM:**
 
-| Tool | Description |
-|------|-------------|
-| `read_file` | Read the contents of a file by path (markdown as text, PDF extracted as text) |
-| `search_notes` | Keyword search across all files in the notes directory. Returns matching file paths and snippets. |
-| `list_files` | List files in a directory, optionally filtered by extension |
-| `read_canvas` | Request a PNG snapshot of a canvas page from the iPad client (via WebSocket). Returns the image for the vision API, plus BlurryShape structured data. |
-| `export_pdf` | Request all page images from the iPad client, compose into A4 PDF via `pdf-lib`. Returns the file path. |
-| `save_canvas` | Persist current canvas state to disk via `storage.getSnapshot()`. |
+| Tool | Description | Annotations |
+|------|-------------|-------------|
+| `read_file` | Read a file from the vault (markdown with wikilink resolution, PDF text extraction, images as base64) | readOnly |
+| `search_notes` | Keyword search across markdown/text files, ranked by match density | readOnly |
+| `list_files` | List vault directory contents with optional extension filter | readOnly |
+| `create_file` | Create a new file in the vault (fails if exists) | write |
+| `edit_file` | Find-and-replace editing in vault files | write, destructive |
+| `read_canvas` | Capture a PNG snapshot of a canvas page from the iPad client (via WebSocket) | readOnly |
+| `export_pdf` | Export canvas pages as A4 PDF via `pdf-lib` (default: `./output.pdf`) | write |
+| `save_canvas` | Persist current canvas state to disk | write, idempotent |
 
-**Canvas tool implementation:**
-The MCP server holds references to:
-- The `TLSocketRoom` instance (for `save_canvas` — calls `storage.getSnapshot()`)
-- A WebSocket message broker (for `read_canvas` and `export_pdf` — sends requests to the iPad, awaits responses)
+**Tool implementation:**
+All file tools are vault-scoped — paths are resolved relative to the vault root, and path traversal outside the vault is rejected. The MCP server holds references to:
+- A `CanvasBroker` instance (for `read_canvas` and `export_pdf` — sends requests to the iPad, awaits responses)
+- An optional `saveCanvas` callback (for `save_canvas` — provided by `index.ts` when `TLSocketRoom` is available)
 
 This keeps the MCP server decoupled from tldraw internals. It doesn't import tldraw or know about shapes — it just sends messages and receives images.
 
 **File format support:**
-- **Markdown (.md):** Read as plain text. Obsidian-flavored links and frontmatter are preserved.
-- **PDF (.pdf):** Text extracted for search and reading. Sent as images to the vision API when layout matters (diagrams, equations).
+- **Markdown (.md):** Read as plain text. Wikilinks (`[[...]]` and `![[...]]`) are extracted and resolved to vault paths, appended as a link footer so the LLM can follow references.
+- **PDF (.pdf):** Text extracted via `pdf-parse` for search and reading.
+- **Images (.png, .jpg, .gif, etc.):** Returned as base64-encoded data for the LLM's vision API.
 
 **Search (v1):** Keyword/substring search over file contents. Results ranked by relevance (match density).
 
@@ -271,43 +280,64 @@ clark/
 ├── SPEC.md                    # This file
 ├── package.json
 ├── tsconfig.json
-├── index.ts                   # Entry point — starts tldraw server, MCP server, TUI
+├── index.ts                   # Entry point — onboarding, canvas server, TUI
+│
+├── docs/
+│   └── dependencies/          # Vendored LLM-friendly docs for tldraw, MCP
 │
 ├── src/
+│   ├── config.ts              # Config persistence (~/.clark/config.json)
+│   │
 │   ├── tui/                   # Ink-based terminal UI
 │   │   ├── app.tsx            # Root Ink component
 │   │   ├── chat.tsx           # Chat message display
 │   │   ├── input.tsx          # User input handling
+│   │   ├── onboarding.tsx     # First-run setup flow (API key entry)
 │   │   └── status.tsx         # Status bar (model, canvas, etc.)
 │   │
 │   ├── canvas/                # tldraw server + client app
-│   │   ├── server.ts          # Bun.serve + TLSocketRoom setup + WS message broker
+│   │   ├── server.ts          # CanvasBroker + Bun.serve for WebSocket messaging
 │   │   ├── pdf-export.ts      # Compose page PNGs into A4 PDF (server-side, uses pdf-lib)
-│   │   ├── app.tsx            # tldraw React app (runs on iPad)
-│   │   ├── context.ts         # BlurryShape/SimpleShape extraction (runs on iPad)
-│   │   └── index.html         # Entry HTML served to iPad
+│   │   ├── context.ts         # BlurryShape/SimpleShape types (will move to iPad client)
+│   │   ├── app.tsx            # (planned) tldraw React app for iPad
+│   │   └── index.html         # (planned) Entry HTML served to iPad
 │   │
 │   ├── mcp/                   # MCP server
 │   │   ├── server.ts          # MCP protocol handler
-│   │   ├── tools.ts           # Tool definitions (read_file, search, canvas tools)
-│   │   └── pdf.ts             # PDF text extraction (for reading problem sets)
+│   │   ├── tools.ts           # Tool definitions (file tools, canvas tools)
+│   │   ├── vault.ts           # Wikilink resolution and vault path utilities
+│   │   ├── standalone.ts      # Standalone stdio entry point for testing/inspector
+│   │   └── pdf.ts             # PDF text extraction (for reading vault PDFs)
 │   │
 │   ├── llm/                   # LLM provider abstraction
 │   │   ├── provider.ts        # Provider interface + types
 │   │   ├── anthropic.ts       # Claude implementation
 │   │   ├── openai.ts          # OpenAI implementation
+│   │   ├── mock.ts            # Mock provider for tests
 │   │   └── messages.ts        # Message history management
 │   │
 │   └── prompts/
 │       └── system.md          # Socratic system prompt
 │
-└── test/                      # Tests
-    ├── mcp.test.ts
-    ├── llm.test.ts
-    └── canvas.test.ts
+├── test/                      # Tests
+│   ├── mcp.test.ts            # MCP tool unit tests
+│   ├── mcp-integration.test.ts # MCP server integration tests (stdio)
+│   ├── conversation.test.ts   # Conversation/message management tests
+│   ├── tui.test.tsx           # TUI component tests
+│   ├── input.test.ts          # Input handling tests
+│   ├── config.test.ts         # Config persistence tests
+│   ├── llm.test.ts            # LLM provider tests
+│   └── canvas.test.ts         # Canvas/broker tests
+│
+└── test/test_vault/           # Sample Obsidian vault for tests
+    ├── .obsidian/
+    ├── Notes/                  # Markdown notes with wikilinks
+    ├── Resources/Images/       # Test images and PDFs
+    ├── Resources/PDFs/         # PDF lecture notes
+    └── Templates/              # Obsidian templates
 ```
 
-Note: Files in `src/canvas/` that run on the iPad (`app.tsx`, `context.ts`) are bundled by Bun and served as static assets. Files that run on the server (`server.ts`, `pdf-export.ts`) are part of the main Bun process.
+Note: Files in `src/canvas/` marked "(planned)" don't exist yet. Once built, `app.tsx` and `context.ts` will run on the iPad (bundled by Bun and served as static assets). Files that run on the server (`server.ts`, `pdf-export.ts`) are part of the main Bun process.
 
 ## Dependencies
 
@@ -321,24 +351,24 @@ Note: Files in `src/canvas/` that run on the iPad (`app.tsx`, `context.ts`) are 
 | `@modelcontextprotocol/sdk` | MCP server implementation |
 | `@anthropic-ai/sdk` | Claude API client |
 | `openai` | OpenAI API client |
-| `pdf-parse` | PDF text extraction (reading problem sets) |
+| `pdf-parse` | PDF text extraction (reading vault PDFs) |
 | `pdf-lib` | PDF generation (exporting canvas pages to A4 PDF) |
 | `chalk` | Terminal color output |
 | `yargs` | CLI argument parsing |
 
-Dev dependencies: `@types/bun`, `@types/react`, `typescript`
+Dev dependencies: `@types/bun`, `@types/react`, `@types/pdf-parse`, `@types/yargs`, `ink-testing-library`, `typescript`
 
 ## Configuration
 
-Clark uses environment variables and CLI flags. No config file for v1.
+Clark uses environment variables, CLI flags, and a persistent config file at `~/.clark/config.json`. On first run, an onboarding flow prompts for API keys and saves them to the config file. Environment variables take precedence over saved config.
 
 ```bash
-# Required: at least one API key
+# API keys can be set via env or saved during onboarding
 export ANTHROPIC_API_KEY=sk-ant-...
 export OPENAI_API_KEY=sk-...
 
-# Run clark
-clark --problem ./pset3.pdf --notes ~/Notes/CS229
+# Run clark with a notes vault
+clark --notes ~/Notes/CS229
 
 # Or with explicit provider
 clark --provider anthropic --model claude-sonnet-4-5-20250929
@@ -347,8 +377,7 @@ clark --provider anthropic --model claude-sonnet-4-5-20250929
 **CLI flags:**
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--problem <path>` | none | Path to problem set file (PDF or markdown) |
-| `--notes <path>` | none | Path to notes directory |
+| `--notes <path>` | `.` (cwd) | Path to notes vault directory |
 | `--provider` | `anthropic` | LLM provider (`anthropic` or `openai`) |
 | `--model` | provider default | Specific model ID |
 | `--port` | `3000` | Port for tldraw canvas server |

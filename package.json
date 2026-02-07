@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "bun --hot index.ts",
     "start": "bun index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "mcp": "bun src/mcp/standalone.ts",
+    "inspect": "bunx @modelcontextprotocol/inspector bun src/mcp/standalone.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

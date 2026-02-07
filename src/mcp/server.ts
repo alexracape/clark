@@ -28,7 +28,7 @@ export function createMCPServer(options: MCPServerOptions) {
 
   // Register each tool with the MCP server
   for (const tool of tools) {
-    registerTool(server, tool);
+    mcpRegisterTool(server, tool);
   }
 
   return server;
@@ -49,9 +49,11 @@ export async function startMCPServer(options: MCPServerOptions) {
 }
 
 /**
- * Register a single tool definition with the MCP server.
+ * Register a single tool definition with the MCP server using the registerTool API.
+ * Converts our ToolDefinition's JSON-schema-like inputSchema to a zod shape,
+ * and passes annotations for MCP compliance.
  */
-function registerTool(server: McpServer, tool: ToolDefinition) {
+function mcpRegisterTool(server: McpServer, tool: ToolDefinition) {
   // Build zod schema from the tool's input schema
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const [key, prop] of Object.entries(tool.inputSchema.properties)) {
@@ -60,6 +62,8 @@ function registerTool(server: McpServer, tool: ToolDefinition) {
       schema = z.enum(prop.enum as [string, ...string[]]);
     } else if (prop.type === "number") {
       schema = z.number();
+    } else if (prop.type === "boolean") {
+      schema = z.boolean();
     } else {
       schema = z.string();
     }
@@ -71,11 +75,19 @@ function registerTool(server: McpServer, tool: ToolDefinition) {
     shape[key] = schema;
   }
 
-  server.tool(tool.name, tool.description, shape, async (input) => {
-    const result = await tool.handler(input as Record<string, unknown>);
-    return {
-      content: result.content,
-      isError: result.isError,
-    };
-  });
+  server.registerTool(
+    tool.name,
+    {
+      description: tool.description,
+      inputSchema: shape,
+      annotations: tool.annotations,
+    },
+    async (input) => {
+      const result = await tool.handler(input as Record<string, unknown>);
+      return {
+        content: result.content,
+        isError: result.isError,
+      };
+    },
+  );
 }
