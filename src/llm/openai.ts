@@ -134,4 +134,4 @@ export class OpenAIProvider implements LLMProvider {
 }
 
 // Register this provider
-registerProvider("openai", () => new OpenAIProvider());
+registerProvider("openai", (model?) => new OpenAIProvider(model));

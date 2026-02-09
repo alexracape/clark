@@ -7,6 +7,8 @@
 // Register providers (side-effect imports)
 import "./anthropic.ts";
 import "./openai.ts";
+import "./gemini.ts";
+import "./ollama.ts";
 
 // Re-export public API
 export { createProvider, registerProvider, listProviders } from "./provider.ts";

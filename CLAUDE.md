@@ -1,126 +1,51 @@
 ---
-description: Use Bun instead of Node.js. Reference local SDK documentation for tldraw and MCP.
+description: Critical project constraints, Bun-native workflow, and local SDK reference paths.
 globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json, docs/dependencies/**/*.txt"
-alwaysApply: false
+alwaysApply: true
 ---
 
 # Project Guidelines
 
-Default to using Bun instead of Node.js.
+## Core Tech Stack
+- **Runtime:** Always use **Bun** instead of Node.js.
+- **Package Manager:** Use `bun install`, `bun add`, and `bun run`.
+- **Testing:** Use `bun test`.
+- **Bundling:** Use `bun build` (No Webpack/Vite/Esbuild).
+- **Environment:** Bun loads `.env` automatically; do not use `dotenv`.
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+## Project Documentation & Planning
+- **Roadmap:** Consult `TODO.md` for pending tasks and future enhancements.
+- **Specification:** Refer to `SPEC.md` for the overall project architecture and logic.
+- **Context Management:** After completing a task, update `TODO.md` and `SPEC.md` if any key components have changed.
 
-## External Dependencies & Documentation
+## External Dependencies Documentation
+The repo contains documentation for some dependencies as plain text.
+To minimize context window bloat for these large files, use `grep` or read specific snippets rather than the full files unless necessary.
 
-To avoid context bloat, do not read these files in their entirety unless a specific API detail is missing. Use `grep` or read specific sections when needed.
+### tldraw SDK (`docs/dependencies/tldraw/`)
+- **Primary Entry:** `llms.txt` (Index of resources).
+- **Features:** `llms-docs.txt` (Standard usage).
+- **Agentic/Canvas:** `llms-agent-kit.txt` (Visual understanding).
+- **Deep Reference:** `llms-full.txt` (Complex troubleshooting only).
 
-### tldraw SDK (docs/dependencies/tldraw/)
-- **Index:** `llms.txt` — Start here to find links to specific resources.
-- **Core Docs:** `llms-docs.txt` — Use this for feature documentation and standard SDK usage.
-- **Agent Docs:** `llms-agent-kit.txt` — Use for agentic features and visual understanding of the canvas.
-- **Full Reference:** `llms-full.txt` — Use only for deep troubleshooting, releases, or complex examples.
+### Model Context Protocol (`docs/dependencies/mcp/`)
+- **Reference:** `llms-full.txt` (Full spec, lifecycle, and tools).
 
-### Model Context Protocol (docs/dependencies/mcp/)
-- **Full Reference:** `llms-full.txt` — Contains the entire MCP spec, lifecycle, and tool definitions.
+---
 
-## APIs
+## Technical Patterns & APIs
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+### Bun Native APIs (Preferred)
+- **Server:** `Bun.serve()` with native routes. **Do not use Express.**
+- **Database:** `bun:sqlite` (SQLite), `Bun.sql` (Postgres), `Bun.redis` (Redis).
+- **I/O:** `Bun.file()` instead of `node:fs`.
+- **Shell:** `Bun.$` instead of `execa` or `child_process`.
 
-## Testing
+### Frontend Workflow
+Use Bun’s native HTML imports. Bun automatically transpiles `.tsx`/`.jsx` and bundles CSS.
 
-Use `bun test` to run tests.
-
-```ts#index.test.ts
-import { test, expect } from "bun:test";
-
-test("hello world", () => {
-  expect(1).toBe(1);
-});
-```
-
-## Frontend
-
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
-
-Server:
-
-```ts#index.ts
-import index from "./index.html"
-
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
-```
-
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
-
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
-
-With the following `frontend.tsx`:
-
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
-
-// import .css files directly and it works
-import './index.css';
-
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+Development Commands
+Run Dev: bun --hot index.ts
+Install: bun install
+Test: bun test
+Lint/Format: bun x biome check . (if applicable)

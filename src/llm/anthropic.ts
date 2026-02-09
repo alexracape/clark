@@ -115,4 +115,4 @@ export class AnthropicProvider implements LLMProvider {
 }
 
 // Register this provider
-registerProvider("anthropic", () => new AnthropicProvider());
+registerProvider("anthropic", (model?) => new AnthropicProvider(model));

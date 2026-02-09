@@ -59,12 +59,12 @@ describe("COMMANDS", () => {
     const names = COMMANDS.map((c) => c.name);
     expect(names).toContain("help");
     expect(names).toContain("canvas");
-    expect(names).toContain("snapshot");
     expect(names).toContain("export");
     expect(names).toContain("save");
-    expect(names).toContain("problem");
     expect(names).toContain("notes");
     expect(names).toContain("model");
+    expect(names).toContain("context");
+    expect(names).toContain("compact");
     expect(names).toContain("clear");
   });
 
@@ -80,16 +80,15 @@ describe("COMMANDS", () => {
       COMMANDS.filter((c) => c.name.startsWith(partial));
 
     expect(filter("")).toHaveLength(COMMANDS.length); // all commands
-    expect(filter("s")).toHaveLength(2); // snapshot, save
-    expect(filter("sn")).toHaveLength(1); // snapshot
-    expect(filter("snapshot")).toHaveLength(1);
-    expect(filter("c")).toHaveLength(2); // canvas, clear
+    expect(filter("s")).toHaveLength(1); // save
+    expect(filter("sa")).toHaveLength(1); // save
+    expect(filter("c")).toHaveLength(4); // canvas, context, compact, clear
     expect(filter("cl")).toHaveLength(1); // clear
+    expect(filter("co")).toHaveLength(2); // context, compact
     expect(filter("xyz")).toHaveLength(0); // no match
     expect(filter("h")).toHaveLength(1); // help
     expect(filter("e")).toHaveLength(1); // export
     expect(filter("m")).toHaveLength(1); // model
     expect(filter("n")).toHaveLength(1); // notes
-    expect(filter("p")).toHaveLength(1); // problem
   });
 });

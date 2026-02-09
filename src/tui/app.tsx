@@ -10,13 +10,18 @@ import { Box, Text, Newline } from "ink";
 import { Chat, type ChatMessage } from "./chat.tsx";
 import { Input, parseSlashCommand } from "./input.tsx";
 import { StatusBar } from "./status.tsx";
+import { ModelPicker } from "./model-picker.tsx";
+import { createProvider } from "../llm/provider.ts";
+import { formatContextGrid } from "./context.ts";
 import type { LLMProvider, Tool, StreamChunk, MessageContent } from "../llm/provider.ts";
+import { loadConfig, saveConfig, type ClarkConfig } from "../config.ts";
 import { Conversation } from "../llm/messages.ts";
 import type { ToolDefinition, ToolResult } from "../mcp/tools.ts";
 
 export interface AppProps {
   provider: LLMProvider;
   model: string;
+  config: ClarkConfig;
   conversation: Conversation;
   systemPrompt: string;
   tools: ToolDefinition[];
@@ -46,6 +51,7 @@ function toLLMTools(tools: ToolDefinition[]): Tool[] {
 export function App({
   provider,
   model,
+  config,
   conversation,
   systemPrompt,
   tools,
@@ -60,6 +66,11 @@ export function App({
   }]);
   const [streamingText, setStreamingText] = useState<string | undefined>(undefined);
   const [isThinking, setIsThinking] = useState(false);
+
+  // Runtime-switchable provider and model
+  const [activeProvider, setActiveProvider] = useState<LLMProvider>(provider);
+  const [activeModel, setActiveModel] = useState(model);
+  const [showModelPicker, setShowModelPicker] = useState(false);
 
   const addMessage = useCallback((role: ChatMessage["role"], content: string) => {
     setMessages((prev) => [...prev, { role, content, timestamp: new Date() }]);
@@ -76,7 +87,7 @@ export function App({
 
     setStreamingText("");
 
-    for await (const chunk of provider.chat(conversation.getMessages(), llmTools, systemPrompt)) {
+    for await (const chunk of activeProvider.chat(conversation.getMessages(), llmTools, systemPrompt)) {
       chunks.push(chunk);
       if (chunk.type === "text_delta") {
         text += chunk.text;
@@ -86,7 +97,7 @@ export function App({
 
     setStreamingText(undefined);
     return { chunks, text };
-  }, [provider, conversation, tools, systemPrompt]);
+  }, [activeProvider, conversation, tools, systemPrompt]);
 
   /**
    * Dispatch a tool call and return the result.
@@ -153,10 +164,50 @@ export function App({
     }
   }, [streamLLM, conversation, dispatchTool, addMessage]);
 
+  /** Handle model selection from the picker */
+  const handleModelSelect = useCallback(async (providerName: string, modelName: string) => {
+    try {
+      // Ollama preflight: verify server is reachable
+      if (providerName === "ollama") {
+        const { checkModelFits } = await import("../llm/ollama.ts");
+        await checkModelFits(modelName);
+      }
+
+      const newProvider = createProvider(providerName, modelName);
+      setActiveProvider(newProvider);
+      setActiveModel(modelName);
+      setShowModelPicker(false);
+      const note = providerName === "ollama"
+        ? ` (first message may be slow while Ollama loads the model)`
+        : "";
+      addMessage("system", `Switched to ${providerName}/${modelName}${note}`);
+
+      // Persist selection so it's the default next launch
+      const currentConfig = await loadConfig();
+      await saveConfig({ ...currentConfig, provider: providerName, model: modelName });
+    } catch (err) {
+      setShowModelPicker(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      addMessage("system", `Failed to switch model: ${msg}`);
+    }
+  }, [addMessage]);
+
   const handleSubmit = useCallback(async (text: string) => {
     // Check for slash command
     const command = parseSlashCommand(text);
     if (command) {
+      // Intercept /model to show the picker
+      if (command.name === "model") {
+        setShowModelPicker(true);
+        return;
+      }
+
+      // Intercept /context — needs activeModel from component state
+      if (command.name === "context") {
+        addMessage("system", formatContextGrid(activeModel, conversation, systemPrompt, tools));
+        return;
+      }
+
       const result = await onSlashCommand(command.name, command.args);
       if (result) addMessage("system", result);
       return;
@@ -166,13 +217,13 @@ export function App({
     addMessage("user", text);
     conversation.addUserMessage(text);
     await runConversationTurn();
-  }, [conversation, runConversationTurn, onSlashCommand, addMessage]);
+  }, [conversation, runConversationTurn, onSlashCommand, addMessage, activeModel, systemPrompt, tools]);
 
   return (
     <Box flexDirection="column">
       <StatusBar
-        provider={provider.name}
-        model={model}
+        provider={activeProvider.name}
+        model={activeModel}
         canvasConnected={isCanvasConnected()}
         canvasUrl={canvasUrl}
         isThinking={isThinking}
@@ -188,7 +239,17 @@ export function App({
         <Text color="gray" dimColor>{"─".repeat(60)}</Text>
       </Box>
 
-      <Input onSubmit={handleSubmit} disabled={isThinking} />
+      {showModelPicker ? (
+        <ModelPicker
+          currentProvider={activeProvider.name}
+          currentModel={activeModel}
+          config={config}
+          onSelect={handleModelSelect}
+          onCancel={() => setShowModelPicker(false)}
+        />
+      ) : (
+        <Input onSubmit={handleSubmit} disabled={isThinking} />
+      )}
     </Box>
   );
 }

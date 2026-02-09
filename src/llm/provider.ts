@@ -106,13 +106,13 @@ export interface LLMProvider {
 
 // --- Provider registry ---
 
-const providers = new Map<string, () => LLMProvider>();
+const providers = new Map<string, (model?: string) => LLMProvider>();
 
-export function registerProvider(name: string, factory: () => LLMProvider) {
+export function registerProvider(name: string, factory: (model?: string) => LLMProvider) {
   providers.set(name, factory);
 }
 
-export function createProvider(name: string): LLMProvider {
+export function createProvider(name: string, model?: string): LLMProvider {
   const factory = providers.get(name);
   if (!factory) {
     const available = [...providers.keys()].join(", ");
@@ -120,7 +120,7 @@ export function createProvider(name: string): LLMProvider {
       `Unknown LLM provider "${name}". Available: ${available}`,
     );
   }
-  return factory();
+  return factory(model);
 }
 
 export function listProviders(): string[] {

@@ -118,4 +118,73 @@ export class Conversation {
   get length(): number {
     return this.messages.length;
   }
+
+  /**
+   * Estimate token counts broken down by category.
+   * Uses a rough 4-chars-per-token heuristic.
+   */
+  estimateContext(): ContextBreakdown {
+    let userTokens = 0;
+    let assistantTokens = 0;
+    let toolTokens = 0;
+    let imageCount = 0;
+
+    for (const msg of this.messages) {
+      for (const part of msg.content) {
+        if (part.type === "text") {
+          const tokens = estimateTokens(part.text);
+          if (msg.role === "user") userTokens += tokens;
+          else if (msg.role === "assistant") assistantTokens += tokens;
+        } else if (part.type === "image") {
+          imageCount++;
+          // Images cost ~1600 tokens for vision APIs
+          if (msg.role === "user") userTokens += 1600;
+        } else if (part.type === "tool_use") {
+          toolTokens += estimateTokens(JSON.stringify(part.input));
+        } else if (part.type === "tool_result") {
+          const resultText = typeof part.content === "string"
+            ? part.content
+            : JSON.stringify(part.content);
+          toolTokens += estimateTokens(resultText);
+        }
+      }
+    }
+
+    return {
+      userTokens,
+      assistantTokens,
+      toolTokens,
+      imageCount,
+      totalTokens: userTokens + assistantTokens + toolTokens,
+      messageCount: this.messages.length,
+    };
+  }
+
+  /**
+   * Compact the conversation by replacing older messages with a summary.
+   * Keeps the most recent `keepRecent` message pairs and replaces everything
+   * before that with a single user message containing the summary.
+   */
+  compact(summary: string, keepRecent = 4) {
+    if (this.messages.length <= keepRecent) return;
+    const kept = this.messages.slice(-keepRecent);
+    this.messages = [
+      { role: "user", content: [{ type: "text", text: `[Previous conversation summary]\n${summary}` }] },
+      ...kept,
+    ];
+  }
+}
+
+export interface ContextBreakdown {
+  userTokens: number;
+  assistantTokens: number;
+  toolTokens: number;
+  imageCount: number;
+  totalTokens: number;
+  messageCount: number;
+}
+
+/** Rough token estimate: ~4 characters per token */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
 }

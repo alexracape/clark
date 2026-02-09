@@ -1,6 +1,1 @@
-
-## Lecture Notes
-![[lecture_1.pdf]]
-
-## Class Notes
-![[lecture_1_class_notes.png]]
+These are algorithms to count huge quantities of using approximation to accelerate performance.

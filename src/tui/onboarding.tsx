@@ -20,6 +20,8 @@ interface ProviderOption {
 const PROVIDERS: ProviderOption[] = [
   { id: "anthropic", name: "Anthropic (Claude)", envVar: "ANTHROPIC_API_KEY", keyPrefix: "sk-ant-" },
   { id: "openai", name: "OpenAI (GPT-4o)", envVar: "OPENAI_API_KEY", keyPrefix: "sk-" },
+  { id: "gemini", name: "Google (Gemini)", envVar: "GOOGLE_API_KEY", keyPrefix: "AI" },
+  { id: "ollama", name: "Ollama (Local)", envVar: "", keyPrefix: "" },
 ];
 
 export interface OnboardingProps {
@@ -51,7 +53,17 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       } else if (key.downArrow) {
         setSelectedProvider((i) => Math.min(PROVIDERS.length - 1, i + 1));
       } else if (key.return) {
-        setStep("api-key");
+        const provider = PROVIDERS[selectedProvider]!;
+        if (provider.id === "ollama") {
+          // Ollama needs no API key — save and complete
+          const config: ClarkConfig = { provider: "ollama" };
+          saveConfig(config).then(() => {
+            setStep("done");
+            onComplete(config);
+          });
+        } else {
+          setStep("api-key");
+        }
       }
       return;
     }
@@ -67,11 +79,13 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         }
 
         // Save config and complete
+        const keyField =
+          provider.id === "anthropic" ? "anthropicApiKey"
+          : provider.id === "gemini" ? "geminiApiKey"
+          : "openaiApiKey";
         const config: ClarkConfig = {
           provider: provider.id,
-          ...(provider.id === "anthropic"
-            ? { anthropicApiKey: trimmed }
-            : { openaiApiKey: trimmed }),
+          [keyField]: trimmed,
         };
 
         saveConfig(config).then(() => {
@@ -179,7 +193,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       <Box flexDirection="column" padding={1}>
         <Text bold>Enter your {provider.name} API key:</Text>
         <Text color="gray" dimColor> </Text>
-        <Text color="gray" dimColor>You can get one from {provider.id === "anthropic" ? "console.anthropic.com" : "platform.openai.com"}</Text>
+        <Text color="gray" dimColor>You can get one from {provider.id === "anthropic" ? "console.anthropic.com" : provider.id === "gemini" ? "aistudio.google.com" : "platform.openai.com"}</Text>
         <Text color="gray" dimColor>Saved to ~/.clark/config.json (set {provider.envVar} to override)</Text>
         <Text color="gray" dimColor> </Text>
         <Box paddingLeft={2}>

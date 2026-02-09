@@ -1,4 +1,7 @@
-
+## Topics
+- [[Approximate Counting]]
+- [[Hashing]]
+- [[Approximate Nearest Neighbor]]
 ## Lecture Notes
 - [[lecture_1.pdf]]
 

@@ -34,6 +34,69 @@ bun test test/mcp.test.ts
 bun test test/mcp-integration.test.ts
 ```
 
+## LLM Providers
+
+Clark supports multiple LLM providers. Set via `--provider` flag or during onboarding.
+
+### Anthropic (Claude) — default
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+bun run start -- --provider anthropic
+```
+
+Default model: `claude-sonnet-4-5-20250929`. Override with `--model` or `CLARK_MODEL`.
+
+### OpenAI
+
+```bash
+export OPENAI_API_KEY=sk-...
+bun run start -- --provider openai
+```
+
+Default model: `gpt-4o`.
+
+### Google Gemini
+
+```bash
+export GOOGLE_API_KEY=AI...
+bun run start -- --provider gemini
+```
+
+Default model: `gemini-2.0-flash`. Get an API key at [aistudio.google.com](https://aistudio.google.com).
+
+### Ollama (Local)
+
+Run models locally with [Ollama](https://ollama.com) — no API key needed.
+
+```bash
+# Install Ollama (macOS)
+brew install ollama
+
+# Start the Ollama server
+ollama serve
+
+# Pull a model
+ollama pull llama3.2
+
+# Start Clark with Ollama
+bun run start -- --provider ollama
+```
+
+Default model: `llama3.2`. Override with `--model`:
+
+```bash
+bun run start -- --provider ollama --model llava
+```
+
+Clark checks that the model fits in system RAM before starting. If the model uses more than 80% of RAM, you'll see a warning. If it exceeds total RAM, Clark will exit with an error.
+
+Configure a custom Ollama host via `OLLAMA_HOST`:
+
+```bash
+OLLAMA_HOST=http://192.168.1.100:11434 bun run start -- --provider ollama
+```
+
 ## MCP Server
 
 Clark exposes tools to the LLM via the [Model Context Protocol](https://modelcontextprotocol.io). The MCP server can also be run standalone over stdio for testing and debugging.

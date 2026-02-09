@@ -2,11 +2,18 @@
  * tldraw canvas server.
  *
  * Hosts the tldraw app over HTTP and manages sync via TLSocketRoom.
- * Handles custom WebSocket messages for snapshot/export requests
- * alongside the tldraw sync protocol.
+ * Two WebSocket endpoints:
+ *   /sync — tldraw sync protocol (TLSocketRoom <-> useSync)
+ *   /ws   — custom JSON messages (CanvasBroker <-> iPad message handler)
  */
 
 import { resolve } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
+import { TLSocketRoom, InMemorySyncStorage, type RoomSnapshot, type WebSocketMinimal } from "@tldraw/sync-core";
+
+// Static Bun HTML import — ensures proper bundling and asset route registration
+import indexHtml from "./index.html";
 
 // Types for the WebSocket message broker
 export interface SnapshotRequest {
@@ -52,15 +59,21 @@ interface PendingRequest<T> {
  * WebSocket message broker for communicating with the iPad client.
  * The MCP server uses this to request snapshots and exports.
  */
+/** Minimal WebSocket interface for the broker (works with Bun ServerWebSocket). */
+interface BrokerSocket {
+  send(data: string): void;
+  close(code?: number, reason?: string): void;
+}
+
 export class CanvasBroker {
   private pendingSnapshots = new Map<string, PendingRequest<SnapshotResponse>>();
   private pendingExports = new Map<string, PendingRequest<ExportResponse>>();
-  private clientSocket: WebSocket | null = null;
+  private clientSocket: BrokerSocket | null = null;
   private requestCounter = 0;
 
-  /** Register the iPad client's WebSocket connection */
-  setClientSocket(ws: WebSocket | null) {
-    this.clientSocket = ws;
+  /** Register the iPad client's WebSocket connection (wrapped for Bun compatibility) */
+  setClientSocket(ws: { send(data: string): void; close(code?: number, reason?: string): void } | null) {
+    this.clientSocket = ws ? { send: (d: string) => ws.send(d), close: (c?, r?) => ws.close(c, r) } : null;
   }
 
   /** Handle an incoming message from the iPad client */
@@ -141,43 +154,158 @@ export class CanvasBroker {
   }
 }
 
+// --- Persistence helpers ---
+
+const CANVAS_DIR = resolve(homedir(), ".clark", "canvas");
+const DEFAULT_SNAPSHOT_PATH = resolve(CANVAS_DIR, "default.json");
+
+/** Load a snapshot from disk, or return undefined if none exists. */
+export async function loadSnapshot(): Promise<RoomSnapshot | undefined> {
+  try {
+    const file = Bun.file(DEFAULT_SNAPSHOT_PATH);
+    if (await file.exists()) {
+      return await file.json();
+    }
+  } catch {
+    // Corrupt or missing file — start fresh
+  }
+  return undefined;
+}
+
+/** Write a snapshot to disk. */
+export async function writeSnapshot(snapshot: RoomSnapshot): Promise<void> {
+  await mkdir(CANVAS_DIR, { recursive: true });
+  await Bun.write(DEFAULT_SNAPSHOT_PATH, JSON.stringify(snapshot));
+}
+
+// --- WebSocket wrapper ---
+
+/**
+ * Wraps a Bun ServerWebSocket to satisfy tldraw's WebSocketMinimal interface.
+ * Bun's native WS methods can throw "Illegal invocation" if their `this` context
+ * is lost (e.g. when stored in an object property and called later). Binding
+ * the methods explicitly prevents this.
+ */
+function wrapBunSocket(ws: { send(data: string): void; close(code?: number, reason?: string): void; readyState: number }): WebSocketMinimal {
+  return {
+    send: (data: string) => { ws.send(data); },
+    close: (code?: number, reason?: string) => { ws.close(code, reason); },
+    get readyState() { return ws.readyState; },
+  };
+}
+
+// --- Server ---
+
 export interface CanvasServerOptions {
   port: number;
   broker: CanvasBroker;
 }
 
+export interface CanvasServerResult {
+  server: ReturnType<typeof Bun.serve>;
+  room: TLSocketRoom;
+  saveSnapshot: () => Promise<void>;
+}
+
 /**
  * Start the canvas server.
  *
- * TODO: Integrate TLSocketRoom for sync, serve tldraw app HTML,
- * and wire up WebSocket handling for both sync and custom messages.
+ * Serves the tldraw app at /, handles tldraw sync on /sync,
+ * and custom broker messages on /ws.
  */
-export function startCanvasServer(options: CanvasServerOptions) {
+export async function startCanvasServer(options: CanvasServerOptions): Promise<CanvasServerResult> {
   const { port, broker } = options;
+
+  // Load persisted snapshot and create storage
+  const initialSnapshot = await loadSnapshot();
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const storage = new InMemorySyncStorage({
+    snapshot: initialSnapshot,
+    onChange() {
+      // Debounced auto-save (2s)
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        writeSnapshot(storage.getSnapshot());
+      }, 2000);
+    },
+  });
+
+  const room = new TLSocketRoom({ storage });
+
+  /** Manually save current snapshot to disk. */
+  async function saveSnapshot(): Promise<void> {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    await writeSnapshot(storage.getSnapshot());
+  }
 
   const server = Bun.serve({
     port,
     routes: {
-      "/": new Response("canvas server placeholder", {
-        headers: { "Content-Type": "text/html" },
-      }),
+      "/": indexHtml,
+    },
+    fetch(req, server) {
+      const url = new URL(req.url);
+
+      if (url.pathname === "/sync") {
+        const sessionId = url.searchParams.get("sessionId") ?? crypto.randomUUID();
+        const upgraded = server.upgrade(req, {
+          data: { type: "sync", sessionId },
+        });
+        if (!upgraded) {
+          return new Response("WebSocket upgrade failed", { status: 400 });
+        }
+        return undefined;
+      }
+
+      if (url.pathname === "/ws") {
+        const upgraded = server.upgrade(req, {
+          data: { type: "canvas" },
+        });
+        if (!upgraded) {
+          return new Response("WebSocket upgrade failed", { status: 400 });
+        }
+        return undefined;
+      }
+
+      return new Response("Not Found", { status: 404 });
     },
     websocket: {
       open(ws) {
-        broker.setClientSocket(ws as unknown as WebSocket);
-      },
-      message(ws, message) {
-        const data = typeof message === "string" ? message : new TextDecoder().decode(message);
-        const handled = broker.handleMessage(data);
-        if (!handled) {
-          // TODO: Forward to TLSocketRoom for sync protocol handling
+        const data = ws.data as { type: string; sessionId?: string };
+        if (data.type === "sync") {
+          // Wrap Bun WS with bound methods for TLSocketRoom compatibility
+          room.handleSocketConnect({
+            sessionId: data.sessionId!,
+            socket: wrapBunSocket(ws),
+          });
+        } else if (data.type === "canvas") {
+          broker.setClientSocket(ws);
         }
       },
-      close() {
-        broker.setClientSocket(null);
+      message(ws, message) {
+        const data = ws.data as { type: string; sessionId?: string };
+        if (data.type === "sync") {
+          // Use manual message routing for Bun (no addEventListener on ServerWebSocket)
+          room.handleSocketMessage(data.sessionId!, message);
+        } else if (data.type === "canvas") {
+          const text = typeof message === "string" ? message : new TextDecoder().decode(message);
+          broker.handleMessage(text);
+        }
+      },
+      close(ws) {
+        const data = ws.data as { type: string; sessionId?: string };
+        if (data.type === "sync") {
+          room.handleSocketClose(data.sessionId!);
+        } else if (data.type === "canvas") {
+          broker.setClientSocket(null);
+        }
       },
     },
   });
 
-  return server;
+  return { server, room, saveSnapshot };
 }

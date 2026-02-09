@@ -24,41 +24,69 @@ describe("needsOnboarding", () => {
   beforeEach(() => {
     savedEnv.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
     savedEnv.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+    savedEnv.GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
   });
 
   afterEach(() => {
     process.env.ANTHROPIC_API_KEY = savedEnv.ANTHROPIC_API_KEY;
     process.env.OPENAI_API_KEY = savedEnv.OPENAI_API_KEY;
+    process.env.GOOGLE_API_KEY = savedEnv.GOOGLE_API_KEY;
   });
 
   test("returns true when no keys anywhere", () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
     expect(needsOnboarding({})).toBe(true);
   });
 
   test("returns false with anthropic env var", () => {
     process.env.ANTHROPIC_API_KEY = "sk-ant-test";
     delete process.env.OPENAI_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
     expect(needsOnboarding({})).toBe(false);
   });
 
   test("returns false with openai env var", () => {
     delete process.env.ANTHROPIC_API_KEY;
     process.env.OPENAI_API_KEY = "sk-test";
+    delete process.env.GOOGLE_API_KEY;
+    expect(needsOnboarding({})).toBe(false);
+  });
+
+  test("returns false with gemini env var", () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    process.env.GOOGLE_API_KEY = "AItest";
     expect(needsOnboarding({})).toBe(false);
   });
 
   test("returns false with anthropic key in config", () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
     expect(needsOnboarding({ anthropicApiKey: "sk-ant-test" })).toBe(false);
   });
 
   test("returns false with openai key in config", () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
     expect(needsOnboarding({ openaiApiKey: "sk-test" })).toBe(false);
+  });
+
+  test("returns false with gemini key in config", () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
+    expect(needsOnboarding({ geminiApiKey: "AItest" })).toBe(false);
+  });
+
+  test("returns false with ollama provider in config", () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
+    expect(needsOnboarding({ provider: "ollama" })).toBe(false);
   });
 
   test("returns false when both are set", () => {
@@ -70,6 +98,7 @@ describe("needsOnboarding", () => {
   test("returns true with empty string keys", () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
     expect(needsOnboarding({ anthropicApiKey: "", openaiApiKey: "" })).toBe(true);
   });
 });
@@ -80,11 +109,13 @@ describe("resolveApiKey", () => {
   beforeEach(() => {
     savedEnv.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
     savedEnv.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+    savedEnv.GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
   });
 
   afterEach(() => {
     process.env.ANTHROPIC_API_KEY = savedEnv.ANTHROPIC_API_KEY;
     process.env.OPENAI_API_KEY = savedEnv.OPENAI_API_KEY;
+    process.env.GOOGLE_API_KEY = savedEnv.GOOGLE_API_KEY;
   });
 
   test("env var takes precedence over config for anthropic", () => {
@@ -112,6 +143,20 @@ describe("resolveApiKey", () => {
     expect(resolveApiKey("anthropic", {})).toBeUndefined();
   });
 
+  test("env var takes precedence over config for gemini", () => {
+    process.env.GOOGLE_API_KEY = "env-key";
+    expect(resolveApiKey("gemini", { geminiApiKey: "config-key" })).toBe("env-key");
+  });
+
+  test("falls back to config when no env var for gemini", () => {
+    delete process.env.GOOGLE_API_KEY;
+    expect(resolveApiKey("gemini", { geminiApiKey: "config-key" })).toBe("config-key");
+  });
+
+  test("returns not-required for ollama", () => {
+    expect(resolveApiKey("ollama", {})).toBe("not-required");
+  });
+
   test("returns undefined for unknown provider", () => {
     expect(resolveApiKey("unknown-provider", {})).toBeUndefined();
   });
@@ -123,11 +168,15 @@ describe("applyConfigToEnv", () => {
   beforeEach(() => {
     savedEnv.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
     savedEnv.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+    savedEnv.GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+    savedEnv.OLLAMA_HOST = process.env.OLLAMA_HOST;
   });
 
   afterEach(() => {
     process.env.ANTHROPIC_API_KEY = savedEnv.ANTHROPIC_API_KEY;
     process.env.OPENAI_API_KEY = savedEnv.OPENAI_API_KEY;
+    process.env.GOOGLE_API_KEY = savedEnv.GOOGLE_API_KEY;
+    process.env.OLLAMA_HOST = savedEnv.OLLAMA_HOST;
   });
 
   test("sets anthropic key when not in env", () => {
@@ -160,6 +209,24 @@ describe("applyConfigToEnv", () => {
     applyConfigToEnv({ anthropicApiKey: "a-key", openaiApiKey: "o-key" });
     expect(process.env.ANTHROPIC_API_KEY).toBe("a-key");
     expect(process.env.OPENAI_API_KEY).toBe("o-key");
+  });
+
+  test("sets gemini key when not in env", () => {
+    delete process.env.GOOGLE_API_KEY;
+    applyConfigToEnv({ geminiApiKey: "from-config" });
+    expect(process.env.GOOGLE_API_KEY).toBe("from-config");
+  });
+
+  test("does not overwrite existing gemini env var", () => {
+    process.env.GOOGLE_API_KEY = "existing";
+    applyConfigToEnv({ geminiApiKey: "new-key" });
+    expect(process.env.GOOGLE_API_KEY).toBe("existing");
+  });
+
+  test("sets ollama host when not in env", () => {
+    delete process.env.OLLAMA_HOST;
+    applyConfigToEnv({ ollamaBaseUrl: "http://custom:11434" });
+    expect(process.env.OLLAMA_HOST).toBe("http://custom:11434");
   });
 
   test("handles empty config gracefully", () => {

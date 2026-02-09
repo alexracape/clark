@@ -17,6 +17,12 @@ export interface ClarkConfig {
   model?: string;
   anthropicApiKey?: string;
   openaiApiKey?: string;
+  geminiApiKey?: string;
+  ollamaBaseUrl?: string;
+  /** Directory for raw resources (PDFs, images, slides) */
+  resourcePath?: string;
+  /** Directory for canvas exports and handwritten work */
+  canvasPath?: string;
 }
 
 async function ensureConfigDir() {
@@ -50,6 +56,10 @@ export function resolveApiKey(provider: string, config: ClarkConfig): string | u
       return process.env.ANTHROPIC_API_KEY ?? config.anthropicApiKey;
     case "openai":
       return process.env.OPENAI_API_KEY ?? config.openaiApiKey;
+    case "gemini":
+      return process.env.GOOGLE_API_KEY ?? config.geminiApiKey;
+    case "ollama":
+      return "not-required";
     default:
       return undefined;
   }
@@ -65,6 +75,12 @@ export function applyConfigToEnv(config: ClarkConfig) {
   if (config.openaiApiKey && !process.env.OPENAI_API_KEY) {
     process.env.OPENAI_API_KEY = config.openaiApiKey;
   }
+  if (config.geminiApiKey && !process.env.GOOGLE_API_KEY) {
+    process.env.GOOGLE_API_KEY = config.geminiApiKey;
+  }
+  if (config.ollamaBaseUrl && !process.env.OLLAMA_HOST) {
+    process.env.OLLAMA_HOST = config.ollamaBaseUrl;
+  }
 }
 
 /**
@@ -73,5 +89,7 @@ export function applyConfigToEnv(config: ClarkConfig) {
 export function needsOnboarding(config: ClarkConfig): boolean {
   const hasAnthropic = !!(process.env.ANTHROPIC_API_KEY ?? config.anthropicApiKey);
   const hasOpenai = !!(process.env.OPENAI_API_KEY ?? config.openaiApiKey);
-  return !hasAnthropic && !hasOpenai;
+  const hasGemini = !!(process.env.GOOGLE_API_KEY ?? config.geminiApiKey);
+  const hasOllama = !!(config.provider === "ollama" || config.ollamaBaseUrl);
+  return !hasAnthropic && !hasOpenai && !hasGemini && !hasOllama;
 }

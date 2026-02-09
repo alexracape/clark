@@ -19,12 +19,12 @@ export interface SlashCommand {
 export const COMMANDS = [
   { name: "help", description: "Show available commands" },
   { name: "canvas", description: "Show canvas URL for iPad" },
-  { name: "snapshot", description: "Capture canvas and send to assistant" },
   { name: "export", description: "Export canvas as A4 PDF" },
   { name: "save", description: "Save canvas state to disk" },
-  { name: "problem", description: "Load a problem set file" },
   { name: "notes", description: "Set notes directory" },
-  { name: "model", description: "Show or switch LLM provider" },
+  { name: "model", description: "Switch model and provider" },
+  { name: "context", description: "Show context window usage" },
+  { name: "compact", description: "Summarize conversation to save context" },
   { name: "clear", description: "Clear conversation history" },
 ] as const;
 

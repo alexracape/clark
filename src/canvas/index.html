@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Clark Canvas</title>
+    <style>
+      html, body, #root {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // Bun's bundler accesses globalThis.structuredClone through a module
+      // namespace proxy, which sets `this` to the proxy instead of globalThis.
+      // Binding it prevents "Illegal invocation" in browsers that enforce `this`.
+      if (typeof structuredClone === 'function') {
+        var _sc = structuredClone;
+        globalThis.structuredClone = function(v, o) { return _sc.call(globalThis, v, o); };
+      }
+    </script>
+    <script type="module" src="./app.tsx"></script>
+  </body>
+</html>

@@ -38,6 +38,14 @@ const argv = await yargs(hideBin(process.argv))
     default: 3000,
     describe: "Port for tldraw canvas server",
   })
+  .option("resources", {
+    type: "string",
+    describe: "Path to resources directory (PDFs, images, slides)",
+  })
+  .option("canvas-path", {
+    type: "string",
+    describe: "Path for canvas exports and handwritten work",
+  })
   .help()
   .parse();
 
@@ -79,29 +87,86 @@ if (needsOnboarding(config)) {
 
 // --- Main app startup ---
 
-function startApp(activeConfig: ClarkConfig) {
+async function startApp(activeConfig: ClarkConfig) {
   const resolvedProvider = argv.provider ?? activeConfig.provider ?? "anthropic";
 
   const broker = new CanvasBroker();
   const lanIP = getLanIP();
   const canvasUrl = `http://${lanIP}:${argv.port}`;
 
-  // Start canvas server
-  startCanvasServer({ port: argv.port, broker });
+  // Start canvas server (async — loads persisted snapshot)
+  const { saveSnapshot } = await startCanvasServer({ port: argv.port, broker });
+
+  // Resolve configured paths
+  const vaultDir = argv.notes ?? activeConfig.resourcePath ?? ".";
+  const canvasDir = argv.canvasPath ?? activeConfig.canvasPath ?? ".";
 
   // Initialize tools
-  const vaultDir = argv.notes ?? ".";
   const tools = createTools({
     broker,
     vaultDir,
+    saveCanvas: saveSnapshot,
   });
 
-  // Initialize LLM provider
-  const provider = createProvider(resolvedProvider);
-  const modelName = argv.model
+  // Resolve model name before creating provider
+  const defaultModels: Record<string, string> = {
+    anthropic: "claude-sonnet-4-5-20250929",
+    openai: "gpt-4o",
+    gemini: "gemini-2.5-flash",
+  };
+
+  let modelName = argv.model
     ?? process.env.CLARK_MODEL
     ?? activeConfig.model
-    ?? (resolvedProvider === "openai" ? "gpt-4o" : "claude-sonnet-4-5-20250929");
+    ?? defaultModels[resolvedProvider];
+
+  // Ollama: discover default model dynamically if none specified
+  if (resolvedProvider === "ollama") {
+    const { listLocalModels, checkModelFits } = await import("./src/llm/ollama.ts");
+
+    if (!modelName) {
+      try {
+        const models = await listLocalModels();
+        if (models.length === 0) {
+          console.error(
+            "No Ollama models found.\n" +
+            "  Download one with:  ollama pull llama3.2\n" +
+            "  Browse models:      https://ollama.com/library",
+          );
+          process.exit(1);
+        }
+        modelName = models[0]!.name;
+      } catch {
+        console.error(
+          "Cannot connect to Ollama.\n" +
+          "  Start it with:  ollama serve\n" +
+          "  Install:        brew install ollama",
+        );
+        process.exit(1);
+      }
+    }
+
+    // RAM preflight check
+    try {
+      const { sizeBytes, totalRam, pct } = await checkModelFits(modelName);
+      if (pct > 0.8) {
+        const sizeGB = (sizeBytes / 1e9).toFixed(1);
+        const ramGB = (totalRam / 1e9).toFixed(1);
+        console.warn(
+          `Warning: Model "${modelName}" (${sizeGB} GB) uses ${Math.round(pct * 100)}% of system RAM (${ramGB} GB). Performance may be degraded.`,
+        );
+      }
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  }
+
+  // Fall back to a sensible default
+  modelName ??= "claude-sonnet-4-5-20250929";
+
+  // Initialize LLM provider with resolved model
+  const provider = createProvider(resolvedProvider, modelName);
 
   // Load system prompt
   const systemPromptPath = new URL("./src/prompts/system.md", import.meta.url).pathname;
@@ -117,33 +182,18 @@ function startApp(activeConfig: ClarkConfig) {
             "Available commands:",
             "  /help              Show this help message",
             "  /canvas            Show canvas URL for iPad",
-            "  /snapshot [page]   Capture canvas and send to assistant",
             "  /export [path]     Export canvas as A4 PDF",
             "  /save              Save canvas state to disk",
             "  /notes [path]      Show or set notes vault directory",
-            "  /model <provider>  Show or switch LLM provider",
+            "  /model             Switch model and provider",
+            "  /context           Show context window usage",
+            "  /compact           Summarize conversation to save context",
             "  /clear             Clear conversation history",
             "  Ctrl+C             Exit",
           ].join("\n");
 
         case "canvas":
           return `Canvas URL: ${canvasUrl}\nOpen this on your iPad to start drawing.`;
-
-        case "snapshot": {
-          if (!broker.isConnected) {
-            return "No iPad connected. Open the canvas URL on your iPad first.";
-          }
-          try {
-            const response = await broker.requestSnapshot(args || undefined);
-            conversation.addUserImageMessage(
-              "Here is my current work on the canvas:",
-              response.png,
-            );
-            return `Snapshot captured (page: ${response.page}). The assistant can now see your work.`;
-          } catch (err) {
-            return `Snapshot failed: ${err instanceof Error ? err.message : String(err)}`;
-          }
-        }
 
         case "export": {
           if (!broker.isConnected) {
@@ -152,7 +202,7 @@ function startApp(activeConfig: ClarkConfig) {
           try {
             const { exportPDFToFile } = await import("./src/canvas/pdf-export.ts");
             const response = await broker.requestExport();
-            const outputPath = args || "./clark-export.pdf";
+            const outputPath = args || `${canvasDir}/clark-export.pdf`;
             await exportPDFToFile(response.pages, outputPath);
             return `PDF exported to: ${outputPath}`;
           } catch (err) {
@@ -161,15 +211,57 @@ function startApp(activeConfig: ClarkConfig) {
         }
 
         case "save":
-          return "Canvas save not yet implemented.";
+          try {
+            await saveSnapshot();
+            return "Canvas state saved.";
+          } catch (err) {
+            return `Save failed: ${err instanceof Error ? err.message : String(err)}`;
+          }
 
         case "notes":
           if (!args) return `Current vault: ${vaultDir}`;
           return `Vault directory set: ${args}`;
 
         case "model":
-          if (!args) return `Current: ${provider.name}/${modelName}`;
-          return `Provider switching not yet implemented. Restart with --provider ${args}`;
+          // Handled by App component's model picker
+          return null;
+
+        case "context":
+          // Handled by App component (needs activeModel from state)
+          return null;
+
+        case "compact": {
+          const ctx = conversation.estimateContext();
+          if (ctx.messageCount <= 4) {
+            return "Conversation is too short to compact.";
+          }
+
+          // Use the active LLM to generate a summary
+          try {
+            const msgs = conversation.getMessages();
+            const textParts = msgs
+              .flatMap((m) => m.content)
+              .filter((c): c is { type: "text"; text: string } => c.type === "text")
+              .map((c) => c.text);
+            const transcript = textParts.join("\n---\n").slice(0, 8000);
+
+            let summary = "";
+            for await (const chunk of provider.chat(
+              [{ role: "user", content: [{ type: "text", text: `Summarize this tutoring conversation in 2-3 concise paragraphs. Focus on the topics discussed, key concepts, and where the student left off:\n\n${transcript}` }] }],
+              [],
+              "You are a helpful assistant that summarizes conversations concisely.",
+            )) {
+              if (chunk.type === "text_delta") summary += chunk.text;
+            }
+
+            const before = ctx.totalTokens;
+            conversation.compact(summary);
+            const after = conversation.estimateContext().totalTokens;
+            return `Conversation compacted. ~${(before - after).toLocaleString()} tokens reclaimed.\n\nSummary preserved:\n${summary}`;
+          } catch (err) {
+            return `Compact failed: ${err instanceof Error ? err.message : String(err)}`;
+          }
+        }
 
         case "clear":
           conversation.clear();
@@ -185,6 +277,7 @@ function startApp(activeConfig: ClarkConfig) {
       React.createElement(App, {
         provider,
         model: modelName,
+        config: activeConfig,
         conversation,
         systemPrompt,
         tools,
