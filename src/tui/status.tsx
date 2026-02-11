@@ -9,13 +9,14 @@ export interface StatusBarProps {
   provider: string;
   model: string;
   canvasConnected: boolean;
-  canvasUrl: string;
+  canvasUrl: string | null;
+  canvasName: string | null;
   isThinking: boolean;
 }
 
 const SPINNER_FRAMES = [".", "..", "..."];
 
-export function StatusBar({ provider, model, canvasConnected, canvasUrl, isThinking }: StatusBarProps) {
+export function StatusBar({ provider, model, canvasConnected, canvasUrl, canvasName, isThinking }: StatusBarProps) {
   const [frame, setFrame] = useState(0);
 
   useEffect(() => {
@@ -34,10 +35,14 @@ export function StatusBar({ provider, model, canvasConnected, canvasUrl, isThink
       </Text>
 
       <Box>
-        {canvasConnected ? (
-          <Text color="green">{"[canvas connected]"}</Text>
+        {canvasName ? (
+          canvasConnected ? (
+            <Text color="green">{"[canvas: "}{canvasName}{" connected]"}</Text>
+          ) : (
+            <Text color="yellow">{"[canvas: "}{canvasName}{" "}{canvasUrl}{"]"}</Text>
+          )
         ) : (
-          <Text color="gray" dimColor>{"[canvas: "}{canvasUrl}{"]"}</Text>
+          <Text color="gray" dimColor>{"[no canvas — /canvas to open]"}</Text>
         )}
       </Box>
 

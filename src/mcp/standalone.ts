@@ -8,7 +8,6 @@
  *   bun src/mcp/standalone.ts <vault-dir>
  */
 
-import { CanvasBroker } from "../canvas/server.ts";
 import { startMCPServer } from "./server.ts";
 
 const vaultDir = process.argv[2];
@@ -18,10 +17,9 @@ if (!vaultDir) {
   process.exit(1);
 }
 
-const broker = new CanvasBroker();
-
 await startMCPServer({
-  broker,
+  getBroker: () => null,
   vaultDir,
+  getSaveCanvas: () => null,
   transport: "stdio",
 });

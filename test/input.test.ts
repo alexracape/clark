@@ -3,7 +3,8 @@
  */
 
 import { test, expect, describe } from "bun:test";
-import { parseSlashCommand, COMMANDS } from "../src/tui/input.tsx";
+import { parseSlashCommand, COMMANDS, BUILTIN_COMMANDS, registerCommands } from "../src/tui/input.tsx";
+import { CommandHistory } from "../src/tui/history.ts";
 
 describe("parseSlashCommand", () => {
   test("returns null for regular text", () => {
@@ -90,5 +91,104 @@ describe("COMMANDS", () => {
     expect(filter("e")).toHaveLength(1); // export
     expect(filter("m")).toHaveLength(1); // model
     expect(filter("n")).toHaveLength(1); // notes
+  });
+});
+
+describe("registerCommands", () => {
+  test("adds dynamic commands to COMMANDS", () => {
+    const before = COMMANDS.length;
+    registerCommands([
+      { name: "class", description: "Track courses" },
+      { name: "paper", description: "Academic papers" },
+    ]);
+
+    expect(COMMANDS.length).toBe(BUILTIN_COMMANDS.length + 2);
+    expect(COMMANDS.map((c) => c.name)).toContain("class");
+    expect(COMMANDS.map((c) => c.name)).toContain("paper");
+
+    // Reset to avoid affecting other tests
+    registerCommands([]);
+    expect(COMMANDS.length).toBe(BUILTIN_COMMANDS.length);
+  });
+
+  test("does not modify BUILTIN_COMMANDS", () => {
+    const originalLength = BUILTIN_COMMANDS.length;
+    registerCommands([{ name: "test_skill", description: "Test" }]);
+
+    expect(BUILTIN_COMMANDS.length).toBe(originalLength);
+    expect(BUILTIN_COMMANDS.map((c) => c.name)).not.toContain("test_skill");
+
+    // Reset
+    registerCommands([]);
+  });
+});
+
+describe("CommandHistory", () => {
+  test("push and navigate up/down", () => {
+    const h = new CommandHistory({ persist: false });
+    h.push("first");
+    h.push("second");
+    h.push("third");
+
+    expect(h.up("")).toBe("third");
+    expect(h.up("")).toBe("second");
+    expect(h.up("")).toBe("first");
+    expect(h.up("")).toBeNull(); // at oldest
+
+    expect(h.down()).toBe("second");
+    expect(h.down()).toBe("third");
+    expect(h.down()).toBe(""); // restores saved input
+    expect(h.down()).toBeNull(); // already past newest
+  });
+
+  test("up saves and restores current input", () => {
+    const h = new CommandHistory({ persist: false });
+    h.push("old command");
+
+    // User is typing "partial" then presses up
+    expect(h.up("partial")).toBe("old command");
+    // Down restores what they were typing
+    expect(h.down()).toBe("partial");
+  });
+
+  test("skips consecutive duplicates", () => {
+    const h = new CommandHistory({ persist: false });
+    h.push("same");
+    h.push("same");
+    h.push("same");
+
+    expect(h.getEntries()).toEqual(["same"]);
+  });
+
+  test("allows non-consecutive duplicates", () => {
+    const h = new CommandHistory({ persist: false });
+    h.push("a");
+    h.push("b");
+    h.push("a");
+
+    expect(h.getEntries()).toEqual(["a", "b", "a"]);
+  });
+
+  test("ignores empty/whitespace entries", () => {
+    const h = new CommandHistory({ persist: false });
+    h.push("");
+    h.push("   ");
+    h.push("valid");
+
+    expect(h.getEntries()).toEqual(["valid"]);
+  });
+
+  test("push resets navigation cursor", () => {
+    const h = new CommandHistory({ persist: false });
+    h.push("first");
+    h.push("second");
+
+    expect(h.up("")).toBe("second");
+    expect(h.up("")).toBe("first");
+
+    // New push resets cursor
+    h.push("third");
+    expect(h.up("")).toBe("third");
+    expect(h.up("")).toBe("second");
   });
 });

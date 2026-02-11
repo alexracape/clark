@@ -25,6 +25,7 @@ export async function composePDF(pages: PageImage[]): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
 
   for (const pageImg of pages) {
+    if (!pageImg.png) continue; // Skip empty frames
     const pngBytes = Buffer.from(pageImg.png, "base64");
     const image = await doc.embedPng(pngBytes);
 

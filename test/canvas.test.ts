@@ -1,5 +1,8 @@
-import { test, expect, describe, afterEach } from "bun:test";
-import { CanvasBroker, startCanvasServer } from "../src/canvas/server.ts";
+import { test, expect, describe, afterEach, beforeEach } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CanvasBroker, startCanvasServer, listCanvasFiles } from "../src/canvas/server.ts";
 import { composePDF } from "../src/canvas/pdf-export.ts";
 import { extractBlurryShapes } from "../src/canvas/context.ts";
 import { TLSocketRoom, InMemorySyncStorage } from "@tldraw/sync-core";
@@ -58,17 +61,25 @@ describe("TLSocketRoom", () => {
 
 describe("Canvas Server", () => {
   let servers: Array<{ stop: () => void }> = [];
+  let tmpDir: string;
+  let snapshotPath: string;
 
-  afterEach(() => {
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "clark-canvas-test-"));
+    snapshotPath = join(tmpDir, "test.tldr");
+  });
+
+  afterEach(async () => {
     for (const s of servers) {
       s.stop();
     }
     servers = [];
+    await rm(tmpDir, { recursive: true, force: true });
   });
 
   test("returns result with server, room, and saveSnapshot", async () => {
     const broker = new CanvasBroker();
-    const result = await startCanvasServer({ port: 0, broker });
+    const result = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(result.server);
 
     expect(result.server).toBeDefined();
@@ -78,7 +89,7 @@ describe("Canvas Server", () => {
 
   test("serves HTML at / with correct content-type", async () => {
     const broker = new CanvasBroker();
-    const { server } = await startCanvasServer({ port: 0, broker });
+    const { server } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
     const res = await fetch(`http://localhost:${server.port}/`);
@@ -92,7 +103,7 @@ describe("Canvas Server", () => {
 
   test("HTML references bundled JS and CSS that are accessible", async () => {
     const broker = new CanvasBroker();
-    const { server } = await startCanvasServer({ port: 0, broker });
+    const { server } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
     const res = await fetch(`http://localhost:${server.port}/`);
@@ -120,7 +131,7 @@ describe("Canvas Server", () => {
 
   test("bundled JS contains tldraw and useSync code", async () => {
     const broker = new CanvasBroker();
-    const { server } = await startCanvasServer({ port: 0, broker });
+    const { server } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
     const res = await fetch(`http://localhost:${server.port}/`);
@@ -141,7 +152,7 @@ describe("Canvas Server", () => {
 
   test("returns 404 for unknown paths", async () => {
     const broker = new CanvasBroker();
-    const { server } = await startCanvasServer({ port: 0, broker });
+    const { server } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
     const res = await fetch(`http://localhost:${server.port}/unknown`);
@@ -150,7 +161,7 @@ describe("Canvas Server", () => {
 
   test("WebSocket upgrade works on /sync endpoint", async () => {
     const broker = new CanvasBroker();
-    const { server, room } = await startCanvasServer({ port: 0, broker });
+    const { server, room } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
     const ws = new WebSocket(`ws://localhost:${server.port}/sync?sessionId=test-1`);
@@ -174,7 +185,7 @@ describe("Canvas Server", () => {
 
   test("WebSocket upgrade works on /ws endpoint and connects broker", async () => {
     const broker = new CanvasBroker();
-    const { server } = await startCanvasServer({ port: 0, broker });
+    const { server } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
     expect(broker.isConnected).toBe(false);
@@ -200,7 +211,7 @@ describe("Canvas Server", () => {
 
   test("/ws broker receives and handles messages", async () => {
     const broker = new CanvasBroker();
-    const { server } = await startCanvasServer({ port: 0, broker });
+    const { server } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
     const ws = new WebSocket(`ws://localhost:${server.port}/ws`);
@@ -230,7 +241,7 @@ describe("Canvas Server", () => {
 
   test("/sync endpoint handles messages without crashing", async () => {
     const broker = new CanvasBroker();
-    const { server, room } = await startCanvasServer({ port: 0, broker });
+    const { server, room } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
     const ws = new WebSocket(`ws://localhost:${server.port}/sync?sessionId=test-sync`);
@@ -259,7 +270,7 @@ describe("Canvas Server", () => {
 
   test("multiple sync clients get independent sessions", async () => {
     const broker = new CanvasBroker();
-    const { server, room } = await startCanvasServer({ port: 0, broker });
+    const { server, room } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
     const ws1 = new WebSocket(`ws://localhost:${server.port}/sync?sessionId=client-1`);
@@ -278,6 +289,46 @@ describe("Canvas Server", () => {
     ws1.close();
     ws2.close();
     await new Promise((r) => setTimeout(r, 100));
+  });
+});
+
+describe("listCanvasFiles", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "clark-canvas-list-"));
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test("returns empty array for nonexistent directory", async () => {
+    const result = await listCanvasFiles(join(tmpDir, "nonexistent"));
+    expect(result).toEqual([]);
+  });
+
+  test("returns empty array for empty directory", async () => {
+    const result = await listCanvasFiles(tmpDir);
+    expect(result).toEqual([]);
+  });
+
+  test("lists .tldr files without extension", async () => {
+    await Bun.write(join(tmpDir, "HW1.tldr"), "{}");
+    await Bun.write(join(tmpDir, "HW2.tldr"), "{}");
+    await Bun.write(join(tmpDir, "notes.txt"), "");
+
+    const result = await listCanvasFiles(tmpDir);
+    expect(result).toEqual(["HW1", "HW2"]);
+  });
+
+  test("returns sorted results", async () => {
+    await Bun.write(join(tmpDir, "Zebra.tldr"), "{}");
+    await Bun.write(join(tmpDir, "Alpha.tldr"), "{}");
+    await Bun.write(join(tmpDir, "Midterm.tldr"), "{}");
+
+    const result = await listCanvasFiles(tmpDir);
+    expect(result).toEqual(["Alpha", "Midterm", "Zebra"]);
   });
 });
 

@@ -51,10 +51,11 @@ export interface ToolResult {
 }
 
 export interface ToolsConfig {
-  broker: CanvasBroker;
+  /** Dynamic getter for the canvas broker. Returns null when no canvas is open. */
+  getBroker: () => CanvasBroker | null;
   vaultDir: string;
-  /** Callback to persist canvas state. Provided by index.ts when TLSocketRoom is available. */
-  saveCanvas?: () => Promise<void>;
+  /** Dynamic getter for canvas save function. Returns null when no canvas is open. */
+  getSaveCanvas: () => (() => Promise<void>) | null;
 }
 
 /**
@@ -345,8 +346,15 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         openWorldHint: false,
       },
       handler: async (input) => {
+        const broker = config.getBroker();
+        if (!broker) {
+          return {
+            content: [{ type: "text", text: "No canvas is open. Ask the student to open a canvas with /canvas." }],
+            isError: true,
+          };
+        }
         try {
-          const response = await config.broker.requestSnapshot(input.page as string | undefined);
+          const response = await broker.requestSnapshot(input.page as string | undefined);
           return {
             content: [
               { type: "image", data: response.png, mimeType: "image/png" },
@@ -381,9 +389,16 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         openWorldHint: false,
       },
       handler: async (input) => {
+        const broker = config.getBroker();
+        if (!broker) {
+          return {
+            content: [{ type: "text", text: "No canvas is open. Ask the student to open a canvas with /canvas." }],
+            isError: true,
+          };
+        }
         const outputPath = (input.output_path as string) ?? "./output.pdf";
         try {
-          const response = await config.broker.requestExport();
+          const response = await broker.requestExport();
           const path = await exportPDFToFile(response.pages, outputPath);
           return {
             content: [{ type: "text", text: `PDF exported to: ${path}` }],
@@ -411,14 +426,15 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         openWorldHint: false,
       },
       handler: async () => {
-        if (!config.saveCanvas) {
+        const saveCanvas = config.getSaveCanvas();
+        if (!saveCanvas) {
           return {
-            content: [{ type: "text", text: "Canvas save not available (no TLSocketRoom configured)." }],
+            content: [{ type: "text", text: "No canvas is open. Use /canvas to open one first." }],
             isError: true,
           };
         }
         try {
-          await config.saveCanvas();
+          await saveCanvas();
           return {
             content: [{ type: "text", text: "Canvas state saved." }],
           };

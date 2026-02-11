@@ -43,32 +43,51 @@ describe("StatusBar", () => {
     expect(frame).toContain("claude-sonnet");
   });
 
-  test("shows canvas URL when disconnected", () => {
+  test("shows no canvas when none open", () => {
+    const { lastFrame } = render(
+      <StatusBar
+        provider="mock"
+        model="test"
+        canvasConnected={false}
+        canvasUrl={null}
+        canvasName={null}
+        isThinking={false}
+      />,
+    );
+
+    expect(lastFrame()!).toContain("no canvas");
+  });
+
+  test("shows canvas name and URL when open but disconnected", () => {
     const { lastFrame } = render(
       <StatusBar
         provider="mock"
         model="test"
         canvasConnected={false}
         canvasUrl="http://192.168.1.1:3000"
+        canvasName="HW1"
         isThinking={false}
       />,
     );
 
+    expect(lastFrame()!).toContain("HW1");
     expect(lastFrame()!).toContain("http://192.168.1.1:3000");
   });
 
-  test("shows connected status", () => {
+  test("shows connected status with canvas name", () => {
     const { lastFrame } = render(
       <StatusBar
         provider="mock"
         model="test"
         canvasConnected={true}
         canvasUrl="http://192.168.1.1:3000"
+        canvasName="HW1"
         isThinking={false}
       />,
     );
 
-    expect(lastFrame()!).toContain("canvas connected");
+    expect(lastFrame()!).toContain("HW1");
+    expect(lastFrame()!).toContain("connected");
   });
 
   test("shows thinking indicator", () => {
@@ -77,7 +96,8 @@ describe("StatusBar", () => {
         provider="mock"
         model="test"
         canvasConnected={false}
-        canvasUrl="http://localhost:3000"
+        canvasUrl={null}
+        canvasName={null}
         isThinking={true}
       />,
     );
@@ -137,7 +157,7 @@ describe("App", () => {
     const provider = new MockProvider(mockResponses);
     const conversation = new Conversation();
     const broker = new CanvasBroker();
-    const tools = createTools({ broker, vaultDir: TEST_VAULT });
+    const tools = createTools({ getBroker: () => broker, vaultDir: TEST_VAULT, getSaveCanvas: () => null });
 
     return {
       provider,
@@ -149,13 +169,15 @@ describe("App", () => {
         conversation,
         systemPrompt: "You are a test tutor.",
         tools,
-        canvasUrl: "http://localhost:3000",
         isCanvasConnected: () => false,
         onSlashCommand: async (name: string, _args: string) => {
           if (name === "help") return "Help text here";
           if (name === "clear") { conversation.clear(); return "Cleared."; }
           return `Unknown: /${name}`;
         },
+        onOpenCanvas: async (name: string) => ({ url: `http://localhost:3000` }),
+        listCanvases: async () => [],
+        skills: [],
       },
     };
   }
@@ -178,11 +200,11 @@ describe("App", () => {
     expect(frame).toContain("mock-model");
   });
 
-  test("shows canvas URL in status", () => {
+  test("shows no canvas in status when none open", () => {
     const { appProps } = createAppProps();
     const { lastFrame } = render(<App {...appProps} />);
 
-    expect(lastFrame()!).toContain("http://localhost:3000");
+    expect(lastFrame()!).toContain("no canvas");
   });
 
   test("handles user text input and LLM response", async () => {
@@ -329,7 +351,7 @@ describe("App", () => {
 
     const conversation = new Conversation();
     const broker = new CanvasBroker();
-    const tools = createTools({ broker, vaultDir: TEST_VAULT });
+    const tools = createTools({ getBroker: () => broker, vaultDir: TEST_VAULT, getSaveCanvas: () => null });
 
     const { lastFrame, stdin } = render(
       <App
@@ -338,9 +360,11 @@ describe("App", () => {
         conversation={conversation}
         systemPrompt="test"
         tools={tools}
-        canvasUrl="http://localhost:3000"
         isCanvasConnected={() => false}
         onSlashCommand={async () => null}
+        onOpenCanvas={async (name: string) => ({ url: "http://localhost:3000" })}
+        listCanvases={async () => []}
+        skills={[]}
       />,
     );
 
@@ -372,5 +396,72 @@ describe("App", () => {
     await tick(100);
 
     expect(lastFrame()!).toContain("Help text here");
+  });
+
+  test("skill command augments system prompt for one turn", async () => {
+    const testSkill = {
+      slug: "class",
+      displayName: "Class",
+      content: "## Purpose\nTrack courses.\n## Generation\nCreate with #class tag.",
+      description: "Track courses",
+    };
+
+    const { appProps, provider } = createAppProps([
+      { text: "What class would you like to track?" },
+    ]);
+    appProps.skills = [testSkill];
+
+    const { lastFrame, stdin } = render(<App {...appProps} />);
+
+    await tick();
+    for (const ch of "/class CS101") stdin.write(ch);
+    await tick();
+    stdin.write("\r");
+    await tick(200);
+
+    // Verify skill was injected into system prompt
+    expect(provider.lastCall!.systemPrompt).toContain("Track courses");
+    expect(provider.lastCall!.systemPrompt).toContain("#class tag");
+    expect(provider.lastCall!.systemPrompt).toContain("CS101");
+
+    // Verify the skill message is shown
+    const frame = lastFrame()!;
+    expect(frame).toContain("Using skill: Class");
+  });
+
+  test("skill prompt is cleared after turn (one-shot)", async () => {
+    const testSkill = {
+      slug: "paper",
+      displayName: "Paper",
+      content: "## Purpose\nAcademic paper notes.",
+      description: "Academic paper notes",
+    };
+
+    const { appProps, provider } = createAppProps([
+      { text: "What paper?" },
+      { text: "Sure, here are some tips." },
+    ]);
+    appProps.skills = [testSkill];
+
+    const { stdin } = render(<App {...appProps} />);
+
+    // First turn: skill command
+    await tick();
+    for (const ch of "/paper") stdin.write(ch);
+    await tick();
+    stdin.write("\r");
+    await tick(200);
+
+    // First call should have skill in system prompt
+    expect(provider.calls[0]!.systemPrompt).toContain("Academic paper notes");
+
+    // Second turn: normal message
+    for (const ch of "help me more") stdin.write(ch);
+    await tick();
+    stdin.write("\r");
+    await tick(200);
+
+    // Second call should NOT have skill in system prompt (one-shot cleared)
+    expect(provider.calls[1]!.systemPrompt).not.toContain("Active Skill");
   });
 });

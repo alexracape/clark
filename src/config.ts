@@ -9,8 +9,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 
-const CONFIG_DIR = join(homedir(), ".clark");
-const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+const DEFAULT_CONFIG_DIR = join(homedir(), ".clark");
+const DEFAULT_CONFIG_PATH = join(DEFAULT_CONFIG_DIR, "config.json");
 
 export interface ClarkConfig {
   provider?: string;
@@ -25,13 +25,13 @@ export interface ClarkConfig {
   canvasPath?: string;
 }
 
-async function ensureConfigDir() {
-  await mkdir(CONFIG_DIR, { recursive: true });
+async function ensureDir(dir: string) {
+  await mkdir(dir, { recursive: true });
 }
 
-export async function loadConfig(): Promise<ClarkConfig> {
+export async function loadConfig(path = DEFAULT_CONFIG_PATH): Promise<ClarkConfig> {
   try {
-    const file = Bun.file(CONFIG_PATH);
+    const file = Bun.file(path);
     if (await file.exists()) {
       return await file.json();
     }
@@ -41,9 +41,9 @@ export async function loadConfig(): Promise<ClarkConfig> {
   return {};
 }
 
-export async function saveConfig(config: ClarkConfig): Promise<void> {
-  await ensureConfigDir();
-  await Bun.write(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n");
+export async function saveConfig(config: ClarkConfig, path = DEFAULT_CONFIG_PATH): Promise<void> {
+  await ensureDir(join(path, ".."));
+  await Bun.write(path, JSON.stringify(config, null, 2) + "\n");
 }
 
 /**

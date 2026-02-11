@@ -257,6 +257,6 @@ describe("MCP Protocol — tools/call", () => {
 
     expect(result.isError).toBe(true);
     const textContent = result.content[0] as { type: "text"; text: string };
-    expect(textContent.text).toContain("Error");
+    expect(textContent.text).toContain("No canvas is open");
   });
 });

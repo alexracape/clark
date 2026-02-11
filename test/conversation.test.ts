@@ -90,7 +90,7 @@ async function runConversationTurn(
 describe("Conversation Loop", () => {
   const systemPrompt = "You are a helpful tutor.";
   const broker = new CanvasBroker();
-  const tools = createTools({ broker, vaultDir: resolve(import.meta.dir, "test_vault") });
+  const tools = createTools({ getBroker: () => broker, vaultDir: resolve(import.meta.dir, "test_vault"), getSaveCanvas: () => null });
 
   test("simple text response", async () => {
     const provider = new MockProvider([

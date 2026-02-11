@@ -161,7 +161,7 @@ describe("MCP Tools", () => {
 
   beforeEach(() => {
     broker = new CanvasBroker();
-    tools = createTools({ broker, vaultDir: TEST_VAULT });
+    tools = createTools({ getBroker: () => broker, vaultDir: TEST_VAULT, getSaveCanvas: () => null });
   });
 
   function findTool(name: string): ToolDefinition {
@@ -408,9 +408,9 @@ describe("MCP Tools", () => {
     test("calls saveCanvas callback when provided", async () => {
       let called = false;
       const toolsWithSave = createTools({
-        broker,
+        getBroker: () => broker,
         vaultDir: TEST_VAULT,
-        saveCanvas: async () => { called = true; },
+        getSaveCanvas: () => async () => { called = true; },
       });
       const tool = toolsWithSave.find((t) => t.name === "save_canvas")!;
       const result = await tool.handler({});

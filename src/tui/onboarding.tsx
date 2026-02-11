@@ -1,14 +1,23 @@
 /**
  * Onboarding flow — shown on first run when no API key is configured.
  *
- * Walks the user through selecting a provider and entering their API key.
+ * Walks the user through selecting a provider, entering their API key,
+ * and choosing a library directory for notes and resources.
  */
 
 import React, { useState } from "react";
 import { Box, Text, useInput, useApp } from "ink";
-import { saveConfig, type ClarkConfig } from "../config.ts";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { loadConfig, saveConfig, type ClarkConfig } from "../config.ts";
+import {
+  expandPath,
+  isExistingLibrary,
+  scaffoldLibrary,
+  validateLibraryPath,
+} from "../library.ts";
 
-type Step = "welcome" | "provider" | "api-key" | "done";
+type Step = "welcome" | "provider" | "api-key" | "library-path" | "done";
 
 interface ProviderOption {
   id: string;
@@ -24,6 +33,8 @@ const PROVIDERS: ProviderOption[] = [
   { id: "ollama", name: "Ollama (Local)", envVar: "", keyPrefix: "" },
 ];
 
+const DEFAULT_LIBRARY_PATH = join("~", "Clark");
+
 export interface OnboardingProps {
   onComplete: (config: ClarkConfig) => void;
 }
@@ -34,6 +45,16 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const [apiKey, setApiKey] = useState("");
   const [cursor, setCursor] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  // Library path state
+  const [libraryPath, setLibraryPath] = useState(DEFAULT_LIBRARY_PATH);
+  const [libCursor, setLibCursor] = useState(DEFAULT_LIBRARY_PATH.length);
+  const [libError, setLibError] = useState<string | null>(null);
+  const [isScaffolding, setIsScaffolding] = useState(false);
+
+  // Pending config built during provider/api-key steps
+  const [pendingConfig, setPendingConfig] = useState<ClarkConfig>({});
+
   const { exit } = useApp();
 
   useInput((input, key) => {
@@ -55,11 +76,11 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       } else if (key.return) {
         const provider = PROVIDERS[selectedProvider]!;
         if (provider.id === "ollama") {
-          // Ollama needs no API key — save and complete
+          // Ollama needs no API key — go straight to library setup
           const config: ClarkConfig = { provider: "ollama" };
+          setPendingConfig(config);
           saveConfig(config).then(() => {
-            setStep("done");
-            onComplete(config);
+            setStep("library-path");
           });
         } else {
           setStep("api-key");
@@ -78,7 +99,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           return;
         }
 
-        // Save config and complete
+        // Save config and advance to library setup
         const keyField =
           provider.id === "anthropic" ? "anthropicApiKey"
           : provider.id === "gemini" ? "geminiApiKey"
@@ -88,9 +109,9 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           [keyField]: trimmed,
         };
 
+        setPendingConfig(config);
         saveConfig(config).then(() => {
-          setStep("done");
-          onComplete(config);
+          setStep("library-path");
         });
         return;
       }
@@ -132,6 +153,99 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         setApiKey((v) => v.slice(0, cursor) + input + v.slice(cursor));
         setCursor((c) => c + input.length);
         setError(null);
+      }
+      return;
+    }
+
+    if (step === "library-path") {
+      if (isScaffolding) return; // ignore input while scaffolding
+
+      if (key.return) {
+        const trimmed = libraryPath.trim();
+        if (!trimmed) {
+          setLibError("Path cannot be empty.");
+          return;
+        }
+
+        const expanded = expandPath(trimmed);
+        setIsScaffolding(true);
+
+        (async () => {
+          try {
+            // Validate the path is writable
+            const validation = await validateLibraryPath(expanded);
+            if (!validation.valid) {
+              setLibError(validation.error ?? "Invalid path");
+              setIsScaffolding(false);
+              return;
+            }
+
+            // Scaffold if it's not an existing library
+            const exists = await isExistingLibrary(expanded);
+            if (!exists) {
+              await scaffoldLibrary(expanded);
+            }
+
+            // Save resourcePath to config
+            const currentConfig = await loadConfig();
+            const updatedConfig = { ...currentConfig, ...pendingConfig, resourcePath: expanded };
+            await saveConfig(updatedConfig);
+
+            setStep("done");
+            onComplete(updatedConfig);
+          } catch (err) {
+            setLibError(
+              `Failed to set up library: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            setIsScaffolding(false);
+          }
+        })();
+        return;
+      }
+
+      if (key.escape) {
+        // Go back to api-key (or provider for Ollama)
+        const provider = PROVIDERS[selectedProvider]!;
+        if (provider.id === "ollama") {
+          setStep("provider");
+        } else {
+          setStep("api-key");
+        }
+        setLibraryPath(DEFAULT_LIBRARY_PATH);
+        setLibCursor(DEFAULT_LIBRARY_PATH.length);
+        setLibError(null);
+        return;
+      }
+
+      if (key.backspace || key.delete) {
+        if (libCursor > 0) {
+          setLibraryPath((v) => v.slice(0, libCursor - 1) + v.slice(libCursor));
+          setLibCursor((c) => c - 1);
+        }
+        setLibError(null);
+        return;
+      }
+
+      if (key.leftArrow) {
+        setLibCursor((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (key.rightArrow) {
+        setLibCursor((c) => Math.min(libraryPath.length, c + 1));
+        return;
+      }
+
+      if (key.ctrl && input === "u") {
+        setLibraryPath("");
+        setLibCursor(0);
+        setLibError(null);
+        return;
+      }
+
+      if (!key.ctrl && !key.meta && input) {
+        setLibraryPath((v) => v.slice(0, libCursor) + input + v.slice(libCursor));
+        setLibCursor((c) => c + input.length);
+        setLibError(null);
       }
       return;
     }
@@ -213,10 +327,45 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     );
   }
 
+  if (step === "library-path") {
+    const before = libraryPath.slice(0, libCursor);
+    const cursorChar = libraryPath[libCursor] ?? " ";
+    const after = libraryPath.slice(libCursor + 1);
+
+    return (
+      <Box flexDirection="column" padding={1}>
+        <Text bold>Where should Clark store your notes?</Text>
+        <Text color="gray" dimColor> </Text>
+        <Text color="gray" dimColor>Enter a path to an existing library or vault, or press Enter to create a new one.</Text>
+        <Text color="gray" dimColor>Supports ~ for home directory (e.g., ~/Documents/Notes)</Text>
+        <Text color="gray" dimColor> </Text>
+        <Box paddingLeft={2}>
+          <Text color="cyan">{before}</Text>
+          <Text inverse>{cursorChar}</Text>
+          <Text color="cyan">{after}</Text>
+        </Box>
+        {libError && (
+          <>
+            <Text color="gray" dimColor> </Text>
+            <Text color="red">{libError}</Text>
+          </>
+        )}
+        {isScaffolding && (
+          <>
+            <Text color="gray" dimColor> </Text>
+            <Text color="yellow">Setting up library...</Text>
+          </>
+        )}
+        <Text color="gray" dimColor> </Text>
+        <Text color="gray"><Text bold color="white">Enter</Text> to confirm, <Text bold color="white">Esc</Text> to go back.</Text>
+      </Box>
+    );
+  }
+
   // step === "done"
   return (
     <Box flexDirection="column" padding={1}>
-      <Text color="green">API key saved. Starting Clark...</Text>
+      <Text color="green">Setup complete. Starting Clark...</Text>
     </Box>
   );
 }

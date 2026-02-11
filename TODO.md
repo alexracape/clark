@@ -2,32 +2,30 @@ Some future enhancements and things that need fixing.
 
 ## Canvas
 - Styling
-- Save button or only use CLI for this?
-- Multiple pages in the same canvas
-- Make it impossible for users to delete the A4 page element
 - Allow users to toggle between PDF and Canvas mode.
-- Save and load canvases
+  - Export as PDF would not be allowd for Canvas
+- Allow users to switch which canvas is active maybe with /canvas or even from iPad
+- Debug new page creation on single canvas
 
 ## LLMs
-- Get Ollama seamlessly working
-  - Right now, there is an issue when ollama is the default model on startup
-  - It looks like somewhere llama 3.2 is still being passed
-  - ollama list also lists available models and not necessarily running models
-  - Is there a way to start running the model if it is not going right now?
 
 ## MCP
 
 ## TUI
-- Add /class, /idea, /resource, /paper, /problem_set
-  - Each of these should help configure a set of files in the user's vault / notes folder
-  - I think that this logic should sit a level above the MCP server since that offers atomic filesystem actions
-  - Maybe these can exist as skills in markdown?
-  - I put examples of the workflows in test/test_vault/Structures
-  - My hesitation is that a lot of them are pretty deterministic, but some flexibility could be nice especially if users want to customize this behavior
+- A little jumpiness in the UI when toggling some / menus
+- / then delete fails to register the delete
+- /invalid_command should throw an error instead of sending it to the LLM
+- /notes should be switched to /library and it should allow you to switch that path if you want
+- /resource needs to accept file upload with file explorer, drag-and-drop, or something
+- Need to refine the /structures commands
+  - The model's responses are too verbose and need prompting work
+  - Should look into ways to collect args like a conversational process in moveworks
+
 
 ## Misc.
 - Lightweight markdown editor potentially with tiptap
 - Office hours and class notes stories
 - Look into tldraw licensing
 - Build site to publish the binary with documentation
-- Onboarding and creation of starting folders if not specified
+- Onboarding should add folders like Structures if not in preexisting folder
+- Security audit for API keys, prompt injection, or any other vulnerabilities

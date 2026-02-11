@@ -4,10 +4,12 @@
 
 import React, { useState, useRef, useMemo } from "react";
 import { Box, Text, useInput, useApp } from "ink";
+import type { CommandHistory } from "./history.ts";
 
 export interface InputProps {
   onSubmit: (text: string) => void;
   disabled?: boolean;
+  history?: CommandHistory;
 }
 
 export interface SlashCommand {
@@ -15,10 +17,15 @@ export interface SlashCommand {
   args: string;
 }
 
-/** All available slash commands with descriptions */
-export const COMMANDS = [
+export interface CommandEntry {
+  name: string;
+  description: string;
+}
+
+/** Built-in commands (always available) */
+export const BUILTIN_COMMANDS: CommandEntry[] = [
   { name: "help", description: "Show available commands" },
-  { name: "canvas", description: "Show canvas URL for iPad" },
+  { name: "canvas", description: "Open or show active canvas" },
   { name: "export", description: "Export canvas as A4 PDF" },
   { name: "save", description: "Save canvas state to disk" },
   { name: "notes", description: "Set notes directory" },
@@ -26,7 +33,15 @@ export const COMMANDS = [
   { name: "context", description: "Show context window usage" },
   { name: "compact", description: "Summarize conversation to save context" },
   { name: "clear", description: "Clear conversation history" },
-] as const;
+];
+
+/** All commands including dynamically registered skills */
+export let COMMANDS: CommandEntry[] = [...BUILTIN_COMMANDS];
+
+/** Register additional commands (called at startup with skill commands) */
+export function registerCommands(commands: CommandEntry[]) {
+  COMMANDS = [...BUILTIN_COMMANDS, ...commands];
+}
 
 /**
  * Parse a slash command from input text.
@@ -46,7 +61,7 @@ export function parseSlashCommand(text: string): SlashCommand | null {
   };
 }
 
-export function Input({ onSubmit, disabled = false }: InputProps) {
+export function Input({ onSubmit, disabled = false, history }: InputProps) {
   // Refs track the "true" value/cursor synchronously so rapid keystrokes
   // between React renders always see the latest state.
   const valueRef = useRef("");
@@ -54,6 +69,8 @@ export function Input({ onSubmit, disabled = false }: InputProps) {
   const [value, _setValue] = useState("");
   const [cursor, _setCursor] = useState(0);
   const [hintIndex, setHintIndex] = useState(0);
+  // True while the input was filled by history navigation (suppresses hint UI)
+  const browsingHistoryRef = useRef(false);
   const { exit } = useApp();
 
   /** Update value — keeps ref and state in sync. */
@@ -78,7 +95,7 @@ export function Input({ onSubmit, disabled = false }: InputProps) {
     return COMMANDS.filter((c) => c.name.startsWith(partial));
   }, [value]);
 
-  const showHints = matchingCommands.length > 0 && !disabled;
+  const showHints = matchingCommands.length > 0 && !disabled && !browsingHistoryRef.current;
 
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
@@ -114,12 +131,35 @@ export function Input({ onSubmit, disabled = false }: InputProps) {
       return;
     }
 
+    // Up/Down for command history (when hints are not showing)
+    if (!showHints && key.upArrow && history) {
+      const entry = history.up(val);
+      if (entry !== null) {
+        browsingHistoryRef.current = true;
+        setValue(entry);
+        setCursor(entry.length);
+      }
+      return;
+    }
+    if (!showHints && key.downArrow && history) {
+      const entry = history.down();
+      if (entry !== null) {
+        browsingHistoryRef.current = true;
+        setValue(entry);
+        setCursor(entry.length);
+      }
+      return;
+    }
+
     if (key.return) {
       // If hints are showing, submit the highlighted command
       if (showHints && !val.includes(" ")) {
         const selected = matchingCommands[hintIndex];
         if (selected) {
-          onSubmit("/" + selected.name);
+          const cmd = "/" + selected.name;
+          history?.push(cmd);
+          browsingHistoryRef.current = false;
+          onSubmit(cmd);
           setValue("");
           setCursor(0);
           setHintIndex(0);
@@ -127,6 +167,8 @@ export function Input({ onSubmit, disabled = false }: InputProps) {
         }
       }
       if (val.trim()) {
+        history?.push(val);
+        browsingHistoryRef.current = false;
         onSubmit(val);
         setValue("");
         setCursor(0);
@@ -137,6 +179,7 @@ export function Input({ onSubmit, disabled = false }: InputProps) {
 
     if (key.backspace || key.delete) {
       if (cur > 0) {
+        browsingHistoryRef.current = false;
         setValue(val.slice(0, cur - 1) + val.slice(cur));
         setCursor(cur - 1);
         setHintIndex(0);
@@ -163,14 +206,16 @@ export function Input({ onSubmit, disabled = false }: InputProps) {
       return;
     }
     if (key.ctrl && input === "u") {
+      browsingHistoryRef.current = false;
       setValue("");
       setCursor(0);
       setHintIndex(0);
       return;
     }
 
-    // Escape to dismiss hints
+    // Escape to dismiss hints / clear browsing state
     if (key.escape) {
+      browsingHistoryRef.current = false;
       if (val.startsWith("/") && !val.includes(" ")) {
         setValue("");
         setCursor(0);
@@ -180,6 +225,7 @@ export function Input({ onSubmit, disabled = false }: InputProps) {
     }
 
     if (!key.ctrl && !key.meta && input) {
+      browsingHistoryRef.current = false;
       setValue(val.slice(0, cur) + input + val.slice(cur));
       setCursor(cur + input.length);
       setHintIndex(0);

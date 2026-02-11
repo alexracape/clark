@@ -239,9 +239,17 @@ describe("applyConfigToEnv", () => {
 });
 
 describe("saveConfig / loadConfig (file I/O)", () => {
-  // These tests use the real saveConfig/loadConfig but those write to ~/.clark/config.json.
-  // We test the round-trip by saving and loading. In a real scenario we'd want to mock the path,
-  // but for now we test the serialization logic directly.
+  let tmpDir: string;
+  let tmpConfigPath: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "clark-config-test-"));
+    tmpConfigPath = join(tmpDir, "config.json");
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
 
   test("config round-trips through JSON correctly", () => {
     const config: ClarkConfig = {
@@ -285,10 +293,8 @@ describe("saveConfig / loadConfig (file I/O)", () => {
   });
 
   test("loadConfig returns empty object for missing file", async () => {
-    // loadConfig handles missing files gracefully
-    const config = await loadConfig();
-    // Should return an object (may have data if ~/.clark/config.json exists)
-    expect(typeof config).toBe("object");
+    const config = await loadConfig(join(tmpDir, "nonexistent.json"));
+    expect(config).toEqual({});
   });
 
   test("saveConfig and loadConfig round-trip", async () => {
@@ -297,16 +303,25 @@ describe("saveConfig / loadConfig (file I/O)", () => {
       anthropicApiKey: "sk-ant-roundtrip-test",
     };
 
-    // Save
-    await saveConfig(testConfig);
+    await saveConfig(testConfig, tmpConfigPath);
 
-    // Load
-    const loaded = await loadConfig();
+    const loaded = await loadConfig(tmpConfigPath);
     expect(loaded.provider).toBe("anthropic");
     expect(loaded.anthropicApiKey).toBe("sk-ant-roundtrip-test");
+  });
 
-    // Clean up — restore previous state by saving empty-ish config
-    // (in practice this test modifies ~/.clark/config.json)
-    await saveConfig({});
+  test("saveConfig preserves all fields", async () => {
+    const fullConfig: ClarkConfig = {
+      provider: "gemini",
+      model: "gemini-2.5-flash",
+      geminiApiKey: "AItest123",
+      resourcePath: "/notes",
+      canvasPath: "/canvas",
+    };
+
+    await saveConfig(fullConfig, tmpConfigPath);
+    const loaded = await loadConfig(tmpConfigPath);
+
+    expect(loaded).toEqual(fullConfig);
   });
 });

@@ -9,13 +9,17 @@ import React from "react";
 import { render } from "ink";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import { CanvasBroker, startCanvasServer } from "./src/canvas/index.ts";
+import { CanvasBroker, startCanvasServer, listCanvasFiles } from "./src/canvas/index.ts";
 import { createTools } from "./src/mcp/index.ts";
+import { join } from "node:path";
 import { createProvider } from "./src/llm/index.ts";
 import { Conversation } from "./src/llm/messages.ts";
 import { App } from "./src/tui/app.tsx";
 import { Onboarding } from "./src/tui/onboarding.tsx";
 import { loadConfig, applyConfigToEnv, needsOnboarding, type ClarkConfig } from "./src/config.ts";
+import { CommandHistory } from "./src/tui/history.ts";
+import { registerCommands } from "./src/tui/input.tsx";
+import { loadSkills } from "./src/skills.ts";
 import { networkInterfaces } from "node:os";
 
 // --- CLI args ---
@@ -90,22 +94,52 @@ if (needsOnboarding(config)) {
 async function startApp(activeConfig: ClarkConfig) {
   const resolvedProvider = argv.provider ?? activeConfig.provider ?? "anthropic";
 
-  const broker = new CanvasBroker();
-  const lanIP = getLanIP();
-  const canvasUrl = `http://${lanIP}:${argv.port}`;
-
-  // Start canvas server (async — loads persisted snapshot)
-  const { saveSnapshot } = await startCanvasServer({ port: argv.port, broker });
-
   // Resolve configured paths
   const vaultDir = argv.notes ?? activeConfig.resourcePath ?? ".";
-  const canvasDir = argv.canvasPath ?? activeConfig.canvasPath ?? ".";
 
-  // Initialize tools
+  // --- Lazy canvas session ---
+  // Canvas starts closed. Populated when user opens one via /canvas.
+  let activeCanvas: {
+    broker: CanvasBroker;
+    server: ReturnType<typeof Bun.serve>;
+    saveSnapshot: () => Promise<void>;
+    canvasUrl: string;
+    canvasName: string;
+  } | null = null;
+
+  const canvasDir = join(vaultDir, "Resources", "Canvas");
+
+  /** Open a named canvas — starts the server and loads/creates the .tldr file. */
+  async function openCanvas(name: string): Promise<{ url: string }> {
+    if (activeCanvas) {
+      throw new Error(`Canvas "${activeCanvas.canvasName}" is already open. Restart to switch canvases.`);
+    }
+
+    const snapshotPath = join(canvasDir, `${name}.tldr`);
+    const broker = new CanvasBroker();
+    const lanIP = getLanIP();
+
+    const { server, saveSnapshot } = await startCanvasServer({
+      port: argv.port,
+      broker,
+      snapshotPath,
+    });
+
+    const canvasUrl = `http://${lanIP}:${server.port}`;
+    activeCanvas = { broker, server, saveSnapshot, canvasUrl, canvasName: name };
+    return { url: canvasUrl };
+  }
+
+  /** List existing canvas files in the vault. */
+  async function listCanvases(): Promise<string[]> {
+    return listCanvasFiles(canvasDir);
+  }
+
+  // Initialize tools with dynamic getters
   const tools = createTools({
-    broker,
+    getBroker: () => activeCanvas?.broker ?? null,
     vaultDir,
-    saveCanvas: saveSnapshot,
+    getSaveCanvas: () => activeCanvas?.saveSnapshot ?? null,
   });
 
   // Resolve model name before creating provider
@@ -171,17 +205,23 @@ async function startApp(activeConfig: ClarkConfig) {
   // Load system prompt
   const systemPromptPath = new URL("./src/prompts/system.md", import.meta.url).pathname;
 
-  Bun.file(systemPromptPath).text().then((systemPrompt) => {
+  Bun.file(systemPromptPath).text().then(async (systemPrompt) => {
     const conversation = new Conversation();
+
+    // --- Load skills from Structures directory ---
+    const skills = await loadSkills(vaultDir);
+    if (skills.length > 0) {
+      registerCommands(skills.map((s) => ({ name: s.slug, description: s.description })));
+    }
 
     // --- Slash command handler ---
     async function handleSlashCommand(name: string, args: string): Promise<string | null> {
       switch (name) {
-        case "help":
-          return [
+        case "help": {
+          const lines = [
             "Available commands:",
             "  /help              Show this help message",
-            "  /canvas            Show canvas URL for iPad",
+            "  /canvas            Open or show active canvas",
             "  /export [path]     Export canvas as A4 PDF",
             "  /save              Save canvas state to disk",
             "  /notes [path]      Show or set notes vault directory",
@@ -190,18 +230,36 @@ async function startApp(activeConfig: ClarkConfig) {
             "  /compact           Summarize conversation to save context",
             "  /clear             Clear conversation history",
             "  Ctrl+C             Exit",
-          ].join("\n");
+          ];
+
+          if (skills.length > 0) {
+            lines.push("", "Skills (from Structures/):");
+            for (const s of skills) {
+              const padded = `  /${s.slug}`.padEnd(23);
+              lines.push(`${padded}${s.description}`);
+            }
+          }
+
+          return lines.join("\n");
+        }
 
         case "canvas":
-          return `Canvas URL: ${canvasUrl}\nOpen this on your iPad to start drawing.`;
+          // When canvas is open, show info. When closed, return null so App shows picker.
+          if (activeCanvas) {
+            return `Canvas "${activeCanvas.canvasName}" is open at ${activeCanvas.canvasUrl}\nOpen this on your iPad to start drawing.`;
+          }
+          return null;
 
         case "export": {
-          if (!broker.isConnected) {
+          if (!activeCanvas) {
+            return "No canvas is open. Use /canvas to open one.";
+          }
+          if (!activeCanvas.broker.isConnected) {
             return "No iPad connected. Open the canvas URL on your iPad first.";
           }
           try {
             const { exportPDFToFile } = await import("./src/canvas/pdf-export.ts");
-            const response = await broker.requestExport();
+            const response = await activeCanvas.broker.requestExport();
             const outputPath = args || `${canvasDir}/clark-export.pdf`;
             await exportPDFToFile(response.pages, outputPath);
             return `PDF exported to: ${outputPath}`;
@@ -211,8 +269,11 @@ async function startApp(activeConfig: ClarkConfig) {
         }
 
         case "save":
+          if (!activeCanvas) {
+            return "No canvas is open. Use /canvas to open one.";
+          }
           try {
-            await saveSnapshot();
+            await activeCanvas.saveSnapshot();
             return "Canvas state saved.";
           } catch (err) {
             return `Save failed: ${err instanceof Error ? err.message : String(err)}`;
@@ -273,6 +334,8 @@ async function startApp(activeConfig: ClarkConfig) {
     }
 
     // --- Render TUI ---
+    const history = new CommandHistory();
+
     render(
       React.createElement(App, {
         provider,
@@ -281,9 +344,12 @@ async function startApp(activeConfig: ClarkConfig) {
         conversation,
         systemPrompt,
         tools,
-        canvasUrl,
-        isCanvasConnected: () => broker.isConnected,
+        isCanvasConnected: () => activeCanvas?.broker.isConnected ?? false,
         onSlashCommand: handleSlashCommand,
+        onOpenCanvas: openCanvas,
+        listCanvases,
+        history,
+        skills,
       }),
     );
   });

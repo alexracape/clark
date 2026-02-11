@@ -11,12 +11,15 @@ import { Chat, type ChatMessage } from "./chat.tsx";
 import { Input, parseSlashCommand } from "./input.tsx";
 import { StatusBar } from "./status.tsx";
 import { ModelPicker } from "./model-picker.tsx";
+import { CanvasPicker } from "./canvas-picker.tsx";
 import { createProvider } from "../llm/provider.ts";
 import { formatContextGrid } from "./context.ts";
 import type { LLMProvider, Tool, StreamChunk, MessageContent } from "../llm/provider.ts";
 import { loadConfig, saveConfig, type ClarkConfig } from "../config.ts";
 import { Conversation } from "../llm/messages.ts";
 import type { ToolDefinition, ToolResult } from "../mcp/tools.ts";
+import type { CommandHistory } from "./history.ts";
+import { type Skill, buildSkillPrompt } from "../skills.ts";
 
 export interface AppProps {
   provider: LLMProvider;
@@ -25,9 +28,12 @@ export interface AppProps {
   conversation: Conversation;
   systemPrompt: string;
   tools: ToolDefinition[];
-  canvasUrl: string;
   isCanvasConnected: () => boolean;
   onSlashCommand: (name: string, args: string) => Promise<string | null>;
+  onOpenCanvas: (name: string) => Promise<{ url: string }>;
+  listCanvases: () => Promise<string[]>;
+  history: CommandHistory;
+  skills: Skill[];
 }
 
 /** Convert our MCP tool definitions to LLM tool format */
@@ -55,9 +61,12 @@ export function App({
   conversation,
   systemPrompt,
   tools,
-  canvasUrl,
   isCanvasConnected,
   onSlashCommand,
+  onOpenCanvas,
+  listCanvases,
+  history,
+  skills,
 }: AppProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([{
     role: "system",
@@ -72,6 +81,11 @@ export function App({
   const [activeModel, setActiveModel] = useState(model);
   const [showModelPicker, setShowModelPicker] = useState(false);
 
+  // Canvas state — starts closed, populated when user opens via /canvas
+  const [canvasInfo, setCanvasInfo] = useState<{ name: string; url: string } | null>(null);
+  const [showCanvasPicker, setShowCanvasPicker] = useState(false);
+  const [canvasNames, setCanvasNames] = useState<string[]>([]);
+
   const addMessage = useCallback((role: ChatMessage["role"], content: string) => {
     setMessages((prev) => [...prev, { role, content, timestamp: new Date() }]);
   }, []);
@@ -80,14 +94,15 @@ export function App({
    * Run the LLM, streaming text to the UI.
    * Returns the collected chunks and full text when done.
    */
-  const streamLLM = useCallback(async (): Promise<{ chunks: StreamChunk[]; text: string }> => {
+  const streamLLM = useCallback(async (promptOverride?: string): Promise<{ chunks: StreamChunk[]; text: string }> => {
     const llmTools = toLLMTools(tools);
     const chunks: StreamChunk[] = [];
     let text = "";
+    const effectivePrompt = promptOverride ?? systemPrompt;
 
     setStreamingText("");
 
-    for await (const chunk of activeProvider.chat(conversation.getMessages(), llmTools, systemPrompt)) {
+    for await (const chunk of activeProvider.chat(conversation.getMessages(), llmTools, effectivePrompt)) {
       chunks.push(chunk);
       if (chunk.type === "text_delta") {
         text += chunk.text;
@@ -113,14 +128,14 @@ export function App({
   /**
    * Full conversation turn: stream LLM → handle tool calls → loop until done.
    */
-  const runConversationTurn = useCallback(async () => {
+  const runConversationTurn = useCallback(async (promptOverride?: string) => {
     setIsThinking(true);
 
     try {
       let continueLoop = true;
 
       while (continueLoop) {
-        const { chunks, text } = await streamLLM();
+        const { chunks, text } = await streamLLM(promptOverride);
 
         // Collect the assistant message content
         const assistantContent = conversation.collectStreamResponse(chunks);
@@ -192,10 +207,31 @@ export function App({
     }
   }, [addMessage]);
 
+  /** Handle canvas selection from the picker */
+  const handleCanvasSelect = useCallback(async (name: string) => {
+    setShowCanvasPicker(false);
+    try {
+      const { url } = await onOpenCanvas(name);
+      setCanvasInfo({ name, url });
+      addMessage("system", `Canvas "${name}" opened at ${url}\nOpen this on your iPad to start drawing.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addMessage("system", `Failed to open canvas: ${msg}`);
+    }
+  }, [onOpenCanvas, addMessage]);
+
   const handleSubmit = useCallback(async (text: string) => {
     // Check for slash command
     const command = parseSlashCommand(text);
     if (command) {
+      // Intercept /canvas to show the picker (or info if already open)
+      if (command.name === "canvas" && !canvasInfo) {
+        const names = await listCanvases();
+        setCanvasNames(names);
+        setShowCanvasPicker(true);
+        return;
+      }
+
       // Intercept /model to show the picker
       if (command.name === "model") {
         setShowModelPicker(true);
@@ -208,6 +244,24 @@ export function App({
         return;
       }
 
+      // Check if this is a skill command (from Structures/)
+      const matchedSkill = skills.find((s) => s.slug === command.name);
+      if (matchedSkill) {
+        const display = command.args
+          ? `Using skill: ${matchedSkill.displayName} — "${command.args}"`
+          : `Using skill: ${matchedSkill.displayName}`;
+        addMessage("system", display);
+
+        const userText = command.args
+          ? `I want to create a ${matchedSkill.displayName}. Context: ${command.args}`
+          : `I want to create a ${matchedSkill.displayName}.`;
+        conversation.addUserMessage(userText);
+
+        const skillPrompt = systemPrompt + buildSkillPrompt(matchedSkill, command.args);
+        await runConversationTurn(skillPrompt);
+        return;
+      }
+
       const result = await onSlashCommand(command.name, command.args);
       if (result) addMessage("system", result);
       return;
@@ -217,7 +271,7 @@ export function App({
     addMessage("user", text);
     conversation.addUserMessage(text);
     await runConversationTurn();
-  }, [conversation, runConversationTurn, onSlashCommand, addMessage, activeModel, systemPrompt, tools]);
+  }, [conversation, runConversationTurn, onSlashCommand, addMessage, activeModel, systemPrompt, tools, skills]);
 
   return (
     <Box flexDirection="column">
@@ -225,7 +279,8 @@ export function App({
         provider={activeProvider.name}
         model={activeModel}
         canvasConnected={isCanvasConnected()}
-        canvasUrl={canvasUrl}
+        canvasUrl={canvasInfo?.url ?? null}
+        canvasName={canvasInfo?.name ?? null}
         isThinking={isThinking}
       />
 
@@ -247,8 +302,14 @@ export function App({
           onSelect={handleModelSelect}
           onCancel={() => setShowModelPicker(false)}
         />
+      ) : showCanvasPicker ? (
+        <CanvasPicker
+          existingCanvases={canvasNames}
+          onSelect={handleCanvasSelect}
+          onCancel={() => setShowCanvasPicker(false)}
+        />
       ) : (
-        <Input onSubmit={handleSubmit} disabled={isThinking} />
+        <Input onSubmit={handleSubmit} disabled={isThinking} history={history} />
       )}
     </Box>
   );

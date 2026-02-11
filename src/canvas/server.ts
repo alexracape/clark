@@ -7,9 +7,8 @@
  *   /ws   — custom JSON messages (CanvasBroker <-> iPad message handler)
  */
 
-import { resolve } from "node:path";
-import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
+import { dirname } from "node:path";
+import { mkdir, readdir } from "node:fs/promises";
 import { TLSocketRoom, InMemorySyncStorage, type RoomSnapshot, type WebSocketMinimal } from "@tldraw/sync-core";
 
 // Static Bun HTML import — ensures proper bundling and asset route registration
@@ -156,13 +155,10 @@ export class CanvasBroker {
 
 // --- Persistence helpers ---
 
-const CANVAS_DIR = resolve(homedir(), ".clark", "canvas");
-const DEFAULT_SNAPSHOT_PATH = resolve(CANVAS_DIR, "default.json");
-
 /** Load a snapshot from disk, or return undefined if none exists. */
-export async function loadSnapshot(): Promise<RoomSnapshot | undefined> {
+export async function loadSnapshot(snapshotPath: string): Promise<RoomSnapshot | undefined> {
   try {
-    const file = Bun.file(DEFAULT_SNAPSHOT_PATH);
+    const file = Bun.file(snapshotPath);
     if (await file.exists()) {
       return await file.json();
     }
@@ -173,9 +169,26 @@ export async function loadSnapshot(): Promise<RoomSnapshot | undefined> {
 }
 
 /** Write a snapshot to disk. */
-export async function writeSnapshot(snapshot: RoomSnapshot): Promise<void> {
-  await mkdir(CANVAS_DIR, { recursive: true });
-  await Bun.write(DEFAULT_SNAPSHOT_PATH, JSON.stringify(snapshot));
+export async function writeSnapshot(snapshot: RoomSnapshot, snapshotPath: string): Promise<void> {
+  await mkdir(dirname(snapshotPath), { recursive: true });
+  await Bun.write(snapshotPath, JSON.stringify(snapshot));
+}
+
+/**
+ * List existing canvas files in a directory.
+ * Returns canvas names (without .tldr extension), sorted alphabetically.
+ */
+export async function listCanvasFiles(canvasDir: string): Promise<string[]> {
+  try {
+    const entries = await readdir(canvasDir);
+    return entries
+      .filter((e) => e.endsWith(".tldr"))
+      .map((e) => e.replace(/\.tldr$/, ""))
+      .sort();
+  } catch {
+    // Directory doesn't exist yet — no canvases
+    return [];
+  }
 }
 
 // --- WebSocket wrapper ---
@@ -199,6 +212,8 @@ function wrapBunSocket(ws: { send(data: string): void; close(code?: number, reas
 export interface CanvasServerOptions {
   port: number;
   broker: CanvasBroker;
+  /** Full path to the .tldr snapshot file for persistence. */
+  snapshotPath: string;
 }
 
 export interface CanvasServerResult {
@@ -214,10 +229,10 @@ export interface CanvasServerResult {
  * and custom broker messages on /ws.
  */
 export async function startCanvasServer(options: CanvasServerOptions): Promise<CanvasServerResult> {
-  const { port, broker } = options;
+  const { port, broker, snapshotPath } = options;
 
   // Load persisted snapshot and create storage
-  const initialSnapshot = await loadSnapshot();
+  const initialSnapshot = await loadSnapshot(snapshotPath);
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
   const storage = new InMemorySyncStorage({
@@ -226,7 +241,7 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
       // Debounced auto-save (2s)
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
-        writeSnapshot(storage.getSnapshot());
+        writeSnapshot(storage.getSnapshot(), snapshotPath);
       }, 2000);
     },
   });
@@ -239,7 +254,7 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    await writeSnapshot(storage.getSnapshot());
+    await writeSnapshot(storage.getSnapshot(), snapshotPath);
   }
 
   const server = Bun.serve({
