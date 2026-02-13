@@ -28,7 +28,7 @@ export const BUILTIN_COMMANDS: CommandEntry[] = [
   { name: "canvas", description: "Open or show active canvas" },
   { name: "export", description: "Export canvas as A4 PDF" },
   { name: "save", description: "Save canvas state to disk" },
-  { name: "notes", description: "Set notes directory" },
+  { name: "library", description: "Show or set library directory" },
   { name: "model", description: "Switch model and provider" },
   { name: "context", description: "Show context window usage" },
   { name: "compact", description: "Summarize conversation to save context" },
@@ -178,10 +178,13 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
     }
 
     if (key.backspace || key.delete) {
+      browsingHistoryRef.current = false;
       if (cur > 0) {
-        browsingHistoryRef.current = false;
         setValue(val.slice(0, cur - 1) + val.slice(cur));
         setCursor(cur - 1);
+        setHintIndex(0);
+      } else if (cur < val.length) {
+        setValue(val.slice(0, cur) + val.slice(cur + 1));
         setHintIndex(0);
       }
       return;

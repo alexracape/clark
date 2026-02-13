@@ -103,6 +103,9 @@ export function CanvasPicker({ existingCanvases, onSelect, onCancel }: CanvasPic
         setFilterSync(val.slice(0, cur - 1) + val.slice(cur));
         setCursorSync(cur - 1);
         setSelected(0);
+      } else if (cur < val.length) {
+        setFilterSync(val.slice(0, cur) + val.slice(cur + 1));
+        setSelected(0);
       }
       return;
     }

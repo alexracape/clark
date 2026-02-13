@@ -12,3 +12,5 @@ export { StatusBar } from "./status.tsx";
 export type { StatusBarProps } from "./status.tsx";
 export { Onboarding } from "./onboarding.tsx";
 export type { OnboardingProps } from "./onboarding.tsx";
+export { LibraryPicker } from "./library-picker.tsx";
+export type { LibraryPickerProps } from "./library-picker.tsx";

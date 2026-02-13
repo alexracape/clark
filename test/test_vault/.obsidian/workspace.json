@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Structures/Resource.md",
+                "file": "Clark/CLARK.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Resource"
+              "title": "CLARK"
             }
           }
         ]
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "Structures/Resource.md",
+                "file": "Clark/CLARK.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for Resource"
+              "title": "Backlinks for CLARK"
             }
           },
           {
@@ -113,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "Structures/Resource.md",
+                "file": "Clark/CLARK.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from Resource"
+              "title": "Outgoing links from CLARK"
             }
           },
           {
@@ -156,13 +156,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "Structures/Resource.md",
+                "file": "Clark/CLARK.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of Resource"
+              "title": "Outline of CLARK"
             }
           }
         ]
@@ -183,32 +183,33 @@
       "bases:Create new base": false
     }
   },
-  "active": "f91f55de69ae9822",
+  "active": "3da8c32852966050",
   "lastOpenFiles": [
-    "Resources/Canvas",
-    "Structures/Problem Set.md",
-    "Structures/Paper.md",
-    "Structures/Idea.md",
-    "Structures/Class.md",
-    "Structures/Resource.md",
+    "Clark/Structures/Resource.md",
+    "Clark/CLARK.md",
+    "Clark/Untitled",
+    "Clark",
+    "Clark/CLARK.md",
+    "Clark/PDF",
+    "Clark/Canvas",
+    "Clark",
+    "Clark/Canvas",
+    "Clark/Structures/Problem Set.md",
+    "Clark/Structures/Paper.md",
+    "Clark/Structures/Idea.md",
+    "Clark/Structures/Class.md",
     "Resources/Transcriptions",
-    "Structures/Quote.md",
+    "Clark/Structures/Quote.md",
     "Notes/Advanced Algorithms.md",
     "Templates/Paper Template.md",
-    "Structures",
+    "Clark/Structures",
     "Notes/Untitled.md",
     "Notes/RLHF.md",
     "Notes/Approximate Counting.md",
     "Resources/Images/lecture_1_class_notes.png",
     "Resources/Images/algorithms_hw1.pdf",
     "Resources/PDFs/lecture_1.pdf",
-    "Resources/PDFs/AI Review.pdf",
     "Notes/Reinforcement Learning.md",
-    "Notes/GRPO.md",
-    "Resources/PDFs/rl_classnote.pdf",
-    "Resources/PDFs/Untitled presentation 1.pptx",
-    "Resources/PDFs/Untitled presentation.pptx",
-    "resources/handwritten",
-    "Resources/Images"
+    "Notes/GRPO.md"
   ]
 }

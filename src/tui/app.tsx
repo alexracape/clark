@@ -12,6 +12,7 @@ import { Input, parseSlashCommand } from "./input.tsx";
 import { StatusBar } from "./status.tsx";
 import { ModelPicker } from "./model-picker.tsx";
 import { CanvasPicker } from "./canvas-picker.tsx";
+import { LibraryPicker } from "./library-picker.tsx";
 import { createProvider } from "../llm/provider.ts";
 import { formatContextGrid } from "./context.ts";
 import type { LLMProvider, Tool, StreamChunk, MessageContent } from "../llm/provider.ts";
@@ -32,6 +33,8 @@ export interface AppProps {
   onSlashCommand: (name: string, args: string) => Promise<string | null>;
   onOpenCanvas: (name: string) => Promise<{ url: string }>;
   listCanvases: () => Promise<string[]>;
+  getLibraryPath: () => string;
+  onSetLibraryPath: (path: string) => Promise<string>;
   history: CommandHistory;
   skills: Skill[];
 }
@@ -65,6 +68,8 @@ export function App({
   onSlashCommand,
   onOpenCanvas,
   listCanvases,
+  getLibraryPath,
+  onSetLibraryPath,
   history,
   skills,
 }: AppProps) {
@@ -85,6 +90,7 @@ export function App({
   const [canvasInfo, setCanvasInfo] = useState<{ name: string; url: string } | null>(null);
   const [showCanvasPicker, setShowCanvasPicker] = useState(false);
   const [canvasNames, setCanvasNames] = useState<string[]>([]);
+  const [showLibraryPicker, setShowLibraryPicker] = useState(false);
 
   const addMessage = useCallback((role: ChatMessage["role"], content: string) => {
     setMessages((prev) => [...prev, { role, content, timestamp: new Date() }]);
@@ -220,6 +226,17 @@ export function App({
     }
   }, [onOpenCanvas, addMessage]);
 
+  const handleLibrarySelect = useCallback(async (path: string) => {
+    setShowLibraryPicker(false);
+    try {
+      const result = await onSetLibraryPath(path);
+      addMessage("system", result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      addMessage("system", `Failed to set library: ${msg}`);
+    }
+  }, [onSetLibraryPath, addMessage]);
+
   const handleSubmit = useCallback(async (text: string) => {
     // Check for slash command
     const command = parseSlashCommand(text);
@@ -235,6 +252,12 @@ export function App({
       // Intercept /model to show the picker
       if (command.name === "model") {
         setShowModelPicker(true);
+        return;
+      }
+
+      // Intercept /library with no args to show interactive path picker
+      if (command.name === "library" && !command.args) {
+        setShowLibraryPicker(true);
         return;
       }
 
@@ -307,6 +330,12 @@ export function App({
           existingCanvases={canvasNames}
           onSelect={handleCanvasSelect}
           onCancel={() => setShowCanvasPicker(false)}
+        />
+      ) : showLibraryPicker ? (
+        <LibraryPicker
+          currentPath={getLibraryPath()}
+          onSelect={handleLibrarySelect}
+          onCancel={() => setShowLibraryPicker(false)}
         />
       ) : (
         <Input onSubmit={handleSubmit} disabled={isThinking} history={history} />

@@ -20,6 +20,7 @@ import { loadConfig, applyConfigToEnv, needsOnboarding, type ClarkConfig } from 
 import { CommandHistory } from "./src/tui/history.ts";
 import { registerCommands } from "./src/tui/input.tsx";
 import { loadSkills } from "./src/skills.ts";
+import { expandPath, isExistingLibrary, scaffoldLibrary, validateLibraryPath } from "./src/library.ts";
 import { networkInterfaces } from "node:os";
 
 // --- CLI args ---
@@ -27,7 +28,7 @@ import { networkInterfaces } from "node:os";
 const argv = await yargs(hideBin(process.argv))
   .option("notes", {
     type: "string",
-    describe: "Path to notes vault directory",
+    describe: "Path to library directory (legacy flag name)",
   })
   .option("provider", {
     type: "string",
@@ -95,7 +96,7 @@ async function startApp(activeConfig: ClarkConfig) {
   const resolvedProvider = argv.provider ?? activeConfig.provider ?? "anthropic";
 
   // Resolve configured paths
-  const vaultDir = argv.notes ?? activeConfig.resourcePath ?? ".";
+  let libraryDir = argv.notes ?? activeConfig.resourcePath ?? ".";
 
   // --- Lazy canvas session ---
   // Canvas starts closed. Populated when user opens one via /canvas.
@@ -107,7 +108,7 @@ async function startApp(activeConfig: ClarkConfig) {
     canvasName: string;
   } | null = null;
 
-  const canvasDir = join(vaultDir, "Resources", "Canvas");
+  const canvasDirFor = (dir: string) => join(dir, "Resources", "Canvas");
 
   /** Open a named canvas — starts the server and loads/creates the .tldr file. */
   async function openCanvas(name: string): Promise<{ url: string }> {
@@ -115,7 +116,7 @@ async function startApp(activeConfig: ClarkConfig) {
       throw new Error(`Canvas "${activeCanvas.canvasName}" is already open. Restart to switch canvases.`);
     }
 
-    const snapshotPath = join(canvasDir, `${name}.tldr`);
+    const snapshotPath = join(canvasDirFor(libraryDir), `${name}.tldr`);
     const broker = new CanvasBroker();
     const lanIP = getLanIP();
 
@@ -132,13 +133,31 @@ async function startApp(activeConfig: ClarkConfig) {
 
   /** List existing canvas files in the vault. */
   async function listCanvases(): Promise<string[]> {
-    return listCanvasFiles(canvasDir);
+    return listCanvasFiles(canvasDirFor(libraryDir));
+  }
+
+  async function setLibraryPath(pathInput: string): Promise<string> {
+    const nextDir = expandPath(pathInput);
+    const validation = await validateLibraryPath(nextDir);
+    if (!validation.valid) {
+      return `Invalid library path: ${validation.error ?? "Path is not writable."}`;
+    }
+
+    const exists = await isExistingLibrary(nextDir);
+    if (!exists) {
+      await scaffoldLibrary(nextDir);
+    }
+
+    libraryDir = nextDir;
+    const currentConfig = await loadConfig();
+    await saveConfig({ ...currentConfig, resourcePath: nextDir });
+    return `Library set to: ${nextDir}`;
   }
 
   // Initialize tools with dynamic getters
   const tools = createTools({
     getBroker: () => activeCanvas?.broker ?? null,
-    vaultDir,
+    getVaultDir: () => libraryDir,
     getSaveCanvas: () => activeCanvas?.saveSnapshot ?? null,
   });
 
@@ -209,7 +228,7 @@ async function startApp(activeConfig: ClarkConfig) {
     const conversation = new Conversation();
 
     // --- Load skills from Structures directory ---
-    const skills = await loadSkills(vaultDir);
+    const skills = await loadSkills(libraryDir);
     if (skills.length > 0) {
       registerCommands(skills.map((s) => ({ name: s.slug, description: s.description })));
     }
@@ -224,7 +243,7 @@ async function startApp(activeConfig: ClarkConfig) {
             "  /canvas            Open or show active canvas",
             "  /export [path]     Export canvas as A4 PDF",
             "  /save              Save canvas state to disk",
-            "  /notes [path]      Show or set notes vault directory",
+            "  /library [path]    Show or set library directory",
             "  /model             Switch model and provider",
             "  /context           Show context window usage",
             "  /compact           Summarize conversation to save context",
@@ -260,7 +279,7 @@ async function startApp(activeConfig: ClarkConfig) {
           try {
             const { exportPDFToFile } = await import("./src/canvas/pdf-export.ts");
             const response = await activeCanvas.broker.requestExport();
-            const outputPath = args || `${canvasDir}/clark-export.pdf`;
+            const outputPath = args || `${canvasDirFor(libraryDir)}/${activeCanvas.canvasName}.pdf`;
             await exportPDFToFile(response.pages, outputPath);
             return `PDF exported to: ${outputPath}`;
           } catch (err) {
@@ -279,9 +298,9 @@ async function startApp(activeConfig: ClarkConfig) {
             return `Save failed: ${err instanceof Error ? err.message : String(err)}`;
           }
 
-        case "notes":
-          if (!args) return `Current vault: ${vaultDir}`;
-          return `Vault directory set: ${args}`;
+        case "library":
+          if (!args) return null; // handled by App with interactive picker
+          return setLibraryPath(args);
 
         case "model":
           // Handled by App component's model picker
@@ -348,6 +367,8 @@ async function startApp(activeConfig: ClarkConfig) {
         onSlashCommand: handleSlashCommand,
         onOpenCanvas: openCanvas,
         listCanvases,
+        getLibraryPath: () => libraryDir,
+        onSetLibraryPath: setLibraryPath,
         history,
         skills,
       }),

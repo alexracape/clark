@@ -128,6 +128,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         if (cursor > 0) {
           setApiKey((v) => v.slice(0, cursor - 1) + v.slice(cursor));
           setCursor((c) => c - 1);
+        } else if (cursor < apiKey.length) {
+          setApiKey((v) => v.slice(0, cursor) + v.slice(cursor + 1));
         }
         setError(null);
         return;
@@ -221,6 +223,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         if (libCursor > 0) {
           setLibraryPath((v) => v.slice(0, libCursor - 1) + v.slice(libCursor));
           setLibCursor((c) => c - 1);
+        } else if (libCursor < libraryPath.length) {
+          setLibraryPath((v) => v.slice(0, libCursor) + v.slice(libCursor + 1));
         }
         setLibError(null);
         return;

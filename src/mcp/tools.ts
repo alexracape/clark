@@ -53,7 +53,10 @@ export interface ToolResult {
 export interface ToolsConfig {
   /** Dynamic getter for the canvas broker. Returns null when no canvas is open. */
   getBroker: () => CanvasBroker | null;
-  vaultDir: string;
+  /** Legacy static vault dir (kept for compatibility in tests). */
+  vaultDir?: string;
+  /** Dynamic getter for vault/library dir (preferred). */
+  getVaultDir?: () => string;
   /** Dynamic getter for canvas save function. Returns null when no canvas is open. */
   getSaveCanvas: () => (() => Promise<void>) | null;
 }
@@ -62,6 +65,8 @@ export interface ToolsConfig {
  * Create all tool definitions with their handlers wired to the given config.
  */
 export function createTools(config: ToolsConfig): ToolDefinition[] {
+  const currentVaultDir = () => config.getVaultDir?.() ?? config.vaultDir ?? ".";
+
   return [
     // --- File tools (vault-scoped) ---
 
@@ -84,8 +89,9 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         openWorldHint: false,
       },
       handler: async (input) => {
+        const vaultDir = currentVaultDir();
         const inputPath = input.path as string;
-        const absolutePath = resolveVaultPath(inputPath, config.vaultDir);
+        const absolutePath = resolveVaultPath(inputPath, vaultDir);
         if (!absolutePath) {
           return {
             content: [{ type: "text", text: "Error: path is outside the vault directory." }],
@@ -113,7 +119,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           // Markdown / text file
           const text = await Bun.file(absolutePath).text();
           const links = extractWikilinks(text);
-          const footer = await buildLinkFooter(links, config.vaultDir);
+          const footer = await buildLinkFooter(links, vaultDir);
           return { content: [{ type: "text", text: text + footer }] };
         } catch (err) {
           return {
@@ -143,9 +149,9 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         openWorldHint: false,
       },
       handler: async (input) => {
+        const vaultDir = currentVaultDir();
         const query = (input.query as string).toLowerCase();
-
-        const results = await searchDirectory(config.vaultDir, query);
+        const results = await searchDirectory(vaultDir, query);
         if (results.length === 0) {
           return { content: [{ type: "text", text: `No results found for "${query}"` }] };
         }
@@ -182,8 +188,9 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         openWorldHint: false,
       },
       handler: async (input) => {
+        const vaultDir = currentVaultDir();
         const subPath = (input.path as string | undefined) ?? ".";
-        const absolutePath = resolveVaultPath(subPath, config.vaultDir);
+        const absolutePath = resolveVaultPath(subPath, vaultDir);
         if (!absolutePath) {
           return {
             content: [{ type: "text", text: "Error: path is outside the vault directory." }],
@@ -233,8 +240,9 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         openWorldHint: false,
       },
       handler: async (input) => {
+        const vaultDir = currentVaultDir();
         const inputPath = input.path as string;
-        const absolutePath = resolveVaultPath(inputPath, config.vaultDir);
+        const absolutePath = resolveVaultPath(inputPath, vaultDir);
         if (!absolutePath) {
           return {
             content: [{ type: "text", text: "Error: path is outside the vault directory." }],
@@ -292,8 +300,9 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         openWorldHint: false,
       },
       handler: async (input) => {
+        const vaultDir = currentVaultDir();
         const inputPath = input.path as string;
-        const absolutePath = resolveVaultPath(inputPath, config.vaultDir);
+        const absolutePath = resolveVaultPath(inputPath, vaultDir);
         if (!absolutePath) {
           return {
             content: [{ type: "text", text: "Error: path is outside the vault directory." }],

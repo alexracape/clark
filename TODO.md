@@ -4,8 +4,6 @@ Some future enhancements and things that need fixing.
 - Styling
 - Allow users to toggle between PDF and Canvas mode.
   - Export as PDF would not be allowd for Canvas
-- Allow users to switch which canvas is active maybe with /canvas or even from iPad
-- Debug new page creation on single canvas
 
 ## LLMs
 
@@ -13,13 +11,11 @@ Some future enhancements and things that need fixing.
 
 ## TUI
 - A little jumpiness in the UI when toggling some / menus
-- / then delete fails to register the delete
-- /invalid_command should throw an error instead of sending it to the LLM
-- /notes should be switched to /library and it should allow you to switch that path if you want
 - /resource needs to accept file upload with file explorer, drag-and-drop, or something
 - Need to refine the /structures commands
   - The model's responses are too verbose and need prompting work
   - Should look into ways to collect args like a conversational process in moveworks
+- /canvas should let the user switch the active canvas
 
 
 ## Misc.

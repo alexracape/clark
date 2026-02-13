@@ -177,6 +177,8 @@ describe("App", () => {
         },
         onOpenCanvas: async (name: string) => ({ url: `http://localhost:3000` }),
         listCanvases: async () => [],
+        getLibraryPath: () => TEST_VAULT,
+        onSetLibraryPath: async (path: string) => `Library set to: ${path}`,
         skills: [],
       },
     };

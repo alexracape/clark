@@ -264,6 +264,8 @@ export function ModelPicker({
       if (cur > 0) {
         setApiKeySync(val.slice(0, cur - 1) + val.slice(cur));
         setCursorSync(cur - 1);
+      } else if (cur < val.length) {
+        setApiKeySync(val.slice(0, cur) + val.slice(cur + 1));
       }
       setError(null);
       return;

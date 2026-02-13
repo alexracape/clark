@@ -62,7 +62,7 @@ describe("COMMANDS", () => {
     expect(names).toContain("canvas");
     expect(names).toContain("export");
     expect(names).toContain("save");
-    expect(names).toContain("notes");
+    expect(names).toContain("library");
     expect(names).toContain("model");
     expect(names).toContain("context");
     expect(names).toContain("compact");
@@ -90,7 +90,7 @@ describe("COMMANDS", () => {
     expect(filter("h")).toHaveLength(1); // help
     expect(filter("e")).toHaveLength(1); // export
     expect(filter("m")).toHaveLength(1); // model
-    expect(filter("n")).toHaveLength(1); // notes
+    expect(filter("l")).toHaveLength(1); // library
   });
 });
 
