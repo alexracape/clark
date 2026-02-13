@@ -8,6 +8,7 @@
 
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { clarkStructuresDirPath } from "./library.ts";
 
 export interface Skill {
   /** Slash command slug: "Problem Set.md" → "problem_set" */
@@ -50,7 +51,7 @@ export function extractPurpose(content: string): string {
  * Returns [] if the directory doesn't exist.
  */
 export async function loadSkills(vaultDir: string): Promise<Skill[]> {
-  const structuresDir = join(vaultDir, "Structures");
+  const structuresDir = clarkStructuresDirPath(vaultDir);
   try {
     const entries = await readdir(structuresDir);
     const mdFiles = entries.filter((f) => f.endsWith(".md"));

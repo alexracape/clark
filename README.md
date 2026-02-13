@@ -14,8 +14,9 @@ bun install
 # Start the full app (TUI + canvas server)
 bun run start
 
-# With a notes vault
-bun run start -- --notes ~/Notes/CS229
+# Start in a specific workspace
+cd ~/Notes/CS229
+bun run start
 
 # Dev mode with hot reload
 bun run dev

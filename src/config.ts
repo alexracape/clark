@@ -19,10 +19,8 @@ export interface ClarkConfig {
   openaiApiKey?: string;
   geminiApiKey?: string;
   ollamaBaseUrl?: string;
-  /** Directory for raw resources (PDFs, images, slides) */
-  resourcePath?: string;
-  /** Directory for canvas exports and handwritten work */
-  canvasPath?: string;
+  /** Default directory for PDF exports from /export and export_pdf. */
+  pdfExportDir?: string;
 }
 
 async function ensureDir(dir: string) {

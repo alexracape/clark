@@ -57,6 +57,8 @@ export interface ToolsConfig {
   vaultDir?: string;
   /** Dynamic getter for vault/library dir (preferred). */
   getVaultDir?: () => string;
+  /** Dynamic getter for default PDF export directory. */
+  getExportDir?: () => string;
   /** Dynamic getter for canvas save function. Returns null when no canvas is open. */
   getSaveCanvas: () => (() => Promise<void>) | null;
 }
@@ -66,6 +68,7 @@ export interface ToolsConfig {
  */
 export function createTools(config: ToolsConfig): ToolDefinition[] {
   const currentVaultDir = () => config.getVaultDir?.() ?? config.vaultDir ?? ".";
+  const currentExportDir = () => config.getExportDir?.() ?? process.cwd();
 
   return [
     // --- File tools (vault-scoped) ---
@@ -385,13 +388,13 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         "Export all canvas pages as an A4 PDF file. Returns the file path.",
       inputSchema: {
         type: "object",
-        properties: {
-          output_path: {
-            type: "string",
-            description: "Output file path for the PDF (defaults to ./output.pdf)",
+          properties: {
+            output_path: {
+              type: "string",
+              description: "Output file path for the PDF (defaults to <export-dir>/clark-export.pdf)",
+            },
           },
         },
-      },
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -405,7 +408,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
             isError: true,
           };
         }
-        const outputPath = (input.output_path as string) ?? "./output.pdf";
+        const outputPath = (input.output_path as string) ?? join(currentExportDir(), "clark-export.pdf");
         try {
           const response = await broker.requestExport();
           const path = await exportPDFToFile(response.pages, outputPath);

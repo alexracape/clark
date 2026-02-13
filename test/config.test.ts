@@ -315,8 +315,7 @@ describe("saveConfig / loadConfig (file I/O)", () => {
       provider: "gemini",
       model: "gemini-2.5-flash",
       geminiApiKey: "AItest123",
-      resourcePath: "/notes",
-      canvasPath: "/canvas",
+      pdfExportDir: "/exports",
     };
 
     await saveConfig(fullConfig, tmpConfigPath);

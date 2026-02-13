@@ -3,7 +3,7 @@
  */
 
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, readdir } from "node:fs/promises";
+import { mkdtemp, rm, readdir, mkdir } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -106,33 +106,44 @@ describe("scaffoldLibrary", () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  test("creates top-level directories", async () => {
+  test("always creates Clark core directories", async () => {
+    const libPath = join(tmpDir, "mylib");
+    await scaffoldLibrary(libPath);
+
+    const dirs = await readdir(libPath);
+    expect(dirs).toContain("Clark");
+    const clarkDirs = await readdir(join(libPath, "Clark"));
+    expect(clarkDirs).toContain("Canvas");
+    expect(clarkDirs).toContain("Structures");
+    expect(clarkDirs).toContain("CLARK.md");
+  });
+
+  test("creates default top-level directories when workspace starts empty", async () => {
     const libPath = join(tmpDir, "mylib");
     await scaffoldLibrary(libPath);
 
     const dirs = await readdir(libPath);
     expect(dirs).toContain("Notes");
     expect(dirs).toContain("Resources");
-    expect(dirs).toContain("Structures");
     expect(dirs).toContain("Templates");
   });
 
-  test("creates Resources subdirectories", async () => {
+  test("creates Resources subdirectories (without legacy Canvas)", async () => {
     const libPath = join(tmpDir, "mylib");
     await scaffoldLibrary(libPath);
 
     const resourceDirs = await readdir(join(libPath, "Resources"));
-    expect(resourceDirs).toContain("Canvas");
     expect(resourceDirs).toContain("Images");
     expect(resourceDirs).toContain("PDFs");
     expect(resourceDirs).toContain("Transcriptions");
+    expect(resourceDirs).not.toContain("Canvas");
   });
 
-  test("creates all Structure template files", async () => {
+  test("creates all Structure template files under Clark/Structures", async () => {
     const libPath = join(tmpDir, "mylib");
     await scaffoldLibrary(libPath);
 
-    const structureFiles = await readdir(join(libPath, "Structures"));
+    const structureFiles = await readdir(join(libPath, "Clark", "Structures"));
     expect(structureFiles).toContain("Class.md");
     expect(structureFiles).toContain("Problem Set.md");
     expect(structureFiles).toContain("Idea.md");
@@ -153,17 +164,47 @@ describe("scaffoldLibrary", () => {
     const libPath = join(tmpDir, "mylib");
     await scaffoldLibrary(libPath);
 
-    const classContent = await Bun.file(join(libPath, "Structures", "Class.md")).text();
+    const classContent = await Bun.file(join(libPath, "Clark", "Structures", "Class.md")).text();
     expect(classContent).toContain("## Purpose");
     expect(classContent).toContain("#class");
     expect(classContent).toContain("Concepts");
 
-    const psContent = await Bun.file(join(libPath, "Structures", "Problem Set.md")).text();
+    const psContent = await Bun.file(join(libPath, "Clark", "Structures", "Problem Set.md")).text();
     expect(psContent).toContain("#problem_set");
 
-    const quoteContent = await Bun.file(join(libPath, "Structures", "Quote.md")).text();
+    const quoteContent = await Bun.file(join(libPath, "Clark", "Structures", "Quote.md")).text();
     expect(quoteContent).toContain("#quote");
     expect(quoteContent).toContain("Yoda");
+  });
+
+  test("creates an empty CLARK.md by default", async () => {
+    const libPath = join(tmpDir, "mylib");
+    await scaffoldLibrary(libPath);
+    const content = await Bun.file(join(libPath, "Clark", "CLARK.md")).text();
+    expect(content).toBe("");
+  });
+
+  test("does not scaffold top-level defaults when workspace already has content", async () => {
+    const libPath = join(tmpDir, "existing");
+    await mkdir(libPath, { recursive: true });
+    await Bun.write(join(libPath, "existing-note.md"), "# Existing");
+    await scaffoldLibrary(libPath);
+
+    const dirs = await readdir(libPath);
+    expect(dirs).toContain("Clark");
+    expect(dirs).not.toContain("Notes");
+    expect(dirs).not.toContain("Resources");
+    expect(dirs).not.toContain("Templates");
+  });
+
+  test("does not overwrite existing CLARK.md", async () => {
+    const libPath = join(tmpDir, "existing");
+    await mkdir(join(libPath, "Clark"), { recursive: true });
+    await Bun.write(join(libPath, "Clark", "CLARK.md"), "custom config");
+    await scaffoldLibrary(libPath);
+
+    const content = await Bun.file(join(libPath, "Clark", "CLARK.md")).text();
+    expect(content).toBe("custom config");
   });
 
   test("is idempotent (second run does not fail)", async () => {

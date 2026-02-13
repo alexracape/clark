@@ -166,6 +166,7 @@ describe("App", () => {
       appProps: {
         provider,
         model: "mock-model",
+        config: {},
         conversation,
         systemPrompt: "You are a test tutor.",
         tools,
@@ -177,8 +178,6 @@ describe("App", () => {
         },
         onOpenCanvas: async (name: string) => ({ url: `http://localhost:3000` }),
         listCanvases: async () => [],
-        getLibraryPath: () => TEST_VAULT,
-        onSetLibraryPath: async (path: string) => `Library set to: ${path}`,
         skills: [],
       },
     };
@@ -359,6 +358,7 @@ describe("App", () => {
       <App
         provider={provider}
         model="mock"
+        config={{}}
         conversation={conversation}
         systemPrompt="test"
         tools={tools}

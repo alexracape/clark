@@ -28,7 +28,6 @@ export const BUILTIN_COMMANDS: CommandEntry[] = [
   { name: "canvas", description: "Open or show active canvas" },
   { name: "export", description: "Export canvas as A4 PDF" },
   { name: "save", description: "Save canvas state to disk" },
-  { name: "library", description: "Show or set library directory" },
   { name: "model", description: "Switch model and provider" },
   { name: "context", description: "Show context window usage" },
   { name: "compact", description: "Summarize conversation to save context" },

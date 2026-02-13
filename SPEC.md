@@ -81,54 +81,58 @@ This is the simplest approach and always works during active tutoring sessions (
 - On first run, an onboarding flow prompts for:
   1. LLM provider selection (Anthropic, OpenAI, Gemini, or Ollama)
   2. API key entry (skipped for Ollama)
-  3. Library directory path (default: `~/Clark`) — existing vaults are detected; new paths are scaffolded with a standard directory structure
+- Clark scaffolds the current working directory on startup:
+  - Always creates `Clark/`, `Clark/Canvas/`, `Clark/Structures/`, and `Clark/CLARK.md`
+  - If the working directory is empty, also creates default top-level folders (`Notes`, `Resources`, `Templates`)
 - Config is saved to `~/.clark/config.json`
 - Session is ephemeral — conversation is not persisted across runs (v1)
 
 **Slash commands (built-in):**
 - `/help` — Show available commands (includes dynamic skill commands)
 - `/canvas` — Open or show active canvas (shows canvas picker if none open)
-- `/export [path]` — Export canvas pages as A4 PDF (default: `<canvasDir>/clark-export.pdf`)
+- `/export [path]` — Export canvas pages as A4 PDF (default: `<pdfExportDir>/<canvasName>.pdf`, fallback `./<canvasName>.pdf`)
 - `/save` — Manually save canvas state to disk
-- `/notes [path]` — Show or set notes vault directory
 - `/model` — Switch model and provider (shows interactive picker)
 - `/context` — Show context window usage breakdown
 - `/compact` — Summarize conversation to reclaim context tokens
 - `/clear` — Clear conversation history
 
-**Dynamic skill commands (from Structures/):**
-- At startup, Clark scans `<vault>/Structures/` for `.md` files
+**Dynamic skill commands (from Clark/Structures/):**
+- At startup, Clark scans `<workspace>/Clark/Structures/` for `.md` files
 - Each Structure file becomes a slash command (e.g., `Class.md` → `/class`, `Problem Set.md` → `/problem_set`)
 - When invoked, the Structure's content is appended to the system prompt for that conversation turn
 - The LLM uses file tools to help the student create the structure, following the Socratic method
 - Accepts optional arguments: `/class CS101` pre-fills context; bare `/class` lets the LLM ask
 - One-shot: skill augmentation is cleared after the conversation turn completes
 
-### 2. Library System
+### 2. Workspace System
 
-The library is a user-specified directory for notes, resources, and structures. It replaces the concept of a "vault" from earlier iterations.
+Clark assumes the current working directory is the student's workspace root.
 
 **Directory structure:**
 ```
-<library>/
+<workspace>/
 ├── Notes/                  # Markdown notes
 ├── Resources/
-│   ├── Canvas/             # tldraw canvas files (.tldr)
 │   ├── Images/             # Images, diagrams
 │   ├── PDFs/               # PDF documents
 │   └── Transcriptions/     # Markdown transcriptions of resources
-├── Structures/             # Structure definitions (also serve as skills)
-│   ├── Class.md
-│   ├── Idea.md
-│   ├── Paper.md
-│   ├── Problem Set.md
-│   ├── Quote.md
-│   └── Resource.md
 └── Templates/
     └── Paper Template.md
+
+<workspace>/Clark/
+├── CLARK.md                # Optional local config/context injected into system prompt
+├── Canvas/                 # tldraw canvas files (.tldr)
+└── Structures/             # Structure definitions (also serve as skills)
+    ├── Class.md
+    ├── Idea.md
+    ├── Paper.md
+    ├── Problem Set.md
+    ├── Quote.md
+    └── Resource.md
 ```
 
-**Scaffolding:** New libraries are created via `scaffoldLibrary()` in `src/library.ts`, which writes the directory tree and all Structure/Template files. The same scaffolding runs during onboarding when a user chooses a new path.
+**Scaffolding:** `scaffoldLibrary()` in `src/library.ts` always creates the Clark core directories/files. It only creates top-level defaults when the workspace starts empty.
 
 **Structures:** Each Structure file contains `## Purpose`, `## Generation`, and optionally `## Template` sections. The Purpose describes what the structure is for; the Generation section contains LLM-oriented instructions for creating instances; the Template section provides the markdown template. These files double as skill definitions for dynamic slash commands.
 
@@ -169,7 +173,7 @@ const room = new TLSocketRoom({ storage })
 
 #### Canvas Picker
 
-When the user types `/canvas`, a picker UI shows existing `.tldr` files from `<vault>/Resources/Canvas/` and allows creating new canvases by typing a name. The canvas server starts on the configured port (default 3000).
+When the user types `/canvas`, a picker UI shows existing `.tldr` files from `<workspace>/Clark/Canvas/` and allows creating new canvases by typing a name. The canvas server starts on the configured port (default 3000).
 
 #### Page-Based UI
 
@@ -199,7 +203,7 @@ The tldraw Agent SDK defines a pattern for giving AI models rich context about c
 
 #### Persistence
 
-- Canvas state is stored as `.tldr` files in `<vault>/Resources/Canvas/`
+- Canvas state is stored as `.tldr` files in `<workspace>/Clark/Canvas/`
 - `InMemorySyncStorage.onChange()` fires on every canvas change
 - Changes are debounced and the full document snapshot is serialized to disk
 - The `/save` command triggers an immediate save
@@ -210,7 +214,7 @@ The tldraw Agent SDK defines a pattern for giving AI models rich context about c
 - The iPad client iterates through all pages, calling `editor.toImage()` on each with the frame bounds and print resolution (300 DPI)
 - Page images are sent back to the server via WebSocket
 - The server composes them into a multi-page A4 PDF using `pdf-lib`
-- PDF is written to disk (default: `<canvasDir>/clark-export.pdf`)
+- PDF is written to disk (default export dir is `pdfExportDir` from config, else working directory)
 
 ### 4. MCP Server (Context + Canvas Tools)
 
@@ -320,14 +324,14 @@ clark/
 ├── src/
 │   ├── config.ts              # Config persistence (~/.clark/config.json)
 │   ├── library.ts             # Library scaffolding (directory structure + templates)
-│   ├── skills.ts              # Dynamic skills from Structures/ (slug, load, prompt)
+│   ├── skills.ts              # Dynamic skills from Clark/Structures/ (slug, load, prompt)
 │   │
 │   ├── tui/                   # Ink-based terminal UI
 │   │   ├── app.tsx            # Root Ink component (conversation loop, tool dispatch)
 │   │   ├── chat.tsx           # Chat message display
 │   │   ├── input.tsx          # User input with slash command hints + tab completion
 │   │   ├── status.tsx         # Status bar (model, canvas, thinking)
-│   │   ├── onboarding.tsx     # First-run setup (provider, API key, library path)
+│   │   ├── onboarding.tsx     # First-run setup (provider, API key)
 │   │   ├── model-picker.tsx   # Interactive model/provider switcher
 │   │   ├── canvas-picker.tsx  # Canvas file picker (open existing or create new)
 │   │   ├── context.ts         # Context window usage display
@@ -377,11 +381,13 @@ clark/
 └── test/test_vault/           # Sample library for tests
     ├── Notes/                  # Markdown notes with wikilinks
     ├── Resources/
-    │   ├── Canvas/             # Canvas files
     │   ├── Images/             # Test images
     │   ├── PDFs/               # PDF documents
     │   └── Transcriptions/     # Document transcriptions
-    ├── Structures/             # Structure definitions (skill files)
+    ├── Clark/
+    │   ├── CLARK.md
+    │   ├── Canvas/             # Canvas files
+    │   └── Structures/         # Structure definitions (skill files)
     └── Templates/              # Note templates
 ```
 
@@ -406,7 +412,7 @@ Dev dependencies: `@types/bun`, `@types/react`, `@types/pdf-parse`, `@types/yarg
 
 ## Configuration
 
-Clark uses environment variables, CLI flags, and a persistent config file at `~/.clark/config.json`. On first run, an onboarding flow prompts for provider, API key, and library path, saving them to the config file. Environment variables take precedence over saved config.
+Clark uses environment variables, CLI flags, and a persistent config file at `~/.clark/config.json`. On first run, onboarding prompts for provider and API key, then scaffolds the current working directory. Environment variables take precedence over saved config.
 
 ```bash
 # API keys can be set via env or saved during onboarding
@@ -414,17 +420,17 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export OPENAI_API_KEY=sk-...
 export GOOGLE_API_KEY=AI...
 
-# Run clark with a notes library
-clark --notes ~/Clark
+# Run clark from your workspace directory
+cd ~/Clark
+clark
 
-# Or with explicit provider
+# Or with explicit provider/model
 clark --provider anthropic --model claude-sonnet-4-5-20250929
 ```
 
 **CLI flags:**
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--notes <path>` | `~/Clark` (from onboarding) | Path to notes library directory |
 | `--provider` | `anthropic` | LLM provider (`anthropic`, `openai`, `gemini`, `ollama`) |
 | `--model` | provider default | Specific model ID |
 | `--port` | `3000` | Port for tldraw canvas server |
@@ -438,8 +444,7 @@ interface ClarkConfig {
   openaiApiKey?: string;
   geminiApiKey?: string;
   ollamaBaseUrl?: string;
-  resourcePath?: string;  // Library directory path
-  canvasPath?: string;
+  pdfExportDir?: string;  // Default PDF export directory
 }
 ```
 

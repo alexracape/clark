@@ -6,6 +6,7 @@ Some future enhancements and things that need fixing.
   - Export as PDF would not be allowd for Canvas
 
 ## LLMs
+- Add default CLARK.md file
 
 ## MCP
 

@@ -20,6 +20,7 @@ if (!vaultDir) {
 await startMCPServer({
   getBroker: () => null,
   vaultDir,
+  getExportDir: () => vaultDir,
   getSaveCanvas: () => null,
   transport: "stdio",
 });
