@@ -3,7 +3,16 @@
  */
 
 import { test, expect, describe } from "bun:test";
-import { parseSlashCommand, COMMANDS, BUILTIN_COMMANDS, registerCommands } from "../src/tui/input.tsx";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  parseSlashCommand,
+  COMMANDS,
+  BUILTIN_COMMANDS,
+  registerCommands,
+  getExportPathSuggestions,
+} from "../src/tui/input.tsx";
 import { CommandHistory } from "../src/tui/history.ts";
 
 describe("parseSlashCommand", () => {
@@ -61,7 +70,6 @@ describe("COMMANDS", () => {
     expect(names).toContain("help");
     expect(names).toContain("canvas");
     expect(names).toContain("export");
-    expect(names).toContain("save");
     expect(names).toContain("model");
     expect(names).toContain("context");
     expect(names).toContain("compact");
@@ -80,8 +88,8 @@ describe("COMMANDS", () => {
       COMMANDS.filter((c) => c.name.startsWith(partial));
 
     expect(filter("")).toHaveLength(COMMANDS.length); // all commands
-    expect(filter("s")).toHaveLength(1); // save
-    expect(filter("sa")).toHaveLength(1); // save
+    expect(filter("s")).toHaveLength(0); // no save command
+    expect(filter("sa")).toHaveLength(0); // no save command
     expect(filter("c")).toHaveLength(4); // canvas, context, compact, clear
     expect(filter("cl")).toHaveLength(1); // clear
     expect(filter("co")).toHaveLength(2); // context, compact
@@ -189,5 +197,57 @@ describe("CommandHistory", () => {
     h.push("third");
     expect(h.up("")).toBe("third");
     expect(h.up("")).toBe("second");
+  });
+});
+
+describe("getExportPathSuggestions", () => {
+  test("lists subdirectories when typing /export with no path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "clark-input-export-"));
+    try {
+      await mkdir(join(dir, "alpha"));
+      await mkdir(join(dir, "beta"));
+      await writeFile(join(dir, "notes.txt"), "x");
+
+      const hints = getExportPathSuggestions("/export ", dir);
+      const labels = hints.map((h) => h.display);
+      expect(labels).toContain("alpha/");
+      expect(labels).toContain("beta/");
+      expect(labels).not.toContain("notes.txt");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("filters suggestions by typed directory prefix", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "clark-input-export-"));
+    try {
+      await mkdir(join(dir, "exports"));
+      await mkdir(join(dir, "examples"));
+      await mkdir(join(dir, "misc"));
+
+      const hints = getExportPathSuggestions("/export ex", dir);
+      const labels = hints.map((h) => h.display);
+      expect(labels).toContain("examples/");
+      expect(labels).toContain("exports/");
+      expect(labels).not.toContain("misc/");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("lists nested subdirectories based on the current typed path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "clark-input-export-"));
+    try {
+      await mkdir(join(dir, "exports"));
+      await mkdir(join(dir, "exports", "final"));
+      await mkdir(join(dir, "exports", "drafts"));
+
+      const hints = getExportPathSuggestions("/export exports/", dir);
+      const labels = hints.map((h) => h.display);
+      expect(labels).toContain("exports/drafts/");
+      expect(labels).toContain("exports/final/");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

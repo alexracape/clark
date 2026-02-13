@@ -38,16 +38,6 @@ The main process (`index.ts`) starts three components in a single Bun process:
 
 3. **MCP server** — Exposes tools to the LLM for reading files, searching notes, and interacting with the canvas. Canvas tools (snapshot, export) work by sending a WebSocket message to the iPad client, which performs the operation using tldraw's browser-based export APIs and returns the result.
 
-### Why no CanvasManager?
-
-tldraw provides `TLSocketRoom` + `InMemorySyncStorage` which already handle:
-- Authoritative document state on the server
-- WebSocket sync with the iPad client
-- Snapshot serialization (via `storage.getSnapshot()`)
-- Change notifications (via `onChange` callback)
-
-There is no need for a custom state manager. The MCP server gets a reference to the `TLSocketRoom` instance for persistence operations, and communicates with the iPad client via WebSocket for rendering operations (since tldraw's image export requires the browser DOM).
-
 ### Data flow for canvas snapshots
 
 Since tldraw's export APIs (`editor.toImage()`, `editor.getSvgString()`) require a browser DOM, snapshots are generated client-side:
@@ -101,7 +91,7 @@ This is the simplest approach and always works during active tutoring sessions (
 - At startup, Clark scans `<workspace>/Clark/Structures/` for `.md` files
 - Each Structure file becomes a slash command (e.g., `Class.md` → `/class`, `Problem Set.md` → `/problem_set`)
 - When invoked, the Structure's content is appended to the system prompt for that conversation turn
-- The LLM uses file tools to help the student create the structure, following the Socratic method
+- The LLM uses file tools to help the student create the structure
 - Accepts optional arguments: `/class CS101` pre-fills context; bare `/class` lets the LLM ask
 - One-shot: skill augmentation is cleared after the conversation turn completes
 

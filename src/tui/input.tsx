@@ -4,7 +4,10 @@
 
 import React, { useState, useRef, useMemo } from "react";
 import { Box, Text, useInput, useApp } from "ink";
+import { readdirSync } from "node:fs";
+import { resolve } from "node:path";
 import type { CommandHistory } from "./history.ts";
+import { expandPath } from "../library.ts";
 
 export interface InputProps {
   onSubmit: (text: string) => void;
@@ -22,12 +25,17 @@ export interface CommandEntry {
   description: string;
 }
 
+export interface ExportPathSuggestion {
+  value: string;
+  display: string;
+  description: string;
+}
+
 /** Built-in commands (always available) */
 export const BUILTIN_COMMANDS: CommandEntry[] = [
   { name: "help", description: "Show available commands" },
   { name: "canvas", description: "Open or show active canvas" },
   { name: "export", description: "Export canvas as A4 PDF" },
-  { name: "save", description: "Save canvas state to disk" },
   { name: "model", description: "Switch model and provider" },
   { name: "context", description: "Show context window usage" },
   { name: "compact", description: "Summarize conversation to save context" },
@@ -58,6 +66,61 @@ export function parseSlashCommand(text: string): SlashCommand | null {
     name: trimmed.slice(1, spaceIndex),
     args: trimmed.slice(spaceIndex + 1).trim(),
   };
+}
+
+/**
+ * Suggest /export path completions based on subdirectories at the current input path.
+ */
+export function getExportPathSuggestions(
+  value: string,
+  cwd = process.cwd(),
+  maxResults = 8,
+): ExportPathSuggestion[] {
+  if (!value.startsWith("/export ")) return [];
+
+  const rawArg = value.slice("/export ".length);
+  const trimmedArg = rawArg.trimStart();
+  const leadingWhitespace = rawArg.slice(0, rawArg.length - trimmedArg.length);
+
+  const pathInput = trimmedArg;
+  const lastForward = pathInput.lastIndexOf("/");
+  const lastBackward = pathInput.lastIndexOf("\\");
+  const lastSep = Math.max(lastForward, lastBackward);
+  const hasTrailingSep = /[\\/]$/.test(pathInput);
+
+  let typedBase = "";
+  let prefix = "";
+  if (hasTrailingSep) {
+    typedBase = pathInput;
+  } else if (lastSep >= 0) {
+    typedBase = pathInput.slice(0, lastSep + 1);
+    prefix = pathInput.slice(lastSep + 1);
+  } else {
+    prefix = pathInput;
+  }
+
+  const lookupBase = typedBase === "" ? "." : typedBase;
+  const lookupPath = resolve(cwd, expandPath(lookupBase));
+
+  try {
+    const dirs = readdirSync(lookupPath, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .filter((name) => name.toLowerCase().startsWith(prefix.toLowerCase()))
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, maxResults);
+
+    return dirs.map((dir) => {
+      const completedPath = `${leadingWhitespace}${typedBase}${dir}/`;
+      return {
+        value: `/export ${completedPath}`,
+        display: completedPath,
+        description: "directory",
+      };
+    });
+  } catch {
+    return [];
+  }
 }
 
 export function Input({ onSubmit, disabled = false, history }: InputProps) {
@@ -94,7 +157,34 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
     return COMMANDS.filter((c) => c.name.startsWith(partial));
   }, [value]);
 
-  const showHints = matchingCommands.length > 0 && !disabled && !browsingHistoryRef.current;
+  const exportPathSuggestions = useMemo(() => getExportPathSuggestions(value), [value]);
+
+  const hintMode = useMemo<"commands" | "path" | null>(() => {
+    if (matchingCommands.length > 0) return "commands";
+    if (exportPathSuggestions.length > 0) return "path";
+    return null;
+  }, [matchingCommands, exportPathSuggestions]);
+
+  const showHints = hintMode !== null && !disabled && !browsingHistoryRef.current;
+  const hintItems = useMemo(() => {
+    if (hintMode === "commands") {
+      return matchingCommands.map((cmd) => ({
+        key: `cmd:${cmd.name}`,
+        label: `/${cmd.name}`,
+        description: cmd.description,
+        completion: `/${cmd.name}`,
+      }));
+    }
+    if (hintMode === "path") {
+      return exportPathSuggestions.map((hint) => ({
+        key: `path:${hint.display}`,
+        label: hint.display,
+        description: hint.description,
+        completion: hint.value,
+      }));
+    }
+    return [];
+  }, [hintMode, matchingCommands, exportPathSuggestions]);
 
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
@@ -110,11 +200,10 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
 
     // Tab completion — fill in the selected hint
     if (key.tab && showHints) {
-      const selected = matchingCommands[hintIndex];
+      const selected = hintItems[hintIndex];
       if (selected) {
-        const completed = "/" + selected.name;
-        setValue(completed);
-        setCursor(completed.length);
+        setValue(selected.completion);
+        setCursor(selected.completion.length);
         setHintIndex(0);
       }
       return;
@@ -126,7 +215,7 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
       return;
     }
     if (showHints && key.downArrow) {
-      setHintIndex((i) => Math.min(matchingCommands.length - 1, i + 1));
+      setHintIndex((i) => Math.min(hintItems.length - 1, i + 1));
       return;
     }
 
@@ -152,7 +241,7 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
 
     if (key.return) {
       // If hints are showing, submit the highlighted command
-      if (showHints && !val.includes(" ")) {
+      if (showHints && hintMode === "commands" && !val.includes(" ")) {
         const selected = matchingCommands[hintIndex];
         if (selected) {
           const cmd = "/" + selected.name;
@@ -254,16 +343,16 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
     <Box flexDirection="column">
       {showHints && (
         <Box flexDirection="column" paddingX={3} marginBottom={0}>
-          {matchingCommands.map((cmd, i) => (
-            <Box key={cmd.name}>
+          {hintItems.map((hint, i) => (
+            <Box key={hint.key}>
               <Text color={i === hintIndex ? "blue" : "gray"} bold={i === hintIndex}>
                 {i === hintIndex ? "> " : "  "}
               </Text>
               <Text color={i === hintIndex ? "yellow" : "gray"} bold={i === hintIndex}>
-                {"/"}{cmd.name}
+                {hint.label}
               </Text>
               <Text color="gray" dimColor>
-                {"  "}{cmd.description}
+                {"  "}{hint.description}
               </Text>
             </Box>
           ))}

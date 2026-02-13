@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useCallback } from "react";
-import { Box, Text, Newline } from "ink";
+import { Box, Text } from "ink";
 import { Chat, type ChatMessage } from "./chat.tsx";
 import { Input, parseSlashCommand } from "./input.tsx";
 import { StatusBar } from "./status.tsx";
@@ -14,7 +14,7 @@ import { ModelPicker } from "./model-picker.tsx";
 import { CanvasPicker } from "./canvas-picker.tsx";
 import { createProvider } from "../llm/provider.ts";
 import { formatContextGrid } from "./context.ts";
-import type { LLMProvider, Tool, StreamChunk, MessageContent } from "../llm/provider.ts";
+import type { LLMProvider, Tool, StreamChunk } from "../llm/provider.ts";
 import { loadConfig, saveConfig, type ClarkConfig } from "../config.ts";
 import { Conversation } from "../llm/messages.ts";
 import type { ToolDefinition, ToolResult } from "../mcp/tools.ts";
@@ -32,6 +32,7 @@ export interface AppProps {
   onSlashCommand: (name: string, args: string) => Promise<string | null>;
   onOpenCanvas: (name: string) => Promise<{ url: string }>;
   listCanvases: () => Promise<string[]>;
+  getActiveCanvas?: () => { name: string; url: string } | null;
   history: CommandHistory;
   skills: Skill[];
 }
@@ -65,6 +66,7 @@ export function App({
   onSlashCommand,
   onOpenCanvas,
   listCanvases,
+  getActiveCanvas = () => null,
   history,
   skills,
 }: AppProps) {
@@ -82,7 +84,6 @@ export function App({
   const [showModelPicker, setShowModelPicker] = useState(false);
 
   // Canvas state — starts closed, populated when user opens via /canvas
-  const [canvasInfo, setCanvasInfo] = useState<{ name: string; url: string } | null>(null);
   const [showCanvasPicker, setShowCanvasPicker] = useState(false);
   const [canvasNames, setCanvasNames] = useState<string[]>([]);
 
@@ -212,7 +213,6 @@ export function App({
     setShowCanvasPicker(false);
     try {
       const { url } = await onOpenCanvas(name);
-      setCanvasInfo({ name, url });
       addMessage("system", `Canvas "${name}" opened at ${url}\nOpen this on your iPad to start drawing.`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -224,8 +224,8 @@ export function App({
     // Check for slash command
     const command = parseSlashCommand(text);
     if (command) {
-      // Intercept /canvas to show the picker (or info if already open)
-      if (command.name === "canvas" && !canvasInfo) {
+      // Intercept /canvas with no args to show the picker.
+      if (command.name === "canvas" && !command.args) {
         const names = await listCanvases();
         setCanvasNames(names);
         setShowCanvasPicker(true);
@@ -271,7 +271,9 @@ export function App({
     addMessage("user", text);
     conversation.addUserMessage(text);
     await runConversationTurn();
-  }, [conversation, runConversationTurn, onSlashCommand, addMessage, activeModel, systemPrompt, tools, skills]);
+  }, [conversation, runConversationTurn, onSlashCommand, addMessage, activeModel, systemPrompt, tools, skills, listCanvases]);
+
+  const canvasInfo = getActiveCanvas();
 
   return (
     <Box flexDirection="column">

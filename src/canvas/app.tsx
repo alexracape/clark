@@ -22,6 +22,7 @@ import type {
   ExportResponse,
   CanvasMessage,
 } from "./server.ts";
+import { shouldCheckTrailingEmptyFrameAfterCreate } from "./page-autocreate.ts";
 
 // A4 dimensions in points (matching pdf-export.ts)
 const A4_WIDTH = 595.28;
@@ -200,8 +201,8 @@ function CanvasApp() {
 
     // Auto-create: ensure there's always an empty frame at the bottom.
     // Uses setTimeout(0) so tldraw finishes auto-parenting before we check.
-    editor.sideEffects.registerAfterCreateHandler("shape", (shape) => {
-      if (shape.type === "frame") return;
+    editor.sideEffects.registerAfterCreateHandler("shape", (shape, source) => {
+      if (!shouldCheckTrailingEmptyFrameAfterCreate(shape, source)) return;
       setTimeout(() => ensureTrailingEmptyFrame(editor), 0);
     });
   }, []);

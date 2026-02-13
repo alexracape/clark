@@ -6,6 +6,8 @@
  */
 
 import { PDFDocument } from "pdf-lib";
+import { dirname } from "node:path";
+import { mkdir } from "node:fs/promises";
 
 /** A4 dimensions in points (72 DPI) */
 const A4_WIDTH = 595.28;
@@ -57,6 +59,7 @@ export async function composePDF(pages: PageImage[]): Promise<Uint8Array> {
  */
 export async function exportPDFToFile(pages: PageImage[], outputPath: string): Promise<string> {
   const pdfBytes = await composePDF(pages);
+  await mkdir(dirname(outputPath), { recursive: true });
   await Bun.write(outputPath, pdfBytes);
   return outputPath;
 }
