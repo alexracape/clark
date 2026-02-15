@@ -53,13 +53,15 @@ export async function listLocalModels(
  * for GGUF models closely approximates runtime RAM usage. We compare
  * against total system RAM and warn or throw accordingly.
  *
- * @returns The model size in bytes (for informational use).
+ * Also detects vision capability from model families.
+ *
+ * @returns The model size in bytes, RAM info, and vision support.
  * @throws If Ollama is unreachable, the model isn't pulled, or it exceeds total RAM.
  */
 export async function checkModelFits(
   modelName: string,
   client?: Ollama,
-): Promise<{ sizeBytes: number; totalRam: number; pct: number }> {
+): Promise<{ sizeBytes: number; totalRam: number; pct: number; supportsVision: boolean }> {
   const ollama = client ?? new Ollama();
 
   let modelInfo;
@@ -80,6 +82,12 @@ export async function checkModelFits(
         `  List available: ollama list`,
     );
   }
+
+  // Detect vision support from model families
+  const families: string[] = (modelInfo.details as any)?.families ?? [];
+  const supportsVision = families.some(
+    (f) => f === "clip" || f === "mllama",
+  );
 
   // Get model size from the list endpoint (show doesn't include size directly)
   let modelSizeBytes = 0;
@@ -120,20 +128,23 @@ export async function checkModelFits(
     );
   }
 
-  return { sizeBytes: modelSizeBytes, totalRam, pct };
+  return { sizeBytes: modelSizeBytes, totalRam, pct, supportsVision };
 }
 
 export class OllamaProvider implements LLMProvider {
   readonly name = "ollama";
-  readonly supportsVision = true;
+  readonly supportsVision: boolean;
 
   private client: Ollama;
   private model: string;
+  private maxTokens: number | undefined;
 
-  constructor(model: string) {
+  constructor(model: string, supportsVision = false, maxTokens?: number) {
     const host = process.env.OLLAMA_HOST ?? "http://localhost:11434";
     this.client = new Ollama({ host });
     this.model = model;
+    this.supportsVision = supportsVision;
+    this.maxTokens = maxTokens;
   }
 
   async *chat(
@@ -173,6 +184,7 @@ export class OllamaProvider implements LLMProvider {
               function: { name: c.name, arguments: c.input },
             });
           }
+          // Skip thinking content
         }
         ollamaMessages.push({
           role: "assistant",
@@ -184,7 +196,7 @@ export class OllamaProvider implements LLMProvider {
           if (c.type === "tool_result") {
             ollamaMessages.push({
               role: "tool",
-              content: typeof c.content === "string" ? c.content : "[image]",
+              content: typeof c.content === "string" ? c.content : c.content.map((img) => img.data).join(""),
             });
           }
         }
@@ -204,13 +216,50 @@ export class OllamaProvider implements LLMProvider {
       model: this.model,
       messages: ollamaMessages,
       ...(ollamaTools.length > 0 ? { tools: ollamaTools } : {}),
+      ...(this.maxTokens ? { options: { num_predict: this.maxTokens } } : {}),
       stream: true,
     });
 
+    // State for parsing <think>...</think> tags from deepseek-r1 style models
+    let inThinkBlock = false;
+    let buffer = "";
+
     for await (const chunk of stream) {
-      // Text content
+      // Text content — parse <think> tags
       if (chunk.message?.content) {
-        yield { type: "text_delta", text: chunk.message.content };
+        buffer += chunk.message.content;
+
+        while (buffer.length > 0) {
+          if (inThinkBlock) {
+            const closeIdx = buffer.indexOf("</think>");
+            if (closeIdx === -1) {
+              // Still inside think block, emit all buffered as thinking
+              yield { type: "thinking_delta", text: buffer };
+              buffer = "";
+            } else {
+              // Emit content before closing tag as thinking
+              if (closeIdx > 0) {
+                yield { type: "thinking_delta", text: buffer.slice(0, closeIdx) };
+              }
+              buffer = buffer.slice(closeIdx + "</think>".length);
+              inThinkBlock = false;
+            }
+          } else {
+            const openIdx = buffer.indexOf("<think>");
+            if (openIdx === -1) {
+              // No think tag — emit all as text
+              yield { type: "text_delta", text: buffer };
+              buffer = "";
+            } else {
+              // Emit content before opening tag as text
+              if (openIdx > 0) {
+                yield { type: "text_delta", text: buffer.slice(0, openIdx) };
+              }
+              buffer = buffer.slice(openIdx + "<think>".length);
+              inThinkBlock = true;
+            }
+          }
+        }
       }
 
       // Tool calls (Ollama sends them in a single chunk, not streamed)
@@ -228,6 +277,16 @@ export class OllamaProvider implements LLMProvider {
 
       // Done
       if (chunk.done) {
+        // Flush any remaining buffer
+        if (buffer.length > 0) {
+          if (inThinkBlock) {
+            yield { type: "thinking_delta", text: buffer };
+          } else {
+            yield { type: "text_delta", text: buffer };
+          }
+          buffer = "";
+        }
+
         const hasToolCalls = !!chunk.message?.tool_calls?.length;
         yield {
           type: "done",
@@ -243,11 +302,11 @@ export class OllamaProvider implements LLMProvider {
 }
 
 // Register this provider
-registerProvider("ollama", (model?) => {
+registerProvider("ollama", (model?, options?) => {
   if (!model) {
     throw new Error(
       "Ollama requires a model name. Use /model to pick one, or set CLARK_MODEL.",
     );
   }
-  return new OllamaProvider(model);
+  return new OllamaProvider(model, options?.supportsVision, options?.maxTokens);
 });

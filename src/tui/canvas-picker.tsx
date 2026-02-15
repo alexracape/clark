@@ -10,6 +10,7 @@ import React, { useMemo } from "react";
 import { Box, Text, useInput } from "ink";
 import { useLineEditor } from "./primitives/use-line-editor.ts";
 import { useSelectableList } from "./primitives/use-selectable-list.ts";
+import { validateCanvasName } from "../canvas/name.ts";
 
 export interface CanvasPickerProps {
   existingCanvases: string[];
@@ -19,6 +20,7 @@ export interface CanvasPickerProps {
 
 export function CanvasPicker({ existingCanvases, onSelect, onCancel }: CanvasPickerProps) {
   const editor = useLineEditor("");
+  const [error, setError] = React.useState<string | null>(null);
 
   const matchingCanvases = useMemo(() => {
     if (!editor.value) return existingCanvases;
@@ -56,12 +58,20 @@ export function CanvasPicker({ existingCanvases, onSelect, onCancel }: CanvasPic
     if (key.return) {
       const trimmed = editor.valueRef.current.trim();
       if (!trimmed && matchingCanvases.length > 0) {
+        setError(null);
         onSelect(matchingCanvases[list.selected]!);
       } else if (trimmed) {
         if (matchingCanvases.length > 0) {
+          setError(null);
           onSelect(matchingCanvases[list.selected]!);
         } else {
-          onSelect(trimmed);
+          const validated = validateCanvasName(trimmed);
+          if (!validated.ok) {
+            setError(validated.error);
+            return;
+          }
+          setError(null);
+          onSelect(validated.name);
         }
       }
       return;
@@ -70,6 +80,7 @@ export function CanvasPicker({ existingCanvases, onSelect, onCancel }: CanvasPic
     if (key.backspace || key.delete) {
       editor.backspaceOrDelete();
       list.reset();
+      setError(null);
       return;
     }
 
@@ -86,12 +97,14 @@ export function CanvasPicker({ existingCanvases, onSelect, onCancel }: CanvasPic
     if (key.ctrl && input === "u") {
       editor.clear();
       list.reset();
+      setError(null);
       return;
     }
 
     if (!key.ctrl && !key.meta && input) {
       editor.insert(input);
       list.reset();
+      setError(null);
     }
   });
 
@@ -129,6 +142,12 @@ export function CanvasPicker({ existingCanvases, onSelect, onCancel }: CanvasPic
         <Text color="yellow">{after}</Text>
       </Box>
       <Text> </Text>
+      {error && (
+        <Box paddingLeft={2}>
+          <Text color="red">{error}</Text>
+        </Box>
+      )}
+      {error && <Text> </Text>}
       <Text color="gray">
         {"  "}<Text color="gray">tab</Text> complete  <Text color="gray">{"↑↓"}</Text> navigate  <Text color="gray">enter</Text> open  <Text color="gray">esc</Text> cancel
       </Text>

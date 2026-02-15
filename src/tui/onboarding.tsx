@@ -4,7 +4,7 @@
 
 import React, { useState } from "react";
 import { Box, Text, useInput, useApp } from "ink";
-import { loadConfig, saveConfig, type ClarkConfig } from "../config.ts";
+import { loadConfig, saveConfig, setProviderApiKey, type ClarkConfig } from "../config.ts";
 import { scaffoldLibrary } from "../library.ts";
 import { useLineEditor } from "./primitives/use-line-editor.ts";
 import { useSelectableList } from "./primitives/use-selectable-list.ts";
@@ -102,21 +102,23 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           return;
         }
 
-        const keyField = provider.id === "anthropic"
-          ? "anthropicApiKey"
-          : provider.id === "gemini"
-            ? "geminiApiKey"
-            : "openaiApiKey";
-
         setIsSettingUp(true);
         setError(null);
-        completeSetup({
-          provider: provider.id,
-          [keyField]: trimmed,
-        }).catch((err) => {
-          setError(`Failed to finish setup: ${err instanceof Error ? err.message : String(err)}`);
-          setIsSettingUp(false);
-        });
+        loadConfig()
+          .then((current) => {
+            if (provider.id !== "anthropic" && provider.id !== "openai" && provider.id !== "gemini") {
+              throw new Error(`Unsupported provider: ${provider.id}`);
+            }
+            return setProviderApiKey(provider.id, trimmed, current);
+          })
+          .then((updated) => completeSetup({
+            ...updated,
+            provider: provider.id,
+          }))
+          .catch((err) => {
+            setError(`Failed to finish setup: ${err instanceof Error ? err.message : String(err)}`);
+            setIsSettingUp(false);
+          });
         return;
       }
 
@@ -219,7 +221,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         <Text color="gray" dimColor>
           You can get one from {provider.id === "anthropic" ? "console.anthropic.com" : provider.id === "gemini" ? "aistudio.google.com" : "platform.openai.com"}
         </Text>
-        <Text color="gray" dimColor>Saved to ~/.clark/config.json (set {provider.envVar} to override)</Text>
+        <Text color="gray" dimColor>Saved to macOS Keychain (set {provider.envVar} to override)</Text>
         <Text color="gray" dimColor> </Text>
         <Box paddingLeft={2}>
           <Text color="yellow">{before}</Text>

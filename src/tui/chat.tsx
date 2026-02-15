@@ -18,6 +18,8 @@ export interface ChatProps {
   messages: ChatMessage[];
   /** Partial streaming text from the assistant (shown below messages) */
   streamingText?: string;
+  /** Partial streaming thinking/reasoning from the assistant */
+  streamingThinking?: string;
 }
 
 function RoleLabel({ role }: { role: ChatMessage["role"] }) {
@@ -42,12 +44,21 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   );
 }
 
-export function Chat({ messages, streamingText }: ChatProps) {
+export function Chat({ messages, streamingText, streamingThinking }: ChatProps) {
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1}>
       {messages.map((msg, i) => (
         <MessageBubble key={i} message={msg} />
       ))}
+
+      {streamingThinking !== undefined && (
+        <Box flexDirection="column" marginBottom={1}>
+          <Text color="gray" dimColor bold>{"thinking "}</Text>
+          <Box marginLeft={2}>
+            <Text wrap="wrap" dimColor>{streamingThinking}</Text>
+          </Box>
+        </Box>
+      )}
 
       {streamingText !== undefined && (
         <Box flexDirection="column" marginBottom={1}>

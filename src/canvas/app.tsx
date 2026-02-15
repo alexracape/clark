@@ -110,9 +110,10 @@ function ensureTrailingEmptyFrame(editor: Editor) {
 function CanvasApp() {
   const editorRef = useRef<Editor | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const token = new URLSearchParams(window.location.search).get("token") ?? "";
 
   // Build sync URI from current page host
-  const syncUri = `ws://${window.location.host}/sync`;
+  const syncUri = `ws://${window.location.host}/sync?token=${encodeURIComponent(token)}`;
 
   // Connect to TLSocketRoom via useSync (following tldraw official example)
   const store = useSync({
@@ -123,7 +124,7 @@ function CanvasApp() {
   // --- Broker WebSocket (for snapshot/export requests) ---
 
   const connectBrokerWs = useCallback(() => {
-    const wsUrl = `ws://${window.location.host}/ws`;
+    const wsUrl = `ws://${window.location.host}/ws?token=${encodeURIComponent(token)}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -154,7 +155,7 @@ function CanvasApp() {
     ws.onerror = () => {
       ws.close();
     };
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     connectBrokerWs();

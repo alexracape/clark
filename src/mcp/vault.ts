@@ -5,8 +5,8 @@
  * and file type detection for the MCP tools.
  */
 
-import { readdir } from "node:fs/promises";
-import { join, extname, basename, resolve, relative } from "node:path";
+import { readdir, realpath } from "node:fs/promises";
+import { join, extname, basename, resolve, relative, dirname, sep } from "node:path";
 
 // --- Wikilink parsing ---
 
@@ -117,18 +117,67 @@ export async function buildLinkFooter(
 export function isWithinVault(filePath: string, vaultDir: string): boolean {
   const resolvedFile = resolve(filePath);
   const resolvedVault = resolve(vaultDir);
-  return resolvedFile.startsWith(resolvedVault + "/") || resolvedFile === resolvedVault;
+  return resolvedFile.startsWith(resolvedVault + sep) || resolvedFile === resolvedVault;
 }
 
 /**
  * Resolve a user-provided path (relative to vault) to an absolute path.
- * Returns null if the resolved path escapes the vault.
+ * Returns null if the resolved path escapes the vault, including via symlinks.
  */
-export function resolveVaultPath(inputPath: string, vaultDir: string): string | null {
-  const absolutePath = resolve(vaultDir, inputPath);
+export async function resolveVaultPath(inputPath: string, vaultDir: string): Promise<string | null> {
+  const resolvedVault = resolve(vaultDir);
+  const absolutePath = resolve(resolvedVault, inputPath);
   if (!isWithinVault(absolutePath, vaultDir)) {
     return null;
   }
+
+  // Resolve vault realpath once for robust symlink checks.
+  let vaultRealPath: string;
+  try {
+    vaultRealPath = await realpath(resolvedVault);
+  } catch {
+    return null;
+  }
+
+  // Existing targets can be checked directly.
+  try {
+    const targetRealPath = await realpath(absolutePath);
+    if (!isWithinVault(targetRealPath, vaultRealPath)) {
+      return null;
+    }
+    return absolutePath;
+  } catch {
+    // Nonexistent target (e.g. create_file): resolve nearest existing parent.
+  }
+
+  let cursor = dirname(absolutePath);
+  let ancestorRealPath: string | null = null;
+
+  while (isWithinVault(cursor, resolvedVault)) {
+    try {
+      ancestorRealPath = await realpath(cursor);
+      break;
+    } catch {
+      const parent = dirname(cursor);
+      if (parent === cursor) break;
+      cursor = parent;
+    }
+  }
+
+  if (!ancestorRealPath) {
+    return null;
+  }
+
+  if (!isWithinVault(ancestorRealPath, vaultRealPath)) {
+    return null;
+  }
+
+  const tail = relative(cursor, absolutePath);
+  const projectedTarget = resolve(ancestorRealPath, tail);
+  if (!isWithinVault(projectedTarget, vaultRealPath)) {
+    return null;
+  }
+
   return absolutePath;
 }
 

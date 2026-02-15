@@ -61,7 +61,17 @@ export class Conversation {
 
     for (const chunk of chunks) {
       switch (chunk.type) {
-        case "text_delta":
+        case "thinking_delta": {
+          // Merge consecutive thinking deltas
+          const lastThinking = content[content.length - 1];
+          if (lastThinking?.type === "thinking") {
+            lastThinking.text += chunk.text;
+          } else {
+            content.push({ type: "thinking", text: chunk.text });
+          }
+          break;
+        }
+        case "text_delta": {
           // Merge consecutive text deltas
           const last = content[content.length - 1];
           if (last?.type === "text") {
@@ -70,6 +80,7 @@ export class Conversation {
             content.push({ type: "text", text: chunk.text });
           }
           break;
+        }
         case "tool_use_start":
           // Flush any pending tool
           if (currentToolId) {
@@ -104,9 +115,13 @@ export class Conversation {
     return content;
   }
 
-  /** Get all messages for sending to the LLM */
+  /** Get all messages for sending to the LLM (filters out ephemeral thinking content) */
   getMessages(): Message[] {
-    return [...this.messages];
+    return this.messages.map((msg) => {
+      const filtered = msg.content.filter((c) => c.type !== "thinking");
+      if (filtered.length === msg.content.length) return msg;
+      return { ...msg, content: filtered };
+    });
   }
 
   /** Clear all messages */
@@ -127,11 +142,14 @@ export class Conversation {
     let userTokens = 0;
     let assistantTokens = 0;
     let toolTokens = 0;
+    let thinkingTokens = 0;
     let imageCount = 0;
 
     for (const msg of this.messages) {
       for (const part of msg.content) {
-        if (part.type === "text") {
+        if (part.type === "thinking") {
+          thinkingTokens += estimateTokens(part.text);
+        } else if (part.type === "text") {
           const tokens = estimateTokens(part.text);
           if (msg.role === "user") userTokens += tokens;
           else if (msg.role === "assistant") assistantTokens += tokens;
@@ -154,8 +172,9 @@ export class Conversation {
       userTokens,
       assistantTokens,
       toolTokens,
+      thinkingTokens,
       imageCount,
-      totalTokens: userTokens + assistantTokens + toolTokens,
+      totalTokens: userTokens + assistantTokens + toolTokens + thinkingTokens,
       messageCount: this.messages.length,
     };
   }
@@ -179,6 +198,7 @@ export interface ContextBreakdown {
   userTokens: number;
   assistantTokens: number;
   toolTokens: number;
+  thinkingTokens: number;
   imageCount: number;
   totalTokens: number;
   messageCount: number;

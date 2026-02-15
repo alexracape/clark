@@ -94,7 +94,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
       handler: async (input) => {
         const vaultDir = currentVaultDir();
         const inputPath = input.path as string;
-        const absolutePath = resolveVaultPath(inputPath, vaultDir);
+        const absolutePath = await resolveVaultPath(inputPath, vaultDir);
         if (!absolutePath) {
           return {
             content: [{ type: "text", text: "Error: path is outside the vault directory." }],
@@ -116,14 +116,14 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
 
           if (isPDFFile(absolutePath)) {
             const text = await extractPDFText(absolutePath);
-            return { content: [{ type: "text", text }] };
+            return { content: [{ type: "text", text: wrapFileContent(inputPath, text) }] };
           }
 
           // Markdown / text file
           const text = await Bun.file(absolutePath).text();
           const links = extractWikilinks(text);
           const footer = await buildLinkFooter(links, vaultDir);
-          return { content: [{ type: "text", text: text + footer }] };
+          return { content: [{ type: "text", text: wrapFileContent(inputPath, text + footer) }] };
         } catch (err) {
           return {
             content: [{ type: "text", text: `Error reading file: ${err}` }],
@@ -162,7 +162,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         const text = results
           .sort((a, b) => b.matchCount - a.matchCount)
           .slice(0, 10)
-          .map((r) => `### ${r.path} (${r.matchCount} matches)\n${r.snippets.join("\n...\n")}`)
+          .map((r) => `### ${r.path} (${r.matchCount} matches)\n${wrapFileContent(r.path, r.snippets.join("\n...\n"))}`)
           .join("\n\n---\n\n");
 
         return { content: [{ type: "text", text }] };
@@ -193,7 +193,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
       handler: async (input) => {
         const vaultDir = currentVaultDir();
         const subPath = (input.path as string | undefined) ?? ".";
-        const absolutePath = resolveVaultPath(subPath, vaultDir);
+        const absolutePath = await resolveVaultPath(subPath, vaultDir);
         if (!absolutePath) {
           return {
             content: [{ type: "text", text: "Error: path is outside the vault directory." }],
@@ -245,7 +245,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
       handler: async (input) => {
         const vaultDir = currentVaultDir();
         const inputPath = input.path as string;
-        const absolutePath = resolveVaultPath(inputPath, vaultDir);
+        const absolutePath = await resolveVaultPath(inputPath, vaultDir);
         if (!absolutePath) {
           return {
             content: [{ type: "text", text: "Error: path is outside the vault directory." }],
@@ -305,7 +305,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
       handler: async (input) => {
         const vaultDir = currentVaultDir();
         const inputPath = input.path as string;
-        const absolutePath = resolveVaultPath(inputPath, vaultDir);
+        const absolutePath = await resolveVaultPath(inputPath, vaultDir);
         if (!absolutePath) {
           return {
             content: [{ type: "text", text: "Error: path is outside the vault directory." }],
@@ -467,6 +467,10 @@ interface SearchResult {
   path: string;
   snippets: string[];
   matchCount: number;
+}
+
+function wrapFileContent(path: string, content: string): string {
+  return `<<<BEGIN_FILE_CONTENT path="${path}">>>\n${content}\n<<<END_FILE_CONTENT>>>`;
 }
 
 async function searchDirectory(dirPath: string, query: string): Promise<SearchResult[]> {

@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Clark/CLARK.md",
+                "file": "Notes/Reinforcement Learning.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "CLARK"
+              "title": "Reinforcement Learning"
             }
           }
         ]
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "Clark/CLARK.md",
+                "file": "Notes/Reinforcement Learning.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for CLARK"
+              "title": "Backlinks for Reinforcement Learning"
             }
           },
           {
@@ -113,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "Clark/CLARK.md",
+                "file": "Notes/Reinforcement Learning.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from CLARK"
+              "title": "Outgoing links from Reinforcement Learning"
             }
           },
           {
@@ -156,13 +156,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "Clark/CLARK.md",
+                "file": "Notes/Reinforcement Learning.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of CLARK"
+              "title": "Outline of Reinforcement Learning"
             }
           }
         ]
@@ -185,11 +185,17 @@
   },
   "active": "3da8c32852966050",
   "lastOpenFiles": [
-    "Clark/Structures/Resource.md",
+    "Notes/GRPO.md",
+    "Notes/Approximate Counting.md",
+    "Notes/Advanced Algorithms.md",
+    "Notes/RLHF.md",
+    "Notes/Untitled.md",
+    "Notes/Reinforcement Learning.md",
+    "Resources/Images/algorithms_hw1.pdf",
     "Clark/CLARK.md",
+    "Clark/Structures/Resource.md",
     "Clark/Untitled",
     "Clark",
-    "Clark/CLARK.md",
     "Clark/PDF",
     "Clark/Canvas",
     "Clark",
@@ -200,16 +206,9 @@
     "Clark/Structures/Class.md",
     "Resources/Transcriptions",
     "Clark/Structures/Quote.md",
-    "Notes/Advanced Algorithms.md",
     "Templates/Paper Template.md",
     "Clark/Structures",
-    "Notes/Untitled.md",
-    "Notes/RLHF.md",
-    "Notes/Approximate Counting.md",
     "Resources/Images/lecture_1_class_notes.png",
-    "Resources/Images/algorithms_hw1.pdf",
-    "Resources/PDFs/lecture_1.pdf",
-    "Notes/Reinforcement Learning.md",
-    "Notes/GRPO.md"
+    "Resources/PDFs/lecture_1.pdf"
   ]
 }

@@ -35,11 +35,17 @@ export interface ToolResultContent {
   isError?: boolean;
 }
 
+export interface ThinkingContent {
+  type: "thinking";
+  text: string;
+}
+
 export type MessageContent =
   | TextContent
   | ImageContent
   | ToolUseContent
-  | ToolResultContent;
+  | ToolResultContent
+  | ThinkingContent;
 
 export interface Message {
   role: Role;
@@ -84,12 +90,17 @@ export interface ToolInputDelta {
   input: string;
 }
 
+export interface ThinkingDelta {
+  type: "thinking_delta";
+  text: string;
+}
+
 export interface StreamDone {
   type: "done";
   stopReason: "end_turn" | "tool_use" | "max_tokens";
 }
 
-export type StreamChunk = TextDelta | ToolUseDelta | ToolInputDelta | StreamDone;
+export type StreamChunk = TextDelta | ThinkingDelta | ToolUseDelta | ToolInputDelta | StreamDone;
 
 // --- Provider interface ---
 
@@ -106,10 +117,26 @@ export interface LLMProvider {
 
 // --- Provider registry ---
 
-const providers = new Map<string, (model?: string) => LLMProvider>();
+const providers = new Map<string, (model?: string, options?: ProviderFactoryOptions) => LLMProvider>();
 
-export function registerProvider(name: string, factory: (model?: string) => LLMProvider) {
+export interface ProviderFactoryOptions {
+  apiKey?: string;
+  maxTokens?: number;
+  supportsVision?: boolean;
+}
+
+const providerOptions = new Map<string, ProviderFactoryOptions>();
+
+export function registerProvider(name: string, factory: (model?: string, options?: ProviderFactoryOptions) => LLMProvider) {
   providers.set(name, factory);
+}
+
+export function setProviderOptions(name: string, options?: ProviderFactoryOptions) {
+  if (!options) {
+    providerOptions.delete(name);
+    return;
+  }
+  providerOptions.set(name, options);
 }
 
 export function createProvider(name: string, model?: string): LLMProvider {
@@ -120,7 +147,7 @@ export function createProvider(name: string, model?: string): LLMProvider {
       `Unknown LLM provider "${name}". Available: ${available}`,
     );
   }
-  return factory(model);
+  return factory(model, providerOptions.get(name));
 }
 
 export function listProviders(): string[] {

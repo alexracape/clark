@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
-import { resolveApiKey, saveConfig, type ClarkConfig } from "../config.ts";
+import { resolveApiKey, saveConfig, setProviderApiKey, type ClarkConfig } from "../config.ts";
 import { useLineEditor } from "./primitives/use-line-editor.ts";
 import { useSelectableList } from "./primitives/use-selectable-list.ts";
 
@@ -23,10 +23,10 @@ const CLOUD_MODELS: ModelEntry[] = [
   { provider: "gemini", providerLabel: "Google (Gemini)", model: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
 ];
 
-const PROVIDER_INFO: Record<string, { envVar: string; site: string; configKey: keyof ClarkConfig }> = {
-  anthropic: { envVar: "ANTHROPIC_API_KEY", site: "console.anthropic.com", configKey: "anthropicApiKey" },
-  openai: { envVar: "OPENAI_API_KEY", site: "platform.openai.com", configKey: "openaiApiKey" },
-  gemini: { envVar: "GOOGLE_API_KEY", site: "aistudio.google.com", configKey: "geminiApiKey" },
+const PROVIDER_INFO: Record<string, { envVar: string; site: string }> = {
+  anthropic: { envVar: "ANTHROPIC_API_KEY", site: "console.anthropic.com" },
+  openai: { envVar: "OPENAI_API_KEY", site: "platform.openai.com" },
+  gemini: { envVar: "GOOGLE_API_KEY", site: "aistudio.google.com" },
 };
 
 export interface ModelPickerProps {
@@ -44,6 +44,7 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
   const [step, setStep] = useState<Step>("selecting");
   const [error, setError] = useState<string | null>(null);
   const apiKey = useLineEditor("");
+  const [availableProviders, setAvailableProviders] = useState<Record<string, boolean>>({});
 
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus>("loading");
   const [ollamaModels, setOllamaModels] = useState<ModelEntry[]>([]);
@@ -81,8 +82,30 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
 
   const isProviderAvailable = (provider: string): boolean => {
     if (provider === "ollama") return true;
-    return !!resolveApiKey(provider, config);
+    return availableProviders[provider] === true;
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const providers = [...new Set(allModels.map((m) => m.provider).filter((p) => p !== "ollama"))];
+
+    Promise.all(providers.map(async (provider) => ({
+      provider,
+      hasKey: !!(await resolveApiKey(provider, config)),
+    })))
+      .then((rows) => {
+        if (cancelled) return;
+        setAvailableProviders(Object.fromEntries(rows.map((r) => [r.provider, r.hasKey])));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAvailableProviders({});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [allModels, config]);
 
   useInput((input, key) => {
     if (step === "selecting") {
@@ -138,15 +161,16 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
       const info = PROVIDER_INFO[entry.provider];
       if (!info) return;
 
-      process.env[info.envVar] = trimmed;
-      const nextConfig: ClarkConfig = {
-        ...config,
-        [info.configKey]: trimmed,
-      };
-
-      saveConfig(nextConfig).then(() => {
-        onSelect(entry.provider, entry.model);
-      });
+      setError(null);
+      setProviderApiKey(entry.provider as "anthropic" | "openai" | "gemini", trimmed, config)
+        .then((nextConfig) => saveConfig(nextConfig))
+        .then(() => {
+          setAvailableProviders((prev) => ({ ...prev, [entry.provider]: true }));
+          onSelect(entry.provider, entry.model);
+        })
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : String(err));
+        });
       return;
     }
 
@@ -195,7 +219,7 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
         <Text bold>Enter your {entry.providerLabel} API key:</Text>
         <Text color="gray" dimColor> </Text>
         <Text color="gray" dimColor>Get one from {info.site}</Text>
-        <Text color="gray" dimColor>Saved to ~/.clark/config.json (set {info.envVar} to override)</Text>
+        <Text color="gray" dimColor>Saved to macOS Keychain (set {info.envVar} to override)</Text>
         <Text color="gray" dimColor> </Text>
         <Box paddingLeft={2}>
           <Text color="yellow">{before}</Text>

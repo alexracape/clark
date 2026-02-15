@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { CanvasBroker, listCanvasFiles, startCanvasServer } from "../canvas/index.ts";
 import type { PageImage } from "../canvas/index.ts";
+import { requireValidCanvasName } from "../canvas/name.ts";
 
 export interface ActiveCanvasInfo {
   name: string;
@@ -19,6 +20,7 @@ export interface CanvasSessionManagerOptions {
   port: number;
   canvasDir: string;
   getHost: () => string;
+  bindHost: string;
 }
 
 /**
@@ -29,12 +31,14 @@ export class CanvasSessionManager {
   private readonly port: number;
   private readonly canvasDir: string;
   private readonly getHost: () => string;
+  private readonly bindHost: string;
   private active: ActiveCanvasSession | null = null;
 
   constructor(options: CanvasSessionManagerOptions) {
     this.port = options.port;
     this.canvasDir = options.canvasDir;
     this.getHost = options.getHost;
+    this.bindHost = options.bindHost;
   }
 
   get broker(): CanvasBroker | null {
@@ -59,23 +63,25 @@ export class CanvasSessionManager {
   }
 
   async open(name: string): Promise<ActiveCanvasInfo> {
-    if (this.active && this.active.name === name) {
+    const validatedName = requireValidCanvasName(name);
+    if (this.active && this.active.name === validatedName) {
       return { name: this.active.name, url: this.active.url };
     }
 
     await this.close();
 
-    const snapshotPath = join(this.canvasDir, `${name}.tldr`);
+    const snapshotPath = join(this.canvasDir, `${validatedName}.tldr`);
     const broker = new CanvasBroker();
-    const { server, saveSnapshot } = await startCanvasServer({
+    const { server, saveSnapshot, authToken } = await startCanvasServer({
       port: this.port,
+      host: this.bindHost,
       broker,
       snapshotPath,
     });
 
-    const url = `http://${this.getHost()}:${server.port}`;
-    this.active = { name, url, broker, server, saveSnapshot };
-    return { name, url };
+    const url = `http://${this.getHost()}:${server.port}/?token=${authToken}`;
+    this.active = { name: validatedName, url, broker, server, saveSnapshot };
+    return { name: validatedName, url };
   }
 
   async exportPages(timeoutMs = 30000): Promise<{ pages: PageImage[]; source: "live" }> {

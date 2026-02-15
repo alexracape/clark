@@ -16,6 +16,7 @@ import { MockProvider } from "../src/llm/mock.ts";
 import { Conversation } from "../src/llm/messages.ts";
 import { createTools } from "../src/mcp/tools.ts";
 import { CanvasBroker } from "../src/canvas/server.ts";
+import type { ClarkConfig } from "../src/config.ts";
 
 const TEST_VAULT = resolve(import.meta.dir, "test_vault");
 
@@ -153,7 +154,10 @@ describe("Chat", () => {
 });
 
 describe("App", () => {
-  function createAppProps(mockResponses: Array<{ text?: string; toolCalls?: Array<{ id: string; name: string; input: Record<string, unknown> }>; stopReason?: "end_turn" | "tool_use" }> = []) {
+  function createAppProps(
+    mockResponses: Array<{ text?: string; toolCalls?: Array<{ id: string; name: string; input: Record<string, unknown> }>; stopReason?: "end_turn" | "tool_use" }> = [],
+    configOverride: Partial<ClarkConfig> = {},
+  ) {
     const provider = new MockProvider(mockResponses);
     const conversation = new Conversation();
     const broker = new CanvasBroker();
@@ -166,7 +170,7 @@ describe("App", () => {
       appProps: {
         provider,
         model: "mock-model",
-        config: {},
+        config: configOverride,
         conversation,
         systemPrompt: "You are a test tutor.",
         tools,
@@ -280,6 +284,80 @@ describe("App", () => {
     expect(frame).toContain("search_notes");
     expect(frame).toContain("No notes found for that query.");
     expect(provider.calls).toHaveLength(2);
+  });
+
+  test("stops when max tool calls per turn is reached", async () => {
+    const { appProps, provider } = createAppProps(
+      [
+        {
+          text: "Step 1",
+          toolCalls: [{ id: "tc1", name: "search_notes", input: { query: "one" } }],
+          stopReason: "tool_use",
+        },
+        {
+          text: "Step 2",
+          toolCalls: [{ id: "tc2", name: "search_notes", input: { query: "two" } }],
+          stopReason: "tool_use",
+        },
+      ],
+      { maxToolCallsPerTurn: 1 },
+    );
+
+    const { lastFrame, stdin } = render(<App {...appProps} />);
+    await tick();
+    for (const ch of "loop tools") stdin.write(ch);
+    await tick();
+    stdin.write("\r");
+    await tick(350);
+
+    const frame = lastFrame()!;
+    expect(frame).toContain("max tool calls per turn reached (1)");
+    expect(provider.calls).toHaveLength(2);
+  });
+
+  test("blocks dispatch when a single response exceeds max tool calls", async () => {
+    const { appProps, provider } = createAppProps(
+      [
+        {
+          text: "Need tools",
+          toolCalls: [
+            { id: "tc1", name: "search_notes", input: { query: "one" } },
+            { id: "tc2", name: "search_notes", input: { query: "two" } },
+          ],
+          stopReason: "tool_use",
+        },
+      ],
+      { maxToolCallsPerTurn: 1 },
+    );
+
+    const { lastFrame, stdin } = render(<App {...appProps} />);
+    await tick();
+    for (const ch of "run tools") stdin.write(ch);
+    await tick();
+    stdin.write("\r");
+    await tick(250);
+
+    const frame = lastFrame()!;
+    expect(frame).toContain("max tool calls per turn reached (1)");
+    expect(frame).not.toContain("Using tool:");
+    expect(provider.calls).toHaveLength(1);
+  });
+
+  test("surfaces max_tokens truncation to the user", async () => {
+    const { appProps } = createAppProps([
+      { text: "Partial output", stopReason: "max_tokens" },
+    ]);
+    const { lastFrame, stdin } = render(<App {...appProps} />);
+
+    await tick();
+    for (const ch of "trigger truncation") stdin.write(ch);
+    await tick();
+    stdin.write("\r");
+    await tick(220);
+
+    const frame = lastFrame()!;
+    expect(frame).toContain("Partial output");
+    expect(frame).toContain("Response was truncated due to max_tokens limit.");
   });
 
   test("conversation history accumulates across turns", async () => {

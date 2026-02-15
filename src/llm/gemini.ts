@@ -24,10 +24,12 @@ export class GeminiProvider implements LLMProvider {
 
   private client: GoogleGenAI;
   private model: string;
+  private maxTokens: number | undefined;
 
-  constructor(model?: string) {
-    this.client = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
+  constructor(model?: string, apiKey?: string, maxTokens?: number) {
+    this.client = new GoogleGenAI({ apiKey: apiKey ?? process.env.GOOGLE_API_KEY });
     this.model = model ?? process.env.CLARK_MODEL ?? DEFAULT_MODEL;
+    this.maxTokens = maxTokens;
   }
 
   async *chat(
@@ -61,6 +63,7 @@ export class GeminiProvider implements LLMProvider {
       contents,
       config: {
         systemInstruction: systemPrompt,
+        ...(this.maxTokens ? { maxOutputTokens: this.maxTokens } : {}),
         ...(geminiTools.length > 0
           ? { tools: [{ functionDeclarations: geminiTools }] }
           : {}),
@@ -72,6 +75,12 @@ export class GeminiProvider implements LLMProvider {
       if (!candidate?.content?.parts) continue;
 
       for (const part of candidate.content.parts) {
+        // Gemini 2.5 thinking parts
+        if ((part as any).thought === true && part.text) {
+          yield { type: "thinking_delta", text: part.text };
+          continue;
+        }
+
         if (part.text) {
           yield { type: "text_delta", text: part.text };
         }
@@ -114,9 +123,23 @@ export class GeminiProvider implements LLMProvider {
  *
  * Gemini uses "user" and "model" roles (not "assistant").
  * Tool results are sent as user messages with functionResponse parts.
+ * Builds a toolUseId → toolName map from assistant messages to resolve
+ * function names in tool results (Gemini requires the function name, not the ID).
  */
 export function messagesToGeminiContents(messages: Message[]): Content[] {
   const contents: Content[] = [];
+
+  // Build a map of toolUseId → toolName from assistant tool_use blocks
+  const toolNameMap = new Map<string, string>();
+  for (const msg of messages) {
+    if (msg.role === "assistant") {
+      for (const c of msg.content) {
+        if (c.type === "tool_use") {
+          toolNameMap.set(c.id, c.name);
+        }
+      }
+    }
+  }
 
   for (const msg of messages) {
     if (msg.role === "user") {
@@ -147,15 +170,17 @@ export function messagesToGeminiContents(messages: Message[]): Content[] {
             },
           });
         }
+        // Skip thinking content
       }
       contents.push({ role: "model", parts });
     } else if (msg.role === "tool") {
       const parts: Part[] = [];
       for (const c of msg.content) {
         if (c.type === "tool_result") {
+          const functionName = toolNameMap.get(c.toolUseId) ?? c.toolUseId;
           parts.push({
             functionResponse: {
-              name: c.toolUseId,
+              name: functionName,
               response: {
                 result: typeof c.content === "string" ? c.content : "[image]",
               },
@@ -171,4 +196,4 @@ export function messagesToGeminiContents(messages: Message[]): Content[] {
 }
 
 // Register this provider
-registerProvider("gemini", (model?) => new GeminiProvider(model));
+registerProvider("gemini", (model, options) => new GeminiProvider(model, options?.apiKey, options?.maxTokens));

@@ -55,6 +55,7 @@ export function formatContextGrid(
     { label: "User", tokens: ctx.userTokens, color: chalk.green, sym: "⛁" },
     { label: "Assistant", tokens: ctx.assistantTokens, color: chalk.blue, sym: "⛁" },
     { label: "Tool results", tokens: ctx.toolTokens, color: chalk.yellow, sym: "⛁" },
+    { label: "Thinking", tokens: ctx.thinkingTokens, color: chalk.gray, sym: "⛁" },
     { label: "Skills", tokens: 0, color: chalk.white, sym: "⛁" },
     { label: "Free space", tokens: free, color: chalk.gray, sym: "⛶" },
   ];

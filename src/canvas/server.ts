@@ -211,15 +211,57 @@ function wrapBunSocket(ws: { send(data: string): void; close(code?: number, reas
 
 export interface CanvasServerOptions {
   port: number;
+  host?: string;
   broker: CanvasBroker;
   /** Full path to the .tldr snapshot file for persistence. */
   snapshotPath: string;
+  /** Optional fixed token for tests; random token is generated when omitted. */
+  authToken?: string;
+}
+
+interface CanvasSocketData {
+  type: "sync" | "canvas";
+  sessionId?: string;
 }
 
 export interface CanvasServerResult {
-  server: ReturnType<typeof Bun.serve>;
+  server: ReturnType<typeof Bun.serve<CanvasSocketData>>;
   room: TLSocketRoom;
   saveSnapshot: () => Promise<void>;
+  authToken: string;
+}
+
+function extractOriginHost(originHeader: string | null): string | null {
+  if (!originHeader) return null;
+  try {
+    const origin = new URL(originHeader);
+    return origin.host;
+  } catch {
+    return null;
+  }
+}
+
+function requestHasValidToken(req: Request, url: URL, authToken: string): boolean {
+  const token = url.searchParams.get("token");
+  if (token === authToken) return true;
+
+  const referer = req.headers.get("referer");
+  if (!referer) return false;
+  try {
+    const refererUrl = new URL(referer);
+    return refererUrl.searchParams.get("token") === authToken;
+  } catch {
+    return false;
+  }
+}
+
+function requestHasValidOrigin(req: Request): boolean {
+  const originHost = extractOriginHost(req.headers.get("origin"));
+  if (!originHost) return true; // Non-browser clients may omit origin
+
+  const requestHost = req.headers.get("host");
+  if (!requestHost) return false;
+  return originHost === requestHost;
 }
 
 /**
@@ -229,7 +271,8 @@ export interface CanvasServerResult {
  * and custom broker messages on /ws.
  */
 export async function startCanvasServer(options: CanvasServerOptions): Promise<CanvasServerResult> {
-  const { port, broker, snapshotPath } = options;
+  const { port, host, broker, snapshotPath, authToken: providedToken } = options;
+  const authToken = providedToken ?? crypto.randomUUID().replace(/-/g, "");
 
   // Load persisted snapshot and create storage
   const initialSnapshot = await loadSnapshot(snapshotPath);
@@ -257,7 +300,8 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
     await writeSnapshot(storage.getSnapshot(), snapshotPath);
   }
 
-  const server = Bun.serve({
+  const server = Bun.serve<CanvasSocketData>({
+    hostname: host,
     port,
     routes: {
       "/": indexHtml,
@@ -266,6 +310,12 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
       const url = new URL(req.url);
 
       if (url.pathname === "/sync") {
+        if (!requestHasValidToken(req, url, authToken)) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+        if (!requestHasValidOrigin(req)) {
+          return new Response("Forbidden origin", { status: 403 });
+        }
         const sessionId = url.searchParams.get("sessionId") ?? crypto.randomUUID();
         const upgraded = server.upgrade(req, {
           data: { type: "sync", sessionId },
@@ -277,6 +327,12 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
       }
 
       if (url.pathname === "/ws") {
+        if (!requestHasValidToken(req, url, authToken)) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+        if (!requestHasValidOrigin(req)) {
+          return new Response("Forbidden origin", { status: 403 });
+        }
         const upgraded = server.upgrade(req, {
           data: { type: "canvas" },
         });
@@ -290,7 +346,7 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
     },
     websocket: {
       open(ws) {
-        const data = ws.data as { type: string; sessionId?: string };
+        const data = ws.data as CanvasSocketData;
         if (data.type === "sync") {
           // Wrap Bun WS with bound methods for TLSocketRoom compatibility
           room.handleSocketConnect({
@@ -302,7 +358,7 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
         }
       },
       message(ws, message) {
-        const data = ws.data as { type: string; sessionId?: string };
+        const data = ws.data as CanvasSocketData;
         if (data.type === "sync") {
           // Use manual message routing for Bun (no addEventListener on ServerWebSocket)
           room.handleSocketMessage(data.sessionId!, message);
@@ -312,7 +368,7 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
         }
       },
       close(ws) {
-        const data = ws.data as { type: string; sessionId?: string };
+        const data = ws.data as CanvasSocketData;
         if (data.type === "sync") {
           room.handleSocketClose(data.sessionId!);
         } else if (data.type === "canvas") {
@@ -322,5 +378,5 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
     },
   });
 
-  return { server, room, saveSnapshot };
+  return { server, room, saveSnapshot, authToken };
 }

@@ -19,10 +19,12 @@ export class OpenAIProvider implements LLMProvider {
 
   private client: OpenAI;
   private model: string;
+  private maxTokens: number | undefined;
 
-  constructor(model?: string) {
-    this.client = new OpenAI();
+  constructor(model?: string, apiKey?: string, maxTokens?: number) {
+    this.client = new OpenAI(apiKey ? { apiKey } : undefined);
     this.model = model ?? process.env.CLARK_MODEL ?? DEFAULT_MODEL;
+    this.maxTokens = maxTokens;
   }
 
   async *chat(
@@ -48,6 +50,7 @@ export class OpenAIProvider implements LLMProvider {
               function: { name: c.name, arguments: JSON.stringify(c.input) },
             });
           }
+          // Skip thinking content
         }
 
         openaiMessages.push({
@@ -61,7 +64,7 @@ export class OpenAIProvider implements LLMProvider {
             openaiMessages.push({
               role: "tool",
               tool_call_id: c.toolUseId,
-              content: typeof c.content === "string" ? c.content : "[image]",
+              content: typeof c.content === "string" ? c.content : c.content.map((img) => img.data).join(""),
             });
           }
         }
@@ -96,6 +99,7 @@ export class OpenAIProvider implements LLMProvider {
       model: this.model,
       messages: openaiMessages,
       ...(openaiTools.length > 0 ? { tools: openaiTools } : {}),
+      ...(this.maxTokens ? { max_tokens: this.maxTokens } : {}),
       stream: true,
     });
 
@@ -104,6 +108,11 @@ export class OpenAIProvider implements LLMProvider {
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta;
       if (!delta) continue;
+
+      // Reasoning content from o1/o3/o4-mini models
+      if ((delta as any).reasoning_content) {
+        yield { type: "thinking_delta", text: (delta as any).reasoning_content };
+      }
 
       if (delta.content) {
         yield { type: "text_delta", text: delta.content };
@@ -124,9 +133,14 @@ export class OpenAIProvider implements LLMProvider {
       }
 
       if (chunk.choices[0]?.finish_reason) {
+        const reason = chunk.choices[0].finish_reason;
         yield {
           type: "done",
-          stopReason: chunk.choices[0].finish_reason === "tool_calls" ? "tool_use" : "end_turn",
+          stopReason: reason === "tool_calls"
+            ? "tool_use"
+            : reason === "length"
+              ? "max_tokens"
+              : "end_turn",
         };
       }
     }
@@ -134,4 +148,4 @@ export class OpenAIProvider implements LLMProvider {
 }
 
 // Register this provider
-registerProvider("openai", (model?) => new OpenAIProvider(model));
+registerProvider("openai", (model, options) => new OpenAIProvider(model, options?.apiKey, options?.maxTokens));

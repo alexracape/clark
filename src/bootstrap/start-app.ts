@@ -41,6 +41,7 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
     port: args.port,
     canvasDir: clarkCanvasDirPath(workspaceDir),
     getHost: getLanIP,
+    bindHost: "0.0.0.0",
   });
 
   const conversation = new Conversation();

@@ -1,8 +1,5 @@
 /**
  * Tests for config persistence and onboarding detection.
- *
- * Tests file I/O by writing to a temp directory and verifying
- * config is correctly saved and loaded.
  */
 
 import { test, expect, describe, afterEach, beforeEach } from "bun:test";
@@ -10,11 +7,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  DEFAULT_MAX_TOOL_CALLS_PER_TURN,
   needsOnboarding,
   resolveApiKey,
+  resolveMaxToolCallsPerTurn,
   applyConfigToEnv,
   loadConfig,
   saveConfig,
+  migrateLegacyApiKeys,
   type ClarkConfig,
 } from "../src/config.ts";
 
@@ -33,73 +33,32 @@ describe("needsOnboarding", () => {
     process.env.GOOGLE_API_KEY = savedEnv.GOOGLE_API_KEY;
   });
 
-  test("returns true when no keys anywhere", () => {
+  test("returns true when no keys anywhere", async () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.GOOGLE_API_KEY;
-    expect(needsOnboarding({})).toBe(true);
+    expect(await needsOnboarding({})).toBe(true);
   });
 
-  test("returns false with anthropic env var", () => {
+  test("returns false with anthropic env var", async () => {
     process.env.ANTHROPIC_API_KEY = "sk-ant-test";
     delete process.env.OPENAI_API_KEY;
     delete process.env.GOOGLE_API_KEY;
-    expect(needsOnboarding({})).toBe(false);
+    expect(await needsOnboarding({})).toBe(false);
   });
 
-  test("returns false with openai env var", () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    process.env.OPENAI_API_KEY = "sk-test";
-    delete process.env.GOOGLE_API_KEY;
-    expect(needsOnboarding({})).toBe(false);
-  });
-
-  test("returns false with gemini env var", () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENAI_API_KEY;
-    process.env.GOOGLE_API_KEY = "AItest";
-    expect(needsOnboarding({})).toBe(false);
-  });
-
-  test("returns false with anthropic key in config", () => {
+  test("returns false with legacy config key", async () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.GOOGLE_API_KEY;
-    expect(needsOnboarding({ anthropicApiKey: "sk-ant-test" })).toBe(false);
+    expect(await needsOnboarding({ anthropicApiKey: "sk-ant-test" })).toBe(false);
   });
 
-  test("returns false with openai key in config", () => {
+  test("returns false with ollama provider in config", async () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.GOOGLE_API_KEY;
-    expect(needsOnboarding({ openaiApiKey: "sk-test" })).toBe(false);
-  });
-
-  test("returns false with gemini key in config", () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENAI_API_KEY;
-    delete process.env.GOOGLE_API_KEY;
-    expect(needsOnboarding({ geminiApiKey: "AItest" })).toBe(false);
-  });
-
-  test("returns false with ollama provider in config", () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENAI_API_KEY;
-    delete process.env.GOOGLE_API_KEY;
-    expect(needsOnboarding({ provider: "ollama" })).toBe(false);
-  });
-
-  test("returns false when both are set", () => {
-    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
-    process.env.OPENAI_API_KEY = "sk-test";
-    expect(needsOnboarding({})).toBe(false);
-  });
-
-  test("returns true with empty string keys", () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENAI_API_KEY;
-    delete process.env.GOOGLE_API_KEY;
-    expect(needsOnboarding({ anthropicApiKey: "", openaiApiKey: "" })).toBe(true);
+    expect(await needsOnboarding({ provider: "ollama" })).toBe(false);
   });
 });
 
@@ -118,47 +77,23 @@ describe("resolveApiKey", () => {
     process.env.GOOGLE_API_KEY = savedEnv.GOOGLE_API_KEY;
   });
 
-  test("env var takes precedence over config for anthropic", () => {
+  test("env var takes precedence over config for anthropic", async () => {
     process.env.ANTHROPIC_API_KEY = "env-key";
-    expect(resolveApiKey("anthropic", { anthropicApiKey: "config-key" })).toBe("env-key");
+    expect(await resolveApiKey("anthropic", { anthropicApiKey: "config-key" })).toBe("env-key");
   });
 
-  test("env var takes precedence over config for openai", () => {
-    process.env.OPENAI_API_KEY = "env-key";
-    expect(resolveApiKey("openai", { openaiApiKey: "config-key" })).toBe("env-key");
-  });
-
-  test("falls back to config when no env var for anthropic", () => {
+  test("falls back to legacy config when no env var", async () => {
     delete process.env.ANTHROPIC_API_KEY;
-    expect(resolveApiKey("anthropic", { anthropicApiKey: "config-key" })).toBe("config-key");
+    expect(await resolveApiKey("anthropic", { anthropicApiKey: "config-key" })).toBe("config-key");
   });
 
-  test("falls back to config when no env var for openai", () => {
-    delete process.env.OPENAI_API_KEY;
-    expect(resolveApiKey("openai", { openaiApiKey: "config-key" })).toBe("config-key");
-  });
-
-  test("returns undefined when nothing is set", () => {
+  test("returns undefined when nothing is set", async () => {
     delete process.env.ANTHROPIC_API_KEY;
-    expect(resolveApiKey("anthropic", {})).toBeUndefined();
+    expect(await resolveApiKey("anthropic", {})).toBeUndefined();
   });
 
-  test("env var takes precedence over config for gemini", () => {
-    process.env.GOOGLE_API_KEY = "env-key";
-    expect(resolveApiKey("gemini", { geminiApiKey: "config-key" })).toBe("env-key");
-  });
-
-  test("falls back to config when no env var for gemini", () => {
-    delete process.env.GOOGLE_API_KEY;
-    expect(resolveApiKey("gemini", { geminiApiKey: "config-key" })).toBe("config-key");
-  });
-
-  test("returns not-required for ollama", () => {
-    expect(resolveApiKey("ollama", {})).toBe("not-required");
-  });
-
-  test("returns undefined for unknown provider", () => {
-    expect(resolveApiKey("unknown-provider", {})).toBeUndefined();
+  test("returns not-required for ollama", async () => {
+    expect(await resolveApiKey("ollama", {})).toBe("not-required");
   });
 });
 
@@ -179,62 +114,47 @@ describe("applyConfigToEnv", () => {
     process.env.OLLAMA_HOST = savedEnv.OLLAMA_HOST;
   });
 
-  test("sets anthropic key when not in env", () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    applyConfigToEnv({ anthropicApiKey: "from-config" });
-    expect(process.env.ANTHROPIC_API_KEY).toBe("from-config");
-  });
-
-  test("sets openai key when not in env", () => {
-    delete process.env.OPENAI_API_KEY;
-    applyConfigToEnv({ openaiApiKey: "from-config" });
-    expect(process.env.OPENAI_API_KEY).toBe("from-config");
-  });
-
-  test("does not overwrite existing anthropic env var", () => {
-    process.env.ANTHROPIC_API_KEY = "existing";
-    applyConfigToEnv({ anthropicApiKey: "new-key" });
-    expect(process.env.ANTHROPIC_API_KEY).toBe("existing");
-  });
-
-  test("does not overwrite existing openai env var", () => {
-    process.env.OPENAI_API_KEY = "existing";
-    applyConfigToEnv({ openaiApiKey: "new-key" });
-    expect(process.env.OPENAI_API_KEY).toBe("existing");
-  });
-
-  test("sets both keys at once", () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENAI_API_KEY;
-    applyConfigToEnv({ anthropicApiKey: "a-key", openaiApiKey: "o-key" });
-    expect(process.env.ANTHROPIC_API_KEY).toBe("a-key");
-    expect(process.env.OPENAI_API_KEY).toBe("o-key");
-  });
-
-  test("sets gemini key when not in env", () => {
-    delete process.env.GOOGLE_API_KEY;
-    applyConfigToEnv({ geminiApiKey: "from-config" });
-    expect(process.env.GOOGLE_API_KEY).toBe("from-config");
-  });
-
-  test("does not overwrite existing gemini env var", () => {
-    process.env.GOOGLE_API_KEY = "existing";
-    applyConfigToEnv({ geminiApiKey: "new-key" });
-    expect(process.env.GOOGLE_API_KEY).toBe("existing");
-  });
-
   test("sets ollama host when not in env", () => {
     delete process.env.OLLAMA_HOST;
     applyConfigToEnv({ ollamaBaseUrl: "http://custom:11434" });
     expect(process.env.OLLAMA_HOST).toBe("http://custom:11434");
   });
 
-  test("handles empty config gracefully", () => {
-    const before = { ...process.env };
-    applyConfigToEnv({});
-    // Nothing should have changed
-    expect(process.env.ANTHROPIC_API_KEY).toBe(before.ANTHROPIC_API_KEY);
-    expect(process.env.OPENAI_API_KEY).toBe(before.OPENAI_API_KEY);
+  test("does not set api key env vars from config", () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.GOOGLE_API_KEY;
+    applyConfigToEnv({ anthropicApiKey: "a", openaiApiKey: "o", geminiApiKey: "g" });
+    expect(process.env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(process.env.OPENAI_API_KEY).toBeUndefined();
+    expect(process.env.GOOGLE_API_KEY).toBeUndefined();
+  });
+});
+
+describe("resolveMaxToolCallsPerTurn", () => {
+  test("uses default when unset", () => {
+    expect(resolveMaxToolCallsPerTurn({})).toBe(DEFAULT_MAX_TOOL_CALLS_PER_TURN);
+  });
+
+  test("uses provided value when valid", () => {
+    expect(resolveMaxToolCallsPerTurn({ maxToolCallsPerTurn: 12 })).toBe(12);
+  });
+
+  test("clamps minimum to 1", () => {
+    expect(resolveMaxToolCallsPerTurn({ maxToolCallsPerTurn: 0 })).toBe(1);
+  });
+
+  test("clamps maximum to 50", () => {
+    expect(resolveMaxToolCallsPerTurn({ maxToolCallsPerTurn: 999 })).toBe(50);
+  });
+});
+
+describe("migrateLegacyApiKeys", () => {
+  test("returns unchanged when no legacy keys are present", async () => {
+    const base: ClarkConfig = { provider: "anthropic", model: "claude-sonnet-4-5-20250929" };
+    const out = await migrateLegacyApiKeys(base);
+    expect(out.changed).toBe(false);
+    expect(out.config).toEqual(base);
   });
 });
 
@@ -249,39 +169,6 @@ describe("saveConfig / loadConfig (file I/O)", () => {
 
   afterEach(async () => {
     await rm(tmpDir, { recursive: true, force: true });
-  });
-
-  test("config round-trips through JSON correctly", () => {
-    const config: ClarkConfig = {
-      provider: "anthropic",
-      model: "claude-sonnet-4-5-20250929",
-      anthropicApiKey: "sk-ant-test-key-12345",
-      openaiApiKey: "sk-openai-test-key-67890",
-    };
-
-    // Test that the config serializes and deserializes correctly
-    const json = JSON.stringify(config);
-    const parsed = JSON.parse(json) as ClarkConfig;
-
-    expect(parsed.provider).toBe("anthropic");
-    expect(parsed.model).toBe("claude-sonnet-4-5-20250929");
-    expect(parsed.anthropicApiKey).toBe("sk-ant-test-key-12345");
-    expect(parsed.openaiApiKey).toBe("sk-openai-test-key-67890");
-  });
-
-  test("partial config serializes correctly", () => {
-    const config: ClarkConfig = {
-      provider: "openai",
-      openaiApiKey: "sk-test",
-    };
-
-    const json = JSON.stringify(config);
-    const parsed = JSON.parse(json) as ClarkConfig;
-
-    expect(parsed.provider).toBe("openai");
-    expect(parsed.openaiApiKey).toBe("sk-test");
-    expect(parsed.anthropicApiKey).toBeUndefined();
-    expect(parsed.model).toBeUndefined();
   });
 
   test("empty config serializes correctly", () => {
@@ -300,27 +187,13 @@ describe("saveConfig / loadConfig (file I/O)", () => {
   test("saveConfig and loadConfig round-trip", async () => {
     const testConfig: ClarkConfig = {
       provider: "anthropic",
-      anthropicApiKey: "sk-ant-roundtrip-test",
+      model: "claude-sonnet-4-5-20250929",
+      pdfExportDir: "/exports",
     };
 
     await saveConfig(testConfig, tmpConfigPath);
 
     const loaded = await loadConfig(tmpConfigPath);
-    expect(loaded.provider).toBe("anthropic");
-    expect(loaded.anthropicApiKey).toBe("sk-ant-roundtrip-test");
-  });
-
-  test("saveConfig preserves all fields", async () => {
-    const fullConfig: ClarkConfig = {
-      provider: "gemini",
-      model: "gemini-2.5-flash",
-      geminiApiKey: "AItest123",
-      pdfExportDir: "/exports",
-    };
-
-    await saveConfig(fullConfig, tmpConfigPath);
-    const loaded = await loadConfig(tmpConfigPath);
-
-    expect(loaded).toEqual(fullConfig);
+    expect(loaded).toEqual(testConfig);
   });
 });

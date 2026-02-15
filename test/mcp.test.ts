@@ -1,6 +1,7 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { resolve, join } from "node:path";
-import { rm, mkdir } from "node:fs/promises";
+import { rm, mkdir, mkdtemp, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { createTools, type ToolDefinition } from "../src/mcp/tools.ts";
 import { CanvasBroker } from "../src/canvas/server.ts";
 import {
@@ -125,14 +126,28 @@ describe("Vault Utilities", () => {
       expect(isWithinVault(join(TEST_VAULT, "../../../etc/passwd"), TEST_VAULT)).toBe(false);
     });
 
-    test("resolveVaultPath resolves relative paths", () => {
-      const result = resolveVaultPath("Notes/RLHF.md", TEST_VAULT);
+    test("resolveVaultPath resolves relative paths", async () => {
+      const result = await resolveVaultPath("Notes/RLHF.md", TEST_VAULT);
       expect(result).toBe(resolve(TEST_VAULT, "Notes/RLHF.md"));
     });
 
-    test("resolveVaultPath rejects escaping paths", () => {
-      const result = resolveVaultPath("../../etc/passwd", TEST_VAULT);
+    test("resolveVaultPath rejects escaping paths", async () => {
+      const result = await resolveVaultPath("../../etc/passwd", TEST_VAULT);
       expect(result).toBeNull();
+    });
+
+    test("resolveVaultPath rejects symlink escape for nonexistent child path", async () => {
+      const vault = await mkdtemp(join(tmpdir(), "clark-vault-symlink-"));
+      const outside = await mkdtemp(join(tmpdir(), "clark-outside-"));
+      const linkedDir = join(vault, "Linked");
+      try {
+        await symlink(outside, linkedDir);
+        const result = await resolveVaultPath("Linked/new.md", vault);
+        expect(result).toBeNull();
+      } finally {
+        await rm(vault, { recursive: true, force: true });
+        await rm(outside, { recursive: true, force: true });
+      }
     });
   });
 
@@ -190,6 +205,8 @@ describe("MCP Tools", () => {
       expect(result.isError).toBeUndefined();
 
       const text = result.content[0] as { type: "text"; text: string };
+      expect(text.text).toContain("<<<BEGIN_FILE_CONTENT");
+      expect(text.text).toContain("<<<END_FILE_CONTENT>>>");
       expect(text.text).toContain("Reinforcement learning from human feedback");
       expect(text.text).toContain("Linked files:");
       expect(text.text).toContain("[[Reinforcement Learning]]");
@@ -234,6 +251,7 @@ describe("MCP Tools", () => {
       const tool = findTool("search_notes");
       const result = await tool.handler({ query: "reinforcement" });
       const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("<<<BEGIN_FILE_CONTENT");
       expect(text).toContain("RLHF.md");
     });
 
@@ -249,6 +267,14 @@ describe("MCP Tools", () => {
       const result = await tool.handler({ query: "REINFORCEMENT" });
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("RLHF.md");
+    });
+
+    test("search results are wrapped with file delimiters", async () => {
+      const tool = findTool("search_notes");
+      const result = await tool.handler({ query: "reinforcement" });
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("<<<BEGIN_FILE_CONTENT");
+      expect(text).toContain("<<<END_FILE_CONTENT>>>");
     });
   });
 
@@ -337,6 +363,22 @@ describe("MCP Tools", () => {
       const tool = findTool("create_file");
       const result = await tool.handler({ path: "../../evil.md", content: "hack" });
       expect(result.isError).toBe(true);
+    });
+
+    test("rejects symlink escape path", async () => {
+      const vault = await mkdtemp(join(tmpdir(), "clark-vault-tool-"));
+      const outside = await mkdtemp(join(tmpdir(), "clark-outside-tool-"));
+      const linkedDir = join(vault, "Linked");
+      await symlink(outside, linkedDir);
+
+      const localTools = createTools({ getBroker: () => broker, vaultDir: vault, getSaveCanvas: () => null });
+      const tool = localTools.find((t) => t.name === "create_file")!;
+      const result = await tool.handler({ path: "Linked/evil.md", content: "x" });
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as { type: "text"; text: string }).text).toContain("outside the vault");
+
+      await rm(vault, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
     });
   });
 

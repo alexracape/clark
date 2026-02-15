@@ -85,14 +85,15 @@ describe("Canvas Server", () => {
     expect(result.server).toBeDefined();
     expect(result.room).toBeInstanceOf(TLSocketRoom);
     expect(typeof result.saveSnapshot).toBe("function");
+    expect(result.authToken.length).toBeGreaterThan(10);
   });
 
   test("serves HTML at / with correct content-type", async () => {
     const broker = new CanvasBroker();
-    const { server } = await startCanvasServer({ port: 0, broker, snapshotPath });
+    const { server, authToken } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
-    const res = await fetch(`http://localhost:${server.port}/`);
+    const res = await fetch(`http://localhost:${server.port}/?token=${authToken}`);
     expect(res.status).toBe(200);
     const contentType = res.headers.get("content-type");
     expect(contentType).toContain("text/html");
@@ -103,10 +104,10 @@ describe("Canvas Server", () => {
 
   test("HTML references bundled JS and CSS that are accessible", async () => {
     const broker = new CanvasBroker();
-    const { server } = await startCanvasServer({ port: 0, broker, snapshotPath });
+    const { server, authToken } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
-    const res = await fetch(`http://localhost:${server.port}/`);
+    const res = await fetch(`http://localhost:${server.port}/?token=${authToken}`);
     const html = await res.text();
 
     // Extract script src and link href from HTML
@@ -117,13 +118,13 @@ describe("Canvas Server", () => {
 
     // Verify each bundled asset is accessible
     for (const src of scriptSrcs) {
-      const assetRes = await fetch(`http://localhost:${server.port}${src}`);
+      const assetRes = await fetch(`http://localhost:${server.port}${src}?token=${authToken}`);
       expect(assetRes.status).toBe(200);
       expect(assetRes.headers.get("content-type")).toContain("javascript");
     }
 
     for (const href of linkHrefs) {
-      const assetRes = await fetch(`http://localhost:${server.port}${href}`);
+      const assetRes = await fetch(`http://localhost:${server.port}${href}?token=${authToken}`);
       expect(assetRes.status).toBe(200);
       expect(assetRes.headers.get("content-type")).toContain("css");
     }
@@ -131,14 +132,14 @@ describe("Canvas Server", () => {
 
   test("bundled JS contains tldraw and useSync code", async () => {
     const broker = new CanvasBroker();
-    const { server } = await startCanvasServer({ port: 0, broker, snapshotPath });
+    const { server, authToken } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
-    const res = await fetch(`http://localhost:${server.port}/`);
+    const res = await fetch(`http://localhost:${server.port}/?token=${authToken}`);
     const html = await res.text();
     const scriptSrcs = [...html.matchAll(/src="([^"]+)"/g)].map((m) => m[1]!);
 
-    const jsRes = await fetch(`http://localhost:${server.port}${scriptSrcs[0]}`);
+    const jsRes = await fetch(`http://localhost:${server.port}${scriptSrcs[0]}?token=${authToken}`);
     const js = await jsRes.text();
 
     // Verify key components are in the bundle
@@ -152,19 +153,19 @@ describe("Canvas Server", () => {
 
   test("returns 404 for unknown paths", async () => {
     const broker = new CanvasBroker();
-    const { server } = await startCanvasServer({ port: 0, broker, snapshotPath });
+    const { server, authToken } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
-    const res = await fetch(`http://localhost:${server.port}/unknown`);
+    const res = await fetch(`http://localhost:${server.port}/unknown?token=${authToken}`);
     expect(res.status).toBe(404);
   });
 
   test("WebSocket upgrade works on /sync endpoint", async () => {
     const broker = new CanvasBroker();
-    const { server, room } = await startCanvasServer({ port: 0, broker, snapshotPath });
+    const { server, room, authToken } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
-    const ws = new WebSocket(`ws://localhost:${server.port}/sync?sessionId=test-1`);
+    const ws = new WebSocket(`ws://localhost:${server.port}/sync?sessionId=test-1&token=${authToken}`);
 
     const connected = await new Promise<boolean>((resolve) => {
       ws.onopen = () => resolve(true);
@@ -185,12 +186,12 @@ describe("Canvas Server", () => {
 
   test("WebSocket upgrade works on /ws endpoint and connects broker", async () => {
     const broker = new CanvasBroker();
-    const { server } = await startCanvasServer({ port: 0, broker, snapshotPath });
+    const { server, authToken } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
     expect(broker.isConnected).toBe(false);
 
-    const ws = new WebSocket(`ws://localhost:${server.port}/ws`);
+    const ws = new WebSocket(`ws://localhost:${server.port}/ws?token=${authToken}`);
 
     const connected = await new Promise<boolean>((resolve) => {
       ws.onopen = () => resolve(true);
@@ -211,10 +212,10 @@ describe("Canvas Server", () => {
 
   test("/ws broker receives and handles messages", async () => {
     const broker = new CanvasBroker();
-    const { server } = await startCanvasServer({ port: 0, broker, snapshotPath });
+    const { server, authToken } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
-    const ws = new WebSocket(`ws://localhost:${server.port}/ws`);
+    const ws = new WebSocket(`ws://localhost:${server.port}/ws?token=${authToken}`);
     await new Promise<void>((resolve) => {
       ws.onopen = () => resolve();
     });
@@ -241,10 +242,10 @@ describe("Canvas Server", () => {
 
   test("/sync endpoint handles messages without crashing", async () => {
     const broker = new CanvasBroker();
-    const { server, room } = await startCanvasServer({ port: 0, broker, snapshotPath });
+    const { server, room, authToken } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
-    const ws = new WebSocket(`ws://localhost:${server.port}/sync?sessionId=test-sync`);
+    const ws = new WebSocket(`ws://localhost:${server.port}/sync?sessionId=test-sync&token=${authToken}`);
 
     await new Promise<void>((resolve) => {
       ws.onopen = () => resolve();
@@ -270,11 +271,11 @@ describe("Canvas Server", () => {
 
   test("multiple sync clients get independent sessions", async () => {
     const broker = new CanvasBroker();
-    const { server, room } = await startCanvasServer({ port: 0, broker, snapshotPath });
+    const { server, room, authToken } = await startCanvasServer({ port: 0, broker, snapshotPath });
     servers.push(server);
 
-    const ws1 = new WebSocket(`ws://localhost:${server.port}/sync?sessionId=client-1`);
-    const ws2 = new WebSocket(`ws://localhost:${server.port}/sync?sessionId=client-2`);
+    const ws1 = new WebSocket(`ws://localhost:${server.port}/sync?sessionId=client-1&token=${authToken}`);
+    const ws2 = new WebSocket(`ws://localhost:${server.port}/sync?sessionId=client-2&token=${authToken}`);
 
     await Promise.all([
       new Promise<void>((resolve) => { ws1.onopen = () => resolve(); }),
@@ -289,6 +290,18 @@ describe("Canvas Server", () => {
     ws1.close();
     ws2.close();
     await new Promise((r) => setTimeout(r, 100));
+  });
+
+  test("rejects sync and broker endpoints without token", async () => {
+    const broker = new CanvasBroker();
+    const { server } = await startCanvasServer({ port: 0, broker, snapshotPath });
+    servers.push(server);
+
+    const syncRes = await fetch(`http://localhost:${server.port}/sync`);
+    expect(syncRes.status).toBe(401);
+
+    const wsRes = await fetch(`http://localhost:${server.port}/ws`);
+    expect(wsRes.status).toBe(401);
   });
 });
 

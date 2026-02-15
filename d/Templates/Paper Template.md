@@ -1,5 +1,0 @@
-#paper
-
-## Key Ideas
-
-## Questions

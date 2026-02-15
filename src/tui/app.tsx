@@ -13,9 +13,10 @@ import { StatusBar } from "./status.tsx";
 import { ModelPicker } from "./model-picker.tsx";
 import { CanvasPicker } from "./canvas-picker.tsx";
 import { createProvider } from "../llm/provider.ts";
+import { setProviderOptions } from "../llm/provider.ts";
 import { formatContextGrid } from "./context.ts";
 import type { LLMProvider, Tool, StreamChunk } from "../llm/provider.ts";
-import { loadConfig, saveConfig, type ClarkConfig } from "../config.ts";
+import { loadConfig, resolveApiKey, resolveMaxToolCallsPerTurn, saveConfig, type ClarkConfig } from "../config.ts";
 import { Conversation } from "../llm/messages.ts";
 import type { ToolDefinition, ToolResult } from "../mcp/tools.ts";
 import type { CommandHistory } from "./history.ts";
@@ -70,12 +71,14 @@ export function App({
   history,
   skills,
 }: AppProps) {
+  const maxToolCallsPerTurn = resolveMaxToolCallsPerTurn(config);
   const [messages, setMessages] = useState<ChatMessage[]>([{
     role: "system",
     content: "Welcome to Clark. I'm here to help guide you through your work — not to give you answers. Type a question, or use /help for commands.",
     timestamp: new Date(),
   }]);
   const [streamingText, setStreamingText] = useState<string | undefined>(undefined);
+  const [streamingThinking, setStreamingThinking] = useState<string | undefined>(undefined);
   const [isThinking, setIsThinking] = useState(false);
 
   // Runtime-switchable provider and model
@@ -99,19 +102,25 @@ export function App({
     const llmTools = toLLMTools(tools);
     const chunks: StreamChunk[] = [];
     let text = "";
+    let thinking = "";
     const effectivePrompt = promptOverride ?? systemPrompt;
 
     setStreamingText("");
+    setStreamingThinking(undefined);
 
     for await (const chunk of activeProvider.chat(conversation.getMessages(), llmTools, effectivePrompt)) {
       chunks.push(chunk);
-      if (chunk.type === "text_delta") {
+      if (chunk.type === "thinking_delta") {
+        thinking += chunk.text;
+        setStreamingThinking(thinking);
+      } else if (chunk.type === "text_delta") {
         text += chunk.text;
         setStreamingText(text);
       }
     }
 
     setStreamingText(undefined);
+    setStreamingThinking(undefined);
     return { chunks, text };
   }, [activeProvider, conversation, tools, systemPrompt]);
 
@@ -134,9 +143,11 @@ export function App({
 
     try {
       let continueLoop = true;
+      let toolCallsUsed = 0;
 
       while (continueLoop) {
         const { chunks, text } = await streamLLM(promptOverride);
+        const stopReason = [...chunks].reverse().find((c) => c.type === "done")?.stopReason;
 
         // Collect the assistant message content
         const assistantContent = conversation.collectStreamResponse(chunks);
@@ -148,10 +159,24 @@ export function App({
         if (toolUses.length === 0) {
           // No tool calls — show the final text and stop
           if (text) addMessage("assistant", text);
+          if (stopReason === "max_tokens") {
+            addMessage("system", "Response was truncated due to max_tokens limit. Set \"maxTokens\" in ~/.clark/config.json to increase.");
+          }
           continueLoop = false;
         } else {
           // Show any text before tool calls
           if (text) addMessage("assistant", text);
+
+          if (toolCallsUsed + toolUses.length > maxToolCallsPerTurn) {
+            const msg = `Stopped: max tool calls per turn reached (${maxToolCallsPerTurn}).`;
+            addMessage("system", msg);
+            for (const toolUse of toolUses) {
+              if (toolUse.type !== "tool_use") continue;
+              conversation.addToolResult(toolUse.id, msg, true);
+            }
+            continueLoop = false;
+            continue;
+          }
 
           // Dispatch each tool call
           for (const toolUse of toolUses) {
@@ -165,7 +190,33 @@ export function App({
               .map((c) => c.text)
               .join("\n");
 
-            conversation.addToolResult(toolUse.id, resultText, result.isError);
+            const imageBlocks = result.content.filter(
+              (c): c is { type: "image"; data: string; mediaType: "image/png" | "image/jpeg" | "image/webp" } => c.type === "image",
+            );
+
+            if (imageBlocks.length > 0 && activeProvider.name === "anthropic") {
+              // Anthropic supports images natively in tool results
+              conversation.addToolResultWithImage(
+                toolUse.id,
+                imageBlocks.map((img) => ({ data: img.data, mediaType: img.mediaType })),
+              );
+            } else {
+              // Text-only tool result for all providers
+              conversation.addToolResult(toolUse.id, resultText, result.isError);
+
+              // Re-inject images as a follow-up user message for non-Anthropic providers
+              if (imageBlocks.length > 0 && activeProvider.name !== "anthropic") {
+                for (const img of imageBlocks) {
+                  conversation.addUserImageMessage(
+                    `[Image from tool: ${toolUse.name}]`,
+                    img.data,
+                    img.mediaType,
+                  );
+                }
+              }
+            }
+
+            toolCallsUsed++;
           }
 
           // Loop: send tool results back to the LLM
@@ -178,17 +229,30 @@ export function App({
     } finally {
       setIsThinking(false);
     }
-  }, [streamLLM, conversation, dispatchTool, addMessage]);
+  }, [streamLLM, conversation, dispatchTool, addMessage, maxToolCallsPerTurn]);
 
   /** Handle model selection from the picker */
   const handleModelSelect = useCallback(async (providerName: string, modelName: string) => {
     try {
+      let ollamaVision = false;
+
       // Ollama preflight: verify server is reachable
       if (providerName === "ollama") {
         const { checkModelFits } = await import("../llm/ollama.ts");
-        await checkModelFits(modelName);
+        const result = await checkModelFits(modelName);
+        ollamaVision = result.supportsVision;
       }
 
+      const currentConfig = await loadConfig();
+      const apiKey = await resolveApiKey(providerName, currentConfig);
+      if (providerName !== "ollama" && !apiKey) {
+        throw new Error(`Missing API key for provider "${providerName}".`);
+      }
+      setProviderOptions(providerName, {
+        ...(apiKey ? { apiKey } : {}),
+        ...(currentConfig.maxTokens ? { maxTokens: currentConfig.maxTokens } : {}),
+        ...(providerName === "ollama" ? { supportsVision: ollamaVision } : {}),
+      });
       const newProvider = createProvider(providerName, modelName);
       setActiveProvider(newProvider);
       setActiveModel(modelName);
@@ -199,7 +263,6 @@ export function App({
       addMessage("system", `Switched to ${providerName}/${modelName}${note}`);
 
       // Persist selection so it's the default next launch
-      const currentConfig = await loadConfig();
       await saveConfig({ ...currentConfig, provider: providerName, model: modelName });
     } catch (err) {
       setShowModelPicker(false);
@@ -290,7 +353,7 @@ export function App({
         <Text color="gray" dimColor>{"─".repeat(60)}</Text>
       </Box>
 
-      <Chat messages={messages} streamingText={streamingText} />
+      <Chat messages={messages} streamingText={streamingText} streamingThinking={streamingThinking} />
 
       <Box marginTop={1}>
         <Text color="gray" dimColor>{"─".repeat(60)}</Text>

@@ -12,6 +12,18 @@ import {
 } from "./provider.ts";
 
 const DEFAULT_MODEL = "claude-sonnet-4-5-20250929";
+const DEFAULT_MAX_TOKENS = 4096;
+const THINKING_BUDGET = 10000;
+
+/** Models that support extended thinking */
+function supportsThinking(model: string): boolean {
+  return (
+    model.includes("claude-3-5-sonnet") ||
+    model.includes("claude-sonnet-4") ||
+    model.includes("claude-4") ||
+    model.includes("claude-opus")
+  );
+}
 
 export class AnthropicProvider implements LLMProvider {
   readonly name = "anthropic";
@@ -19,10 +31,12 @@ export class AnthropicProvider implements LLMProvider {
 
   private client: Anthropic;
   private model: string;
+  private maxTokens: number;
 
-  constructor(model?: string) {
-    this.client = new Anthropic();
+  constructor(model?: string, apiKey?: string, maxTokens?: number) {
+    this.client = new Anthropic(apiKey ? { apiKey } : undefined);
     this.model = model ?? process.env.CLARK_MODEL ?? DEFAULT_MODEL;
+    this.maxTokens = maxTokens ?? DEFAULT_MAX_TOKENS;
   }
 
   async *chat(
@@ -66,8 +80,11 @@ export class AnthropicProvider implements LLMProvider {
               })),
               is_error: c.isError,
             };
+          default:
+            // Skip thinking content — it's ephemeral
+            return { type: "text" as const, text: "" };
         }
-      }),
+      }).filter((c) => c.type !== "text" || c.text !== ""),
     }));
 
     const anthropicTools = tools.map((t) => ({
@@ -76,12 +93,18 @@ export class AnthropicProvider implements LLMProvider {
       input_schema: t.parameters as Anthropic.Tool["input_schema"],
     }));
 
+    const useThinking = supportsThinking(this.model);
+    const maxTokens = useThinking
+      ? Math.max(this.maxTokens, THINKING_BUDGET + 1)
+      : this.maxTokens;
+
     const stream = this.client.messages.stream({
       model: this.model,
-      max_tokens: 4096,
+      max_tokens: maxTokens,
       system: systemPrompt,
       messages: anthropicMessages,
       ...(anthropicTools.length > 0 ? { tools: anthropicTools } : {}),
+      ...(useThinking ? { thinking: { type: "enabled", budget_tokens: THINKING_BUDGET } } : {}),
     });
 
     for await (const event of stream) {
@@ -102,17 +125,21 @@ export class AnthropicProvider implements LLMProvider {
             id: "",
             input: event.delta.partial_json,
           };
+        } else if (event.delta.type === "thinking_delta") {
+          yield { type: "thinking_delta", text: (event.delta as any).thinking };
         }
       } else if (event.type === "message_stop") {
         const finalMessage = await stream.finalMessage();
-        yield {
-          type: "done",
-          stopReason: finalMessage.stop_reason === "tool_use" ? "tool_use" : "end_turn",
-        };
+        const stopReason = finalMessage.stop_reason === "tool_use"
+          ? "tool_use"
+          : finalMessage.stop_reason === "max_tokens"
+            ? "max_tokens"
+            : "end_turn";
+        yield { type: "done", stopReason };
       }
     }
   }
 }
 
 // Register this provider
-registerProvider("anthropic", (model?) => new AnthropicProvider(model));
+registerProvider("anthropic", (model, options) => new AnthropicProvider(model, options?.apiKey, options?.maxTokens));

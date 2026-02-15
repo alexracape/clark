@@ -80,10 +80,9 @@ This is the simplest approach and always works during active tutoring sessions (
 **Slash commands (built-in):**
 - `/help` — Show available commands (includes dynamic skill commands)
 - `/canvas` — Open or show active canvas (shows canvas picker if none open)
-- `/export [path]` — Export canvas pages as A4 PDF (default: `<pdfExportDir>/<canvasName>.pdf`, fallback `./<canvasName>.pdf`)
-- `/save` — Manually save canvas state to disk
-- `/model` — Switch model and provider (shows interactive picker)
-- `/context` — Show context window usage breakdown
+- `/export [path]` — Export canvas pages as A4 PDF (default: `<pdfExportDir>/<canvasName>.pdf`, fallback `./<canvasName>.pdf`). Supports tab-completion for directory paths.
+- `/model` — Switch model and provider (shows interactive picker with API key entry for unconfigured providers)
+- `/context` — Show context window usage breakdown (10x10 color-coded grid with per-category token estimates)
 - `/compact` — Summarize conversation to reclaim context tokens
 - `/clear` — Clear conversation history
 
@@ -196,7 +195,6 @@ The tldraw Agent SDK defines a pattern for giving AI models rich context about c
 - Canvas state is stored as `.tldr` files in `<workspace>/Clark/Canvas/`
 - `InMemorySyncStorage.onChange()` fires on every canvas change
 - Changes are debounced and the full document snapshot is serialized to disk
-- The `/save` command triggers an immediate save
 
 #### PDF Export
 
@@ -297,6 +295,8 @@ The system prompt is the sole guardrail mechanism. It instructs the LLM to:
 
 The system prompt is stored as a plain text file (`src/prompts/system.md`) so users can customize it. When a skill is active, the Structure file's content is appended to the system prompt for that conversation turn.
 
+If a `CLARK.md` file exists in the workspace's `Clark/` directory, its contents are appended to the system prompt on startup (separated by `---`). This gives students a per-workspace customization point (e.g., "I'm taking CS229 — focus on machine learning concepts").
+
 ## Project Structure
 
 ```
@@ -308,6 +308,8 @@ clark/
 ├── tsconfig.json
 ├── index.ts                   # Entry point — onboarding, canvas server, TUI
 │
+├── d/                         # Default Structure/Template files (copied during scaffolding)
+│
 ├── docs/
 │   └── dependencies/          # Vendored LLM-friendly docs for tldraw, MCP
 │
@@ -315,6 +317,16 @@ clark/
 │   ├── config.ts              # Config persistence (~/.clark/config.json)
 │   ├── library.ts             # Library scaffolding (directory structure + templates)
 │   ├── skills.ts              # Dynamic skills from Clark/Structures/ (slug, load, prompt)
+│   │
+│   ├── app/                   # Application-layer orchestration
+│   │   ├── canvas-session.ts  # CanvasSessionManager (one active canvas at a time)
+│   │   └── command-router.ts  # Slash command dispatch and /export path resolution
+│   │
+│   ├── bootstrap/             # Startup and initialization
+│   │   ├── args.ts            # CLI argument parsing (yargs)
+│   │   ├── provider.ts        # Provider/model resolution with Ollama preflight
+│   │   ├── start-app.ts       # Wire everything together and render the TUI
+│   │   └── system-prompt.ts   # Load system.md + CLARK.md context
 │   │
 │   ├── tui/                   # Ink-based terminal UI
 │   │   ├── app.tsx            # Root Ink component (conversation loop, tool dispatch)
@@ -325,18 +337,22 @@ clark/
 │   │   ├── model-picker.tsx   # Interactive model/provider switcher
 │   │   ├── canvas-picker.tsx  # Canvas file picker (open existing or create new)
 │   │   ├── context.ts         # Context window usage display
-│   │   └── history.ts         # Command history with persistence
+│   │   ├── history.ts         # Command history with persistence
+│   │   └── primitives/        # Reusable UI hooks
+│   │       ├── use-line-editor.ts    # Single-line text input state
+│   │       └── use-selectable-list.ts # Up/down list selection state
 │   │
 │   ├── canvas/                # tldraw server + client app
 │   │   ├── server.ts          # CanvasBroker + Bun.serve for WebSocket messaging
-│   │   ├── index.ts           # Canvas module exports (CanvasBroker, startCanvasServer, listCanvasFiles)
+│   │   ├── index.ts           # Canvas module exports
 │   │   ├── index.html         # Entry HTML served to iPad (tldraw app)
-│   │   ├── app.tsx            # tldraw React app for iPad
+│   │   ├── app.tsx            # tldraw React app for iPad (frames, export handlers)
+│   │   ├── page-autocreate.ts # Logic for auto-creating trailing empty frames
 │   │   ├── pdf-export.ts      # Compose page PNGs into A4 PDF (uses pdf-lib)
 │   │   └── context.ts         # BlurryShape/SimpleShape types for visual context
 │   │
 │   ├── mcp/                   # MCP server
-│   │   ├── server.ts          # MCP protocol handler
+│   │   ├── server.ts          # MCP protocol handler (zod schema bridge)
 │   │   ├── tools.ts           # Tool definitions + handlers (file tools, canvas tools)
 │   │   ├── vault.ts           # Wikilink resolution and vault path utilities
 │   │   ├── standalone.ts      # Standalone stdio entry point for testing/inspector
@@ -351,7 +367,7 @@ clark/
 │   │   ├── ollama.ts          # Ollama local model implementation
 │   │   ├── mock.ts            # Mock provider for tests
 │   │   ├── messages.ts        # Conversation class (history, tokens, compaction)
-│   │   └── index.ts           # LLM module exports
+│   │   └── index.ts           # LLM module exports (+ side-effect provider registration)
 │   │
 │   └── prompts/
 │       └── system.md          # Socratic system prompt
@@ -365,15 +381,13 @@ clark/
 │   ├── config.test.ts         # Config persistence tests
 │   ├── llm.test.ts            # LLM provider tests
 │   ├── canvas.test.ts         # Canvas server/broker tests
+│   ├── canvas-page-autocreate.test.ts # Frame auto-creation logic tests
+│   ├── command-router.test.ts # Slash command dispatch tests
 │   ├── library.test.ts        # Library scaffolding tests
 │   └── skills.test.ts         # Skills loading and prompt building tests
 │
 └── test/test_vault/           # Sample library for tests
     ├── Notes/                  # Markdown notes with wikilinks
-    ├── Resources/
-    │   ├── Images/             # Test images
-    │   ├── PDFs/               # PDF documents
-    │   └── Transcriptions/     # Document transcriptions
     ├── Clark/
     │   ├── CLARK.md
     │   ├── Canvas/             # Canvas files
@@ -446,9 +460,17 @@ interface ClarkConfig {
 - **Instructor dashboard or analytics** — Student-facing tool only.
 - **Mobile-native app** — iPad accesses tldraw via Safari.
 
+## Known Limitations
+
+1. **OpenAI/Gemini image tool results** — When the LLM calls `read_canvas` and gets a PNG back, the OpenAI and Gemini providers convert the image to the string `"[image]"` in tool results. Canvas reading effectively only works with Anthropic and Ollama vision models.
+2. **Ollama vision detection** — `supportsVision` is hardcoded to `true` for Ollama, but not all local models support vision. Text-only models will fail on canvas snapshot tool results.
+3. **No conversation persistence** — Sessions are ephemeral. Closing the TUI loses all conversation history.
+4. **Single concurrent session** — Only one canvas can be open at a time. Only one Clark instance should run per workspace.
+
 ## Open Questions
 
 1. **tldraw canvas export fidelity** — Need to validate that `editor.toImage()` at `pixelRatio: 2` captures Apple Pencil strokes at sufficient resolution for vision API OCR. May need to experiment with scale factor.
 2. **PDF rendering for vision** — For PDFs with diagrams/equations, should we send page images to the vision API, or is text extraction sufficient? Likely need both paths depending on content type.
 3. **A4 frame enforcement** — Camera constraints with `behavior: 'contain'` prevent panning away from the frame, but students can still draw outside it. On export, we clip to frame bounds via the `bounds` option in `editor.toImage()`. Verify this produces clean results.
 4. **BlurryShape extraction cost** — Evaluate whether including structured shape data alongside PNG snapshots meaningfully improves LLM comprehension of handwritten content, or if vision alone is sufficient. If vision alone works well, skip the shape extraction for simplicity.
+5. **Security for LAN canvas access** — The canvas server currently accepts any WebSocket connection. Before distribution, add session token authentication to prevent unauthorized users on the same network from accessing or modifying the student's canvas.

@@ -1,6 +1,8 @@
 import { createProvider } from "../llm/index.ts";
+import { setProviderOptions } from "../llm/provider.ts";
 import type { LLMProvider } from "../llm/provider.ts";
 import type { ClarkConfig } from "../config.ts";
+import { resolveApiKey } from "../config.ts";
 import type { CliArgs } from "./args.ts";
 
 const DEFAULT_MODELS: Record<string, string> = {
@@ -22,6 +24,8 @@ export async function resolveProvider(config: ClarkConfig, args: CliArgs): Promi
     ?? process.env.CLARK_MODEL
     ?? config.model
     ?? DEFAULT_MODELS[providerName];
+
+  let ollamaVision = false;
 
   if (providerName === "ollama") {
     const { listLocalModels, checkModelFits } = await import("../llm/ollama.ts");
@@ -49,7 +53,8 @@ export async function resolveProvider(config: ClarkConfig, args: CliArgs): Promi
     }
 
     try {
-      const { sizeBytes, totalRam, pct } = await checkModelFits(modelName);
+      const { sizeBytes, totalRam, pct, supportsVision } = await checkModelFits(modelName);
+      ollamaVision = supportsVision;
       if (pct > 0.8) {
         const sizeGB = (sizeBytes / 1e9).toFixed(1);
         const ramGB = (totalRam / 1e9).toFixed(1);
@@ -64,6 +69,15 @@ export async function resolveProvider(config: ClarkConfig, args: CliArgs): Promi
   }
 
   modelName ??= "claude-sonnet-4-5-20250929";
+  const apiKey = await resolveApiKey(providerName, config);
+  if (providerName !== "ollama" && !apiKey) {
+    throw new Error(`Missing API key for provider "${providerName}". Configure one in onboarding or /model.`);
+  }
+  setProviderOptions(providerName, {
+    ...(apiKey ? { apiKey } : {}),
+    ...(config.maxTokens ? { maxTokens: config.maxTokens } : {}),
+    ...(providerName === "ollama" ? { supportsVision: ollamaVision } : {}),
+  });
 
   return {
     providerName,
