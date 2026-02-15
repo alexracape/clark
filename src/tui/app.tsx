@@ -40,19 +40,10 @@ export interface AppProps {
 
 /** Convert our MCP tool definitions to LLM tool format */
 function toLLMTools(tools: ToolDefinition[]): Tool[] {
-  return tools.map((t) => ({
-    name: t.name,
-    description: t.description,
-    parameters: {
-      type: "object" as const,
-      properties: Object.fromEntries(
-        Object.entries(t.inputSchema.properties).map(([key, val]) => [
-          key,
-          { type: val.type, description: val.description, ...(val.enum ? { enum: val.enum } : {}) },
-        ]),
-      ),
-      required: t.inputSchema.required,
-    },
+  return tools.map(({ name, description, inputSchema }) => ({
+    name,
+    description,
+    parameters: inputSchema,
   }));
 }
 

@@ -46,11 +46,28 @@ export function extractWikilinks(content: string): WikiLink[] {
 
 // --- File index and wikilink resolution ---
 
+let cachedIndex: { map: Map<string, string>; vaultDir: string; timestamp: number } | null = null;
+const INDEX_TTL_MS = 30_000;
+
+/**
+ * Invalidate the cached file index. Call after any file tree mutation
+ * (create_file, rename_file, delete_file).
+ */
+export function invalidateFileIndex(): void {
+  cachedIndex = null;
+}
+
 /**
  * Build an index of all files in the vault for wikilink resolution.
  * Maps lowercase filename (with and without extension) to relative path.
+ * Results are cached with a 30-second TTL for performance.
  */
 export async function buildFileIndex(vaultDir: string): Promise<Map<string, string>> {
+  const now = Date.now();
+  if (cachedIndex && cachedIndex.vaultDir === vaultDir && (now - cachedIndex.timestamp) < INDEX_TTL_MS) {
+    return cachedIndex.map;
+  }
+
   const index = new Map<string, string>();
   const entries = await readdir(vaultDir, { recursive: true });
 
@@ -67,6 +84,7 @@ export async function buildFileIndex(vaultDir: string): Promise<Map<string, stri
     }
   }
 
+  cachedIndex = { map: index, vaultDir, timestamp: now };
   return index;
 }
 

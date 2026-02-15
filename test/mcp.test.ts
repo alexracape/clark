@@ -195,7 +195,9 @@ describe("MCP Tools", () => {
     expect(names).toContain("read_canvas");
     expect(names).toContain("export_pdf");
     expect(names).toContain("save_canvas");
-    expect(names).toHaveLength(8);
+    expect(names).toContain("rename_file");
+    expect(names).toContain("delete_file");
+    expect(names).toHaveLength(10);
   });
 
   describe("read_file", () => {

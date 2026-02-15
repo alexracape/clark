@@ -10,6 +10,7 @@ export { extractPDFText, getPDFInfo } from "./pdf.ts";
 export {
   extractWikilinks,
   buildFileIndex,
+  invalidateFileIndex,
   resolveWikilink,
   buildLinkFooter,
   resolveVaultPath,

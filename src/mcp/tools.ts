@@ -5,15 +5,17 @@
  * File tools are scoped to the vault directory. Canvas tools delegate to the CanvasBroker.
  */
 
-import { readdir, stat, mkdir } from "node:fs/promises";
+import { readdir, mkdir, rename, unlink } from "node:fs/promises";
 import { join, extname, dirname, relative } from "node:path";
 import type { CanvasBroker } from "../canvas/server.ts";
 import { exportPDFToFile } from "../canvas/pdf-export.ts";
 import { extractPDFText } from "./pdf.ts";
+import type { ToolInputSchema } from "../llm/provider.ts";
 import {
   extractWikilinks,
   buildLinkFooter,
   resolveVaultPath,
+  invalidateFileIndex,
   isImageFile,
   isPDFFile,
   imageMimeType,
@@ -33,11 +35,7 @@ export interface ToolAnnotations {
 export interface ToolDefinition {
   name: string;
   description: string;
-  inputSchema: {
-    type: "object";
-    properties: Record<string, { type: string; description: string; enum?: string[] }>;
-    required?: string[];
-  };
+  inputSchema: ToolInputSchema;
   annotations?: ToolAnnotations;
   handler: (input: Record<string, unknown>) => Promise<ToolResult>;
 }
@@ -265,6 +263,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           // Ensure parent directory exists
           await mkdir(dirname(absolutePath), { recursive: true });
           await Bun.write(absolutePath, input.content as string);
+          invalidateFileIndex();
           return { content: [{ type: "text", text: `Created: ${inputPath}` }] };
         } catch (err) {
           return {
@@ -332,6 +331,140 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         } catch (err) {
           return {
             content: [{ type: "text", text: `Error editing file: ${err}` }],
+            isError: true,
+          };
+        }
+      },
+    },
+
+    {
+      name: "rename_file",
+      description:
+        "Rename or move a file within the student's notes vault.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          old_path: {
+            type: "string",
+            description: "Current path of the file, relative to the vault root",
+          },
+          new_path: {
+            type: "string",
+            description: "New path for the file, relative to the vault root",
+          },
+        },
+        required: ["old_path", "new_path"],
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        openWorldHint: false,
+      },
+      handler: async (input) => {
+        const vaultDir = currentVaultDir();
+        const oldPath = input.old_path as string;
+        const newPath = input.new_path as string;
+
+        const absoluteOldPath = await resolveVaultPath(oldPath, vaultDir);
+        if (!absoluteOldPath) {
+          return {
+            content: [{ type: "text", text: "Error: old_path is outside the vault directory." }],
+            isError: true,
+          };
+        }
+
+        const absoluteNewPath = await resolveVaultPath(newPath, vaultDir);
+        if (!absoluteNewPath) {
+          return {
+            content: [{ type: "text", text: "Error: new_path is outside the vault directory." }],
+            isError: true,
+          };
+        }
+
+        try {
+          if (!(await Bun.file(absoluteOldPath).exists())) {
+            return {
+              content: [{ type: "text", text: `Error: source file not found: ${oldPath}` }],
+              isError: true,
+            };
+          }
+
+          if (await Bun.file(absoluteNewPath).exists()) {
+            return {
+              content: [{ type: "text", text: `Error: destination already exists: ${newPath}` }],
+              isError: true,
+            };
+          }
+
+          await mkdir(dirname(absoluteNewPath), { recursive: true });
+          await rename(absoluteOldPath, absoluteNewPath);
+          invalidateFileIndex();
+          return { content: [{ type: "text", text: `Renamed: ${oldPath} → ${newPath}` }] };
+        } catch (err) {
+          return {
+            content: [{ type: "text", text: `Error renaming file: ${err}` }],
+            isError: true,
+          };
+        }
+      },
+    },
+
+    {
+      name: "delete_file",
+      description:
+        "Delete a file from the student's notes vault. Requires explicit confirmation.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Path to the file, relative to the vault root",
+          },
+          confirm: {
+            type: "boolean",
+            description: "Must be true to confirm deletion",
+          },
+        },
+        required: ["path", "confirm"],
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        openWorldHint: false,
+      },
+      handler: async (input) => {
+        const vaultDir = currentVaultDir();
+        const inputPath = input.path as string;
+
+        if (input.confirm !== true) {
+          return {
+            content: [{ type: "text", text: "Error: confirm must be true to delete a file." }],
+            isError: true,
+          };
+        }
+
+        const absolutePath = await resolveVaultPath(inputPath, vaultDir);
+        if (!absolutePath) {
+          return {
+            content: [{ type: "text", text: "Error: path is outside the vault directory." }],
+            isError: true,
+          };
+        }
+
+        try {
+          if (!(await Bun.file(absolutePath).exists())) {
+            return {
+              content: [{ type: "text", text: `Error: file not found: ${inputPath}` }],
+              isError: true,
+            };
+          }
+
+          await unlink(absolutePath);
+          invalidateFileIndex();
+          return { content: [{ type: "text", text: `Deleted: ${inputPath}` }] };
+        } catch (err) {
+          return {
+            content: [{ type: "text", text: `Error deleting file: ${err}` }],
             isError: true,
           };
         }
@@ -473,45 +606,51 @@ function wrapFileContent(path: string, content: string): string {
   return `<<<BEGIN_FILE_CONTENT path="${path}">>>\n${content}\n<<<END_FILE_CONTENT>>>`;
 }
 
-async function searchDirectory(dirPath: string, query: string): Promise<SearchResult[]> {
-  const results: SearchResult[] = [];
-  const entries = await readdir(dirPath, { recursive: true });
+async function searchFile(dirPath: string, entry: string, query: string): Promise<SearchResult | null> {
+  const fullPath = join(dirPath, entry);
+  try {
+    const content = await Bun.file(fullPath).text();
+    const lines = content.split("\n");
+    const matchingLines: string[] = [];
+    let matchCount = 0;
 
-  for (const entry of entries) {
-    const ext = extname(entry).toLowerCase();
-    if (ext !== ".md" && ext !== ".txt") continue;
-
-    const fullPath = join(dirPath, entry);
-    const fileStat = await stat(fullPath);
-    if (!fileStat.isFile()) continue;
-
-    try {
-      const content = await Bun.file(fullPath).text();
-      const lines = content.split("\n");
-      const matchingLines: string[] = [];
-      let matchCount = 0;
-
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i]!.toLowerCase().includes(query)) {
-          matchCount++;
-          // Include surrounding context (1 line above and below)
-          const start = Math.max(0, i - 1);
-          const end = Math.min(lines.length - 1, i + 1);
-          const snippet = lines.slice(start, end + 1).join("\n");
-          matchingLines.push(snippet);
-        }
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i]!.toLowerCase().includes(query)) {
+        matchCount++;
+        const start = Math.max(0, i - 1);
+        const end = Math.min(lines.length - 1, i + 1);
+        const snippet = lines.slice(start, end + 1).join("\n");
+        matchingLines.push(snippet);
       }
-
-      if (matchingLines.length > 0) {
-        results.push({
-          path: relative(dirPath, fullPath),
-          snippets: matchingLines.slice(0, 3),
-          matchCount,
-        });
-      }
-    } catch {
-      // Skip unreadable files
     }
+
+    if (matchingLines.length > 0) {
+      return {
+        path: relative(dirPath, fullPath),
+        snippets: matchingLines.slice(0, 3),
+        matchCount,
+      };
+    }
+  } catch {
+    // Skip unreadable files (directories, binary, etc.)
+  }
+  return null;
+}
+
+async function searchDirectory(dirPath: string, query: string): Promise<SearchResult[]> {
+  const entries = await readdir(dirPath, { recursive: true });
+  const candidates = entries.filter((e) => {
+    const ext = extname(e).toLowerCase();
+    return ext === ".md" || ext === ".txt";
+  });
+
+  const BATCH_SIZE = 20;
+  const results: SearchResult[] = [];
+
+  for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+    const batch = candidates.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(batch.map((entry) => searchFile(dirPath, entry, query)));
+    results.push(...batchResults.filter((r): r is SearchResult => r !== null));
   }
 
   return results;

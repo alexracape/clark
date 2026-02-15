@@ -50,7 +50,9 @@ describe("MCP Protocol — tools/list", () => {
     expect(names).toContain("read_canvas");
     expect(names).toContain("export_pdf");
     expect(names).toContain("save_canvas");
-    expect(result.tools).toHaveLength(8);
+    expect(names).toContain("rename_file");
+    expect(names).toContain("delete_file");
+    expect(result.tools).toHaveLength(10);
   });
 
   test("each tool has a description and valid inputSchema", async () => {

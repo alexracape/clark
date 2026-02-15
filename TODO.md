@@ -7,13 +7,7 @@ Some future enhancements and things that need fixing.
 ## Refactoring
 
 - **Mutable module-level state in `input.tsx`** — `COMMANDS` is a mutable `let` export modified by `registerCommands()`. This makes testing fragile and couples module state to app lifecycle. Refactor to pass commands as a prop or use React context.
-- **Duplicated tool type definitions** — `ToolDefinition` in `mcp/tools.ts` and `Tool` in `llm/provider.ts` are nearly identical but separate types. Unify into a single shared type.
-- **`buildFileIndex()` called on every `read_file`** — Each wikilink resolution rebuilds the full vault file index via `readdir(recursive)`. Cache the index per session or use a file watcher.
-- **`searchDirectory()` reads every file sequentially** — The search tool reads all `.md`/`.txt` files one by one. Use `Promise.all` with concurrency limits or leverage Bun's fast I/O for parallel reads.
 - **`node:fs` vs `Bun.file` inconsistency** — The codebase mixes `readdir`/`stat` from `node:fs/promises` with `Bun.file()` for content reads. Standardize on Bun APIs where possible per CLAUDE.md guidelines.
-- **Gemini tool result passes `toolUseId` as function name** — In `gemini.ts:158`, `functionResponse.name` is set to `c.toolUseId` (a UUID) instead of the actual tool name. This may confuse the model when correlating results.
-- **OpenAI/Gemini tool results lose image content** — Both providers convert image tool results to the string `"[image]"` instead of passing base64 data. This means canvas snapshots returned as tool results won't work with these providers.
-- **Ollama `supportsVision` is hardcoded `true`** — Not all Ollama models support vision. Check model capabilities at runtime (e.g., from `ollama.show()` metadata).
 - **`canvas-session.ts` doesn't clean up broker on close** — When closing a canvas, pending snapshot/export promises are left dangling. Reject them on close.
 - **`app.tsx` callback dependency arrays** — Several `useCallback` hooks have incomplete dependency arrays (e.g., `runConversationTurn` doesn't list `addMessage`). This can cause stale closures.
 
@@ -29,14 +23,9 @@ Some future enhancements and things that need fixing.
 ## LLMs
 
 - Add default CLARK.md file with example content guiding students on how to customize
-- Handle `max_tokens` stop reason — currently not surfaced to user when response is truncated
-- Streaming error recovery — if a stream fails mid-response, show partial text and an error
-- Anthropic provider hardcodes `max_tokens: 4096` — make configurable or use model defaults
 
 ## MCP
 
-- Add `rename_file` tool — currently no way for the LLM to rename notes
-- Add `delete_file` tool (with confirmation) — structures workflow sometimes needs cleanup
 - Adding a `search_by_tag` tool for Obsidian-style `#tag` queries
 - Add websearch tool
 - Consider how / when to convert PDF to markdown files with OCR

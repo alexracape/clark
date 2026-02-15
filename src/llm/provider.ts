@@ -61,14 +61,16 @@ export interface ToolParameter {
   required?: boolean;
 }
 
+export interface ToolInputSchema {
+  type: "object";
+  properties: Record<string, ToolParameter>;
+  required?: string[];
+}
+
 export interface Tool {
   name: string;
   description: string;
-  parameters: {
-    type: "object";
-    properties: Record<string, ToolParameter>;
-    required?: string[];
-  };
+  parameters: ToolInputSchema;
 }
 
 // --- Streaming ---
