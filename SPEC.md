@@ -61,8 +61,9 @@ This is the simplest approach and always works during active tutoring sessions (
 **Behavior:**
 - Single-session, single-thread conversation
 - Student types messages; Clark responds with Socratic questions
-- Supports slash commands for common actions, plus dynamic skill commands
+- Supports slash commands for common actions
 - Tab completion and hint UI for slash commands (arrow keys to navigate, Tab to complete)
+- File ingestion via drag-and-drop or pasted paths — files are copied to Resources/ and transcribed
 - Command history with up/down navigation (persisted to `~/.clark/history`)
 - Shows a status indicator when Clark is thinking or reading the canvas
 
@@ -78,7 +79,7 @@ This is the simplest approach and always works during active tutoring sessions (
 - Session is ephemeral — conversation is not persisted across runs (v1)
 
 **Slash commands (built-in):**
-- `/help` — Show available commands (includes dynamic skill commands)
+- `/help` — Show available commands
 - `/canvas` — Open or show active canvas (shows canvas picker if none open)
 - `/export [path]` — Export canvas pages as A4 PDF (default: `<pdfExportDir>/<canvasName>.pdf`, fallback `./<canvasName>.pdf`). Supports tab-completion for directory paths.
 - `/model` — Switch model and provider (shows interactive picker with API key entry for unconfigured providers)
@@ -86,13 +87,19 @@ This is the simplest approach and always works during active tutoring sessions (
 - `/compact` — Summarize conversation to reclaim context tokens
 - `/clear` — Clear conversation history
 
-**Dynamic skill commands (from Clark/Structures/):**
-- At startup, Clark scans `<workspace>/Clark/Structures/` for `.md` files
-- Each Structure file becomes a slash command (e.g., `Class.md` → `/class`, `Problem Set.md` → `/problem_set`)
-- When invoked, the Structure's content is appended to the system prompt for that conversation turn
-- The LLM uses file tools to help the student create the structure
-- Accepts optional arguments: `/class CS101` pre-fills context; bare `/class` lets the LLM ask
-- One-shot: skill augmentation is cleared after the conversation turn completes
+**Structures (via NLU):**
+- Structure definitions live in `Clark/Structures/` as `.md` files (user-editable)
+- At startup, `loadEffectiveSystemPrompt()` scans Structures/ and appends a summary (name + purpose) to the system prompt
+- The LLM discovers structures from the system prompt and uses `read_file`/`create_file` tools naturally when a student asks to create one (e.g., "create a new class for CS101")
+- No dedicated slash commands — the model handles structure creation conversationally
+
+**File ingestion:**
+- When the student drags a file into the terminal or pastes a file path, the TUI detects it as a path (via `detectFilePath()`) before checking for slash commands
+- The file is copied to the appropriate `Resources/` subfolder (PDFs → `Resources/PDFs/`, images → `Resources/Images/`)
+- For PDFs with extractable text, a markdown transcription is saved to `Resources/Transcriptions/`
+- For images, the configured LLM's vision API generates a transcription (if the provider supports vision)
+- PDFs over 50 pages are accepted but transcription is skipped with a suggestion to split the file
+- After ingestion, a message is injected into the conversation so the model can acknowledge the new resource
 
 ### 2. Workspace System
 
@@ -316,11 +323,11 @@ clark/
 ├── src/
 │   ├── config.ts              # Config persistence (~/.clark/config.json)
 │   ├── library.ts             # Library scaffolding (directory structure + templates)
-│   ├── skills.ts              # Dynamic skills from Clark/Structures/ (slug, load, prompt)
 │   │
 │   ├── app/                   # Application-layer orchestration
 │   │   ├── canvas-session.ts  # CanvasSessionManager (one active canvas at a time)
-│   │   └── command-router.ts  # Slash command dispatch and /export path resolution
+│   │   ├── command-router.ts  # Slash command dispatch and /export path resolution
+│   │   └── ingest.ts          # File ingestion (path detection, copy, transcription)
 │   │
 │   ├── bootstrap/             # Startup and initialization
 │   │   ├── args.ts            # CLI argument parsing (yargs)
@@ -383,8 +390,8 @@ clark/
 │   ├── canvas.test.ts         # Canvas server/broker tests
 │   ├── canvas-page-autocreate.test.ts # Frame auto-creation logic tests
 │   ├── command-router.test.ts # Slash command dispatch tests
-│   ├── library.test.ts        # Library scaffolding tests
-│   └── skills.test.ts         # Skills loading and prompt building tests
+│   ├── ingest.test.ts         # File ingestion tests
+│   └── library.test.ts        # Library scaffolding tests
 │
 └── test/test_vault/           # Sample library for tests
     ├── Notes/                  # Markdown notes with wikilinks

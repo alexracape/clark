@@ -10,7 +10,6 @@ import {
   parseSlashCommand,
   COMMANDS,
   BUILTIN_COMMANDS,
-  registerCommands,
   getExportPathSuggestions,
 } from "../src/tui/input.tsx";
 import { CommandHistory } from "../src/tui/history.ts";
@@ -101,32 +100,9 @@ describe("COMMANDS", () => {
   });
 });
 
-describe("registerCommands", () => {
-  test("adds dynamic commands to COMMANDS", () => {
-    const before = COMMANDS.length;
-    registerCommands([
-      { name: "class", description: "Track courses" },
-      { name: "paper", description: "Academic papers" },
-    ]);
-
-    expect(COMMANDS.length).toBe(BUILTIN_COMMANDS.length + 2);
-    expect(COMMANDS.map((c) => c.name)).toContain("class");
-    expect(COMMANDS.map((c) => c.name)).toContain("paper");
-
-    // Reset to avoid affecting other tests
-    registerCommands([]);
-    expect(COMMANDS.length).toBe(BUILTIN_COMMANDS.length);
-  });
-
-  test("does not modify BUILTIN_COMMANDS", () => {
-    const originalLength = BUILTIN_COMMANDS.length;
-    registerCommands([{ name: "test_skill", description: "Test" }]);
-
-    expect(BUILTIN_COMMANDS.length).toBe(originalLength);
-    expect(BUILTIN_COMMANDS.map((c) => c.name)).not.toContain("test_skill");
-
-    // Reset
-    registerCommands([]);
+describe("COMMANDS is BUILTIN_COMMANDS", () => {
+  test("COMMANDS equals BUILTIN_COMMANDS", () => {
+    expect(COMMANDS).toBe(BUILTIN_COMMANDS);
   });
 });
 

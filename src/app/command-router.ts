@@ -1,6 +1,5 @@
 import { dirname, extname, join, resolve } from "node:path";
 import { stat } from "node:fs/promises";
-import type { Skill } from "../skills.ts";
 import type { Conversation } from "../llm/messages.ts";
 import type { LLMProvider } from "../llm/provider.ts";
 import type { CanvasSessionManager } from "./canvas-session.ts";
@@ -11,13 +10,12 @@ export interface CommandRouterOptions {
   getExportDir: () => string;
   setExportDir: (dir: string) => void;
   persistExportDir?: (dir: string) => Promise<void>;
-  skills: Skill[];
   conversation: Conversation;
   provider: LLMProvider;
 }
 
 export function createSlashCommandHandler(options: CommandRouterOptions) {
-  const { canvas, getExportDir, setExportDir, persistExportDir, skills, conversation, provider } = options;
+  const { canvas, getExportDir, setExportDir, persistExportDir, conversation, provider } = options;
 
   async function pathIsDirectory(path: string): Promise<boolean> {
     try {
@@ -84,14 +82,6 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
           "  /clear             Clear conversation history",
           "  Ctrl+C             Exit",
         ];
-
-        if (skills.length > 0) {
-          lines.push("", "Skills (from Clark/Structures/):");
-          for (const s of skills) {
-            const padded = `  /${s.slug}`.padEnd(23);
-            lines.push(`${padded}${s.description}`);
-          }
-        }
 
         return lines.join("\n");
       }

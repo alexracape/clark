@@ -6,8 +6,6 @@ import { createTools } from "../mcp/index.ts";
 import { Conversation } from "../llm/messages.ts";
 import { App } from "../tui/app.tsx";
 import { CommandHistory } from "../tui/history.ts";
-import { registerCommands } from "../tui/input.tsx";
-import { loadSkills } from "../skills.ts";
 import { scaffoldLibrary, clarkCanvasDirPath } from "../library.ts";
 import { loadConfig, saveConfig } from "../config.ts";
 import type { ClarkConfig } from "../config.ts";
@@ -45,10 +43,6 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
   });
 
   const conversation = new Conversation();
-  const skills = await loadSkills(workspaceDir);
-  if (skills.length > 0) {
-    registerCommands(skills.map((s) => ({ name: s.slug, description: s.description })));
-  }
 
   const tools = createTools({
     getBroker: () => canvas.broker,
@@ -67,7 +61,6 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
       const currentConfig = await loadConfig();
       await saveConfig({ ...currentConfig, pdfExportDir: dir });
     },
-    skills,
     conversation,
     provider,
   });
@@ -91,7 +84,7 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
       listCanvases: () => canvas.list(),
       getActiveCanvas: () => canvas.activeInfo,
       history,
-      skills,
+      workspaceDir,
     }),
   );
 }

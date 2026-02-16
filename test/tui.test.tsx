@@ -182,7 +182,7 @@ describe("App", () => {
         },
         onOpenCanvas: async (name: string) => ({ url: `http://localhost:3000` }),
         listCanvases: async () => [],
-        skills: [],
+        workspaceDir: TEST_VAULT,
       },
     };
   }
@@ -444,7 +444,7 @@ describe("App", () => {
         onSlashCommand={async () => null}
         onOpenCanvas={async (name: string) => ({ url: "http://localhost:3000" })}
         listCanvases={async () => []}
-        skills={[]}
+        workspaceDir={TEST_VAULT}
       />,
     );
 
@@ -478,70 +478,4 @@ describe("App", () => {
     expect(lastFrame()!).toContain("Help text here");
   });
 
-  test("skill command augments system prompt for one turn", async () => {
-    const testSkill = {
-      slug: "class",
-      displayName: "Class",
-      content: "## Purpose\nTrack courses.\n## Generation\nCreate with #class tag.",
-      description: "Track courses",
-    };
-
-    const { appProps, provider } = createAppProps([
-      { text: "What class would you like to track?" },
-    ]);
-    appProps.skills = [testSkill];
-
-    const { lastFrame, stdin } = render(<App {...appProps} />);
-
-    await tick();
-    for (const ch of "/class CS101") stdin.write(ch);
-    await tick();
-    stdin.write("\r");
-    await tick(200);
-
-    // Verify skill was injected into system prompt
-    expect(provider.lastCall!.systemPrompt).toContain("Track courses");
-    expect(provider.lastCall!.systemPrompt).toContain("#class tag");
-    expect(provider.lastCall!.systemPrompt).toContain("CS101");
-
-    // Verify the skill message is shown
-    const frame = lastFrame()!;
-    expect(frame).toContain("Using skill: Class");
-  });
-
-  test("skill prompt is cleared after turn (one-shot)", async () => {
-    const testSkill = {
-      slug: "paper",
-      displayName: "Paper",
-      content: "## Purpose\nAcademic paper notes.",
-      description: "Academic paper notes",
-    };
-
-    const { appProps, provider } = createAppProps([
-      { text: "What paper?" },
-      { text: "Sure, here are some tips." },
-    ]);
-    appProps.skills = [testSkill];
-
-    const { stdin } = render(<App {...appProps} />);
-
-    // First turn: skill command
-    await tick();
-    for (const ch of "/paper") stdin.write(ch);
-    await tick();
-    stdin.write("\r");
-    await tick(200);
-
-    // First call should have skill in system prompt
-    expect(provider.calls[0]!.systemPrompt).toContain("Academic paper notes");
-
-    // Second turn: normal message
-    for (const ch of "help me more") stdin.write(ch);
-    await tick();
-    stdin.write("\r");
-    await tick(200);
-
-    // Second call should NOT have skill in system prompt (one-shot cleared)
-    expect(provider.calls[1]!.systemPrompt).not.toContain("Active Skill");
-  });
 });

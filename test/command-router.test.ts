@@ -26,7 +26,6 @@ describe("createSlashCommandHandler /export", () => {
         setExportDir: (next) => {
           exportDir = next;
         },
-        skills: [],
         conversation: {} as never,
         provider: {} as never,
       });
@@ -63,7 +62,6 @@ describe("createSlashCommandHandler /export", () => {
         persistExportDir: async (next) => {
           persistedDir = next;
         },
-        skills: [],
         conversation: {} as never,
         provider: {} as never,
       });
@@ -99,7 +97,6 @@ describe("createSlashCommandHandler /export", () => {
         } as unknown as CanvasSessionManager,
         getExportDir: () => dir,
         setExportDir: () => {},
-        skills: [],
         conversation: {} as never,
         provider: {} as never,
       });
@@ -134,7 +131,6 @@ describe("createSlashCommandHandler /export", () => {
         persistExportDir: async () => {
           throw new Error("disk is read-only");
         },
-        skills: [],
         conversation: {} as never,
         provider: {} as never,
       });

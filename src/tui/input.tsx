@@ -42,13 +42,8 @@ export const BUILTIN_COMMANDS: CommandEntry[] = [
   { name: "clear", description: "Clear conversation history" },
 ];
 
-/** All commands including dynamically registered skills */
-export let COMMANDS: CommandEntry[] = [...BUILTIN_COMMANDS];
-
-/** Register additional commands (called at startup with skill commands) */
-export function registerCommands(commands: CommandEntry[]) {
-  COMMANDS = [...BUILTIN_COMMANDS, ...commands];
-}
+/** All available commands */
+export const COMMANDS: CommandEntry[] = BUILTIN_COMMANDS;
 
 /**
  * Parse a slash command from input text.

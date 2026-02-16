@@ -20,7 +20,7 @@ import { loadConfig, resolveApiKey, resolveMaxToolCallsPerTurn, saveConfig, type
 import { Conversation } from "../llm/messages.ts";
 import type { ToolDefinition, ToolResult } from "../mcp/tools.ts";
 import type { CommandHistory } from "./history.ts";
-import { type Skill, buildSkillPrompt } from "../skills.ts";
+import { detectFilePath, ingestFile } from "../app/ingest.ts";
 
 export interface AppProps {
   provider: LLMProvider;
@@ -35,7 +35,7 @@ export interface AppProps {
   listCanvases: () => Promise<string[]>;
   getActiveCanvas?: () => { name: string; url: string } | null;
   history: CommandHistory;
-  skills: Skill[];
+  workspaceDir: string;
 }
 
 /** Convert our MCP tool definitions to LLM tool format */
@@ -60,7 +60,7 @@ export function App({
   listCanvases,
   getActiveCanvas = () => null,
   history,
-  skills,
+  workspaceDir,
 }: AppProps) {
   const maxToolCallsPerTurn = resolveMaxToolCallsPerTurn(config);
   const [messages, setMessages] = useState<ChatMessage[]>([{
@@ -275,6 +275,28 @@ export function App({
   }, [onOpenCanvas, addMessage]);
 
   const handleSubmit = useCallback(async (text: string) => {
+    // Check if the input is a file path first (e.g., dragged from Finder).
+    // This runs before slash command parsing because absolute paths like
+    // /Users/alex/file.pdf would be misinterpreted as a "/Users" command.
+    const filePath = await detectFilePath(text);
+    if (filePath) {
+      addMessage("system", `Ingesting file: ${text.trim()}`);
+      setIsThinking(true);
+      try {
+        const result = await ingestFile(filePath, workspaceDir, activeProvider);
+        addMessage("system", result.summary);
+        // Tell the model about the new resource so it can acknowledge it
+        conversation.addUserMessage(`I just added a file to my resources: ${result.fileName} (saved to ${result.destPath}).${result.transcriptionPath ? ` A transcription was saved to ${result.transcriptionPath}.` : ""} Please acknowledge and let me know if you have any questions about it.`);
+        await runConversationTurn();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        addMessage("system", `Failed to ingest file: ${msg}`);
+      } finally {
+        setIsThinking(false);
+      }
+      return;
+    }
+
     // Check for slash command
     const command = parseSlashCommand(text);
     if (command) {
@@ -298,24 +320,6 @@ export function App({
         return;
       }
 
-      // Check if this is a skill command (from Clark/Structures/)
-      const matchedSkill = skills.find((s) => s.slug === command.name);
-      if (matchedSkill) {
-        const display = command.args
-          ? `Using skill: ${matchedSkill.displayName} — "${command.args}"`
-          : `Using skill: ${matchedSkill.displayName}`;
-        addMessage("system", display);
-
-        const userText = command.args
-          ? `I want to create a ${matchedSkill.displayName}. Context: ${command.args}`
-          : `I want to create a ${matchedSkill.displayName}.`;
-        conversation.addUserMessage(userText);
-
-        const skillPrompt = systemPrompt + buildSkillPrompt(matchedSkill, command.args);
-        await runConversationTurn(skillPrompt);
-        return;
-      }
-
       const result = await onSlashCommand(command.name, command.args);
       if (result) addMessage("system", result);
       return;
@@ -325,7 +329,7 @@ export function App({
     addMessage("user", text);
     conversation.addUserMessage(text);
     await runConversationTurn();
-  }, [conversation, runConversationTurn, onSlashCommand, addMessage, activeModel, systemPrompt, tools, skills, listCanvases]);
+  }, [conversation, runConversationTurn, onSlashCommand, addMessage, activeModel, activeProvider, systemPrompt, tools, listCanvases, workspaceDir]);
 
   const canvasInfo = getActiveCanvas();
 
