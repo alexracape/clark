@@ -11,24 +11,17 @@ import { Onboarding } from "./src/tui/onboarding.tsx";
 import {
   applyConfigToEnv,
   loadConfig,
-  saveConfig,
   needsOnboarding,
-  migrateLegacyApiKeys,
   type ClarkConfig,
 } from "./src/config.ts";
 import { parseCliArgs } from "./src/bootstrap/args.ts";
 import { startClarkApp } from "./src/bootstrap/start-app.ts";
 
 const args = await parseCliArgs();
-const loadedConfig = await loadConfig();
-const migration = await migrateLegacyApiKeys(loadedConfig);
-const config = migration.config;
-if (migration.changed) {
-  await saveConfig(config);
-}
+const config = await loadConfig();
 applyConfigToEnv(config);
 
-if (await needsOnboarding(config)) {
+if (!config.hasCompletedOnboarding || await needsOnboarding(config)) {
   render(
     React.createElement(Onboarding, {
       onComplete: (newConfig: ClarkConfig) => {

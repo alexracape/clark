@@ -39,10 +39,14 @@ export interface ClarkConfig {
   /** Secret backend used for API keys. */
   secretStoreBackend?: "macos-keychain" | "fallback";
 
-  // Legacy plaintext key fields (auto-migrated when possible).
-  anthropicApiKey?: string;
-  openaiApiKey?: string;
-  geminiApiKey?: string;
+  /** Flag indicating user has completed initial onboarding. */
+  hasCompletedOnboarding?: boolean;
+  /** Tutorial progress tracking. */
+  tutorialProgress?: {
+    completed: boolean;
+    currentStep?: number;
+    lastCompletedAt?: string;
+  };
 }
 
 interface SecretStore {
@@ -131,12 +135,21 @@ export async function loadConfig(path = DEFAULT_CONFIG_PATH): Promise<ClarkConfi
   return {};
 }
 
+export async function hasConfig(path = DEFAULT_CONFIG_PATH): Promise<boolean> {
+  try {
+    return await Bun.file(path).exists();
+  } catch {
+    return false;
+  }
+}
+
 export async function saveConfig(config: ClarkConfig, path = DEFAULT_CONFIG_PATH): Promise<void> {
   await ensureDir(join(path, ".."));
   await Bun.write(path, JSON.stringify(config, null, 2) + "\n");
 }
 
 async function resolveSecretStoreKey(provider: ProviderName, config: ClarkConfig): Promise<string | undefined> {
+  if (!config.secretStoreBackend) return undefined;
   const store = getSecretStore(config);
   if (!store.isSupported()) return undefined;
   return store.get(provider);
@@ -154,30 +167,24 @@ export async function setProviderApiKey(provider: ProviderName, apiKey: string, 
   return {
     ...config,
     secretStoreBackend: store.backend,
-    anthropicApiKey: undefined,
-    openaiApiKey: undefined,
-    geminiApiKey: undefined,
   };
 }
 
 /**
  * Resolve the API key for a provider.
- * Priority: env var > secret store > legacy config field.
+ * Priority: env var > secret store.
  */
 export async function resolveApiKey(provider: string, config: ClarkConfig): Promise<string | undefined> {
   switch (provider) {
     case "anthropic":
       return process.env.ANTHROPIC_API_KEY
-        ?? await resolveSecretStoreKey("anthropic", config)
-        ?? config.anthropicApiKey;
+        ?? await resolveSecretStoreKey("anthropic", config);
     case "openai":
       return process.env.OPENAI_API_KEY
-        ?? await resolveSecretStoreKey("openai", config)
-        ?? config.openaiApiKey;
+        ?? await resolveSecretStoreKey("openai", config);
     case "gemini":
       return process.env.GOOGLE_API_KEY
-        ?? await resolveSecretStoreKey("gemini", config)
-        ?? config.geminiApiKey;
+        ?? await resolveSecretStoreKey("gemini", config);
     case "ollama":
       return "not-required";
     default:
@@ -203,52 +210,6 @@ export async function needsOnboarding(config: ClarkConfig): Promise<boolean> {
   const hasGemini = !!(await resolveApiKey("gemini", config));
   const hasOllama = !!(config.provider === "ollama" || config.ollamaBaseUrl);
   return !hasAnthropic && !hasOpenai && !hasGemini && !hasOllama;
-}
-
-/**
- * Migrate legacy plaintext keys in config.json to the configured secret store.
- * Returns the updated config and whether it changed.
- */
-export async function migrateLegacyApiKeys(config: ClarkConfig): Promise<{ config: ClarkConfig; changed: boolean }> {
-  const legacy: Array<{ provider: ProviderName; value?: string }> = [
-    { provider: "anthropic", value: config.anthropicApiKey },
-    { provider: "openai", value: config.openaiApiKey },
-    { provider: "gemini", value: config.geminiApiKey },
-  ];
-
-  const hasLegacy = legacy.some((item) => !!item.value?.trim());
-  if (!hasLegacy) {
-    return { config, changed: false };
-  }
-
-  let next = { ...config };
-  let migratedAny = false;
-
-  for (const item of legacy) {
-    const value = item.value?.trim();
-    if (!value) continue;
-    try {
-      next = await setProviderApiKey(item.provider, value, next);
-      migratedAny = true;
-    } catch {
-      // Keep legacy value in place if migration fails.
-      return { config, changed: false };
-    }
-  }
-
-  if (!migratedAny) {
-    return { config, changed: false };
-  }
-
-  return {
-    config: {
-      ...next,
-      anthropicApiKey: undefined,
-      openaiApiKey: undefined,
-      geminiApiKey: undefined,
-    },
-    changed: true,
-  };
 }
 
 export function providerEnvVar(provider: ProviderName): string {

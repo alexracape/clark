@@ -76,6 +76,9 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
       systemPrompt,
       tools,
       isCanvasConnected: () => canvas.isConnected,
+      getCanvasConnectionStatus: () => canvas.connectionStatus,
+      subscribeCanvasConnectionStatus: (listener: Parameters<typeof canvas.subscribeConnectionStatus>[0]) =>
+        canvas.subscribeConnectionStatus(listener),
       onSlashCommand,
       onOpenCanvas: async (name: string) => {
         const info = await canvas.open(name);

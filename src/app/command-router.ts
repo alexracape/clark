@@ -74,6 +74,7 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
         const lines = [
           "Available commands:",
           "  /help              Show this help message",
+          "  /tutorial          Interactive tutorial (first-time users)",
           "  /canvas            Open or switch canvas",
           "  /export [path]     Export canvas as A4 PDF",
           "  /model             Switch model and provider",
@@ -126,6 +127,9 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
           return `Export failed: ${err instanceof Error ? err.message : String(err)}`;
         }
       }
+
+      case "tutorial":
+        return null;
 
       case "model":
         return null;

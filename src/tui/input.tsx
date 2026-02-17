@@ -34,6 +34,7 @@ export interface ExportPathSuggestion {
 /** Built-in commands (always available) */
 export const BUILTIN_COMMANDS: CommandEntry[] = [
   { name: "help", description: "Show available commands" },
+  { name: "tutorial", description: "Interactive tutorial for first-time users" },
   { name: "canvas", description: "Open or show active canvas" },
   { name: "export", description: "Export canvas as A4 PDF" },
   { name: "model", description: "Switch model and provider" },

@@ -451,13 +451,21 @@ clark --provider anthropic --model claude-sonnet-4-5-20250929
 interface ClarkConfig {
   provider?: string;
   model?: string;
-  anthropicApiKey?: string;
-  openaiApiKey?: string;
-  geminiApiKey?: string;
   ollamaBaseUrl?: string;
   pdfExportDir?: string;  // Default PDF export directory
+  secretStoreBackend?: "macos-keychain" | "fallback";
+  hasCompletedOnboarding?: boolean;  // Tracks first-run completion
+  tutorialProgress?: {
+    completed: boolean;
+    currentStep?: number;
+    lastCompletedAt?: string;
+  };
+  maxToolCallsPerTurn?: number;
+  maxTokens?: number;
 }
 ```
+
+**Note**: API keys are stored via environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`) or macOS Keychain (via `secretStoreBackend`). Legacy plaintext key storage in config.json has been removed.
 
 ## Non-Goals (v1)
 

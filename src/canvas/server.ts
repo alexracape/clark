@@ -54,6 +54,25 @@ interface PendingRequest<T> {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+export type CanvasBrokerEvent =
+  | {
+      type: "connected";
+      sequence: number;
+      at: number;
+    }
+  | {
+      type: "disconnected";
+      sequence: number;
+      at: number;
+      reason: string;
+    }
+  | {
+      type: "request_failed";
+      sequence: number;
+      at: number;
+      reason: string;
+    };
+
 /**
  * WebSocket message broker for communicating with the iPad client.
  * The MCP server uses this to request snapshots and exports.
@@ -69,10 +88,57 @@ export class CanvasBroker {
   private pendingExports = new Map<string, PendingRequest<ExportResponse>>();
   private clientSocket: BrokerSocket | null = null;
   private requestCounter = 0;
+  private eventSequence = 0;
+  private listeners = new Set<(event: CanvasBrokerEvent) => void>();
+
+  private emit(event: Omit<CanvasBrokerEvent, "sequence" | "at">): void {
+    const next: CanvasBrokerEvent = {
+      ...event,
+      sequence: ++this.eventSequence,
+      at: Date.now(),
+    };
+    for (const listener of this.listeners) listener(next);
+  }
+
+  private rejectPending(
+    map: Map<string, PendingRequest<SnapshotResponse> | PendingRequest<ExportResponse>>,
+    message: string,
+  ): void {
+    for (const [id, pending] of map) {
+      clearTimeout(pending.timeout);
+      map.delete(id);
+      pending.reject(new Error(message));
+    }
+  }
+
+  private rejectAllPending(message: string): void {
+    this.rejectPending(this.pendingSnapshots, message);
+    this.rejectPending(this.pendingExports, message);
+  }
+
+  subscribe(listener: (event: CanvasBrokerEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
 
   /** Register the iPad client's WebSocket connection (wrapped for Bun compatibility) */
   setClientSocket(ws: { send(data: string): void; close(code?: number, reason?: string): void } | null) {
+    const wasConnected = this.clientSocket !== null;
     this.clientSocket = ws ? { send: (d: string) => ws.send(d), close: (c?, r?) => ws.close(c, r) } : null;
+    const isConnected = this.clientSocket !== null;
+
+    if (!wasConnected && isConnected) {
+      this.emit({ type: "connected" });
+      return;
+    }
+
+    if (wasConnected && !isConnected) {
+      const reason = "Canvas client disconnected";
+      this.rejectAllPending(reason);
+      this.emit({ type: "disconnected", reason });
+    }
   }
 
   /** Handle an incoming message from the iPad client */
@@ -119,11 +185,19 @@ export class CanvasBroker {
     return new Promise<SnapshotResponse>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingSnapshots.delete(requestId);
+        this.emit({ type: "request_failed", reason: "Snapshot request timed out" });
         reject(new Error("Snapshot request timed out"));
       }, timeoutMs);
 
       this.pendingSnapshots.set(requestId, { resolve, reject, timeout });
-      this.clientSocket!.send(JSON.stringify(request));
+      try {
+        this.clientSocket!.send(JSON.stringify(request));
+      } catch {
+        clearTimeout(timeout);
+        this.pendingSnapshots.delete(requestId);
+        this.emit({ type: "request_failed", reason: "Snapshot request send failed" });
+        reject(new Error("Snapshot request send failed"));
+      }
     });
   }
 
@@ -139,12 +213,36 @@ export class CanvasBroker {
     return new Promise<ExportResponse>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingExports.delete(requestId);
+        this.emit({ type: "request_failed", reason: "Export request timed out" });
         reject(new Error("Export request timed out"));
       }, timeoutMs);
 
       this.pendingExports.set(requestId, { resolve, reject, timeout });
-      this.clientSocket!.send(JSON.stringify(request));
+      try {
+        this.clientSocket!.send(JSON.stringify(request));
+      } catch {
+        clearTimeout(timeout);
+        this.pendingExports.delete(requestId);
+        this.emit({ type: "request_failed", reason: "Export request send failed" });
+        reject(new Error("Export request send failed"));
+      }
     });
+  }
+
+  shutdown(reason = "Canvas session closed"): void {
+    const socket = this.clientSocket;
+    this.clientSocket = null;
+
+    if (socket) {
+      try {
+        socket.close(1001, reason);
+      } catch {
+        // Best effort close.
+      }
+    }
+
+    this.rejectAllPending(reason);
+    this.emit({ type: "disconnected", reason });
   }
 
   /** Check if an iPad client is connected */

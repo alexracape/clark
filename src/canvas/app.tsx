@@ -22,7 +22,10 @@ import type {
   ExportResponse,
   CanvasMessage,
 } from "./server.ts";
-import { shouldCheckTrailingEmptyFrameAfterCreate } from "./page-autocreate.ts";
+import {
+  intermediateBlankFrameIds,
+  trimTrailingBlankFrames,
+} from "./frame-heuristics.ts";
 
 // A4 dimensions in points (matching pdf-export.ts)
 const A4_WIDTH = 595.28;
@@ -54,6 +57,69 @@ function getFramesSorted(editor: Editor): TLShape[] {
     .sort((a, b) => a.y - b.y);
 }
 
+function getFrameChildren(editor: Editor, frame: TLShape): TLShape[] {
+  const childIds = editor.getSortedChildIdsForParent(frame.id);
+  return childIds
+    .map((id) => editor.getShape(id))
+    .filter((shape): shape is TLShape => shape != null);
+}
+
+/**
+ * Reparent any page-level shapes to frames based on their position.
+ * This ensures content is properly organized within frames.
+ */
+function reparentShapesToFrames(editor: Editor): void {
+  const frames = getFramesSorted(editor);
+  const pageId = editor.getCurrentPageId();
+  const pageLevelShapes = editor.getCurrentPageShapes().filter(
+    (shape) => shape.type !== "frame" && shape.parentId === pageId,
+  );
+
+  if (pageLevelShapes.length === 0) return;
+
+  // Map each page-level shape to the frame it should belong to
+  const reparentingMap = new Map<string, TLShape[]>();
+
+  for (const shape of pageLevelShapes) {
+    const shapeBounds = editor.getShapePageBounds(shape);
+    if (!shapeBounds) continue;
+
+    // Find which frame this shape belongs to (by center point)
+    const centerY = shapeBounds.y + shapeBounds.h / 2;
+
+    for (const frame of frames) {
+      const frameBounds = editor.getShapePageBounds(frame);
+      if (!frameBounds) continue;
+
+      if (
+        centerY >= frameBounds.y &&
+        centerY < frameBounds.y + frameBounds.h &&
+        shapeBounds.x < frameBounds.x + frameBounds.w &&
+        shapeBounds.x + shapeBounds.w > frameBounds.x
+      ) {
+        if (!reparentingMap.has(frame.id)) {
+          reparentingMap.set(frame.id, []);
+        }
+        reparentingMap.get(frame.id)!.push(shape);
+        break;
+      }
+    }
+  }
+
+  // Reparent shapes to their frames
+  for (const [frameId, shapes] of reparentingMap) {
+    editor.reparentShapes(
+      shapes.map((s) => s.id),
+      frameId,
+    );
+  }
+}
+
+function frameIsBlank(editor: Editor, frame: TLShape): boolean {
+  const hasChildContent = getFrameChildren(editor, frame).length > 0;
+  return !hasChildContent;
+}
+
 /** Expected position/size for a frame by its page number (1-indexed). */
 function expectedFrameGeometry(pageNumber: number) {
   return {
@@ -73,43 +139,55 @@ function ensureTrailingEmptyFrame(editor: Editor) {
   if (frames.length === 0) return;
 
   const lastFrame = frames.at(-1)!;
+  if (!frameIsBlank(editor, lastFrame)) createPageFrame(editor, frames.length + 1);
+}
 
-  // Check 1: does the last frame have parented children?
-  const childIds = editor.getSortedChildIdsForParent(lastFrame.id);
-  if (childIds.length > 0) {
-    createPageFrame(editor, frames.length + 1);
-    return;
-  }
+function normalizeFrameStack(editor: Editor): void {
+  const frames = getFramesSorted(editor);
+  const updates: TLShape[] = [];
 
-  // Check 2: are there page-level shapes overlapping the last frame?
-  // (in case tldraw didn't auto-parent the shape into the frame)
-  const frameBounds = editor.getShapePageBounds(lastFrame);
-  if (!frameBounds) return;
-
-  const pageId = editor.getCurrentPageId();
-  const pageShapes = editor.getCurrentPageShapes().filter(
-    (s) => s.type !== "frame" && s.parentId === pageId,
-  );
-
-  for (const shape of pageShapes) {
-    const sb = editor.getShapePageBounds(shape);
-    if (!sb) continue;
-    // AABB overlap check
+  for (let i = 0; i < frames.length; i++) {
+    const frame = frames[i]!;
+    const expected = expectedFrameGeometry(i + 1);
+    const expectedName = `Page ${i + 1}`;
+    const props = frame.props as { w?: number; h?: number; name?: string };
     if (
-      sb.x < frameBounds.x + frameBounds.w &&
-      sb.x + sb.w > frameBounds.x &&
-      sb.y < frameBounds.y + frameBounds.h &&
-      sb.y + sb.h > frameBounds.y
+      frame.x !== expected.x ||
+      frame.y !== expected.y ||
+      props.w !== expected.w ||
+      props.h !== expected.h ||
+      props.name !== expectedName
     ) {
-      createPageFrame(editor, frames.length + 1);
-      return;
+      updates.push({
+        ...frame,
+        x: expected.x,
+        y: expected.y,
+        props: { ...frame.props, w: expected.w, h: expected.h, name: expectedName },
+      });
     }
   }
+
+  if (updates.length > 0) editor.updateShapes(updates);
+}
+
+function cleanupIntermediateBlankFrames(editor: Editor): void {
+  const frames = getFramesSorted(editor);
+  const blankFrames = intermediateBlankFrameIds(
+    frames.map((frame) => ({
+      id: frame.id,
+      isBlank: frameIsBlank(editor, frame),
+    })),
+  );
+  if (blankFrames.length === 0) return;
+  editor.deleteShapes(blankFrames);
+  normalizeFrameStack(editor);
 }
 
 function CanvasApp() {
   const editorRef = useRef<Editor | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const maintenanceRunningRef = useRef(false);
+  const cleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const token = new URLSearchParams(window.location.search).get("token") ?? "";
 
   // Build sync URI from current page host
@@ -161,6 +239,9 @@ function CanvasApp() {
     connectBrokerWs();
     return () => {
       wsRef.current?.close();
+      if (cleanupTimerRef.current) {
+        clearTimeout(cleanupTimerRef.current);
+      }
     };
   }, [connectBrokerWs]);
 
@@ -169,42 +250,67 @@ function CanvasApp() {
   const handleMount = useCallback((editor: Editor) => {
     editorRef.current = editor;
 
-    // Prevent frame deletion — users should never remove A4 page frames
-    editor.sideEffects.registerBeforeDeleteHandler("shape", (shape) => {
-      if (shape.type === "frame") return false;
-    });
+    // Immediate maintenance: ensure trailing blank + normalize positions
+    const runImmediateMaintenance = () => {
+      if (maintenanceRunningRef.current) return;
+      maintenanceRunningRef.current = true;
+      try {
+        editor.run(() => {
+          reparentShapesToFrames(editor);
+          ensureTrailingEmptyFrame(editor);
+          normalizeFrameStack(editor);
+        }, { history: "ignore" });
+      } finally {
+        maintenanceRunningRef.current = false;
+      }
+    };
 
-    // Prevent frame move/resize — revert any position or size changes to frames
-    editor.sideEffects.registerBeforeChangeHandler("shape", (_prev, next) => {
-      if (next.type !== "frame") return next;
-      // Determine which page number this frame is by its name
-      const frames = getFramesSorted(editor);
-      const idx = frames.findIndex((f) => f.id === next.id);
-      if (idx < 0) return next;
-      const expected = expectedFrameGeometry(idx + 1);
-      // Force position and size back to expected values
-      return {
-        ...next,
-        x: expected.x,
-        y: expected.y,
-        props: { ...next.props, w: expected.w, h: expected.h },
-      };
-    });
+    // Debounced cleanup: remove intermediate blank frames after user stops editing
+    const scheduleDebouncedCleanup = () => {
+      // Clear any pending cleanup
+      if (cleanupTimerRef.current) {
+        clearTimeout(cleanupTimerRef.current);
+      }
+
+      // Schedule cleanup for 750ms after last user operation
+      cleanupTimerRef.current = setTimeout(() => {
+        if (maintenanceRunningRef.current) return;
+        maintenanceRunningRef.current = true;
+        try {
+          editor.run(() => {
+            reparentShapesToFrames(editor);
+            cleanupIntermediateBlankFrames(editor);
+            ensureTrailingEmptyFrame(editor);
+            normalizeFrameStack(editor);
+          }, { history: "ignore" });
+        } finally {
+          maintenanceRunningRef.current = false;
+        }
+      }, 750);
+    };
 
     // Create initial A4 frame if page is empty (fresh canvas)
     const existingFrames = getFramesSorted(editor);
     if (existingFrames.length === 0) {
       createPageFrame(editor, 1);
     }
+    editor.run(() => {
+      reparentShapesToFrames(editor);
+      normalizeFrameStack(editor);
+    }, { history: "ignore" });
 
     // Fit the initial view to show all frames
     editor.zoomToFit();
 
-    // Auto-create: ensure there's always an empty frame at the bottom.
-    // Uses setTimeout(0) so tldraw finishes auto-parenting before we check.
-    editor.sideEffects.registerAfterCreateHandler("shape", (shape, source) => {
-      if (!shouldCheckTrailingEmptyFrameAfterCreate(shape, source)) return;
-      setTimeout(() => ensureTrailingEmptyFrame(editor), 0);
+    editor.sideEffects.registerOperationCompleteHandler((source) => {
+      if (source !== "user") return;
+      if (maintenanceRunningRef.current) return;
+
+      // Always ensure trailing blank immediately (fast, non-disruptive)
+      runImmediateMaintenance();
+
+      // Schedule debounced cleanup of intermediate blanks (disruptive, so delayed)
+      scheduleDebouncedCleanup();
     });
   }, []);
 
@@ -224,13 +330,32 @@ function CanvasApp() {
 /**
  * Handle a snapshot request by exporting a single frame's content.
  * Finds the frame by name (msg.page) or defaults to the first frame.
+ *
+ * Robustness: Handles the case where users have deleted all frames.
  */
 async function handleSnapshotRequest(
   editor: Editor,
   ws: WebSocket,
   msg: SnapshotRequest,
 ) {
+  // Ensure shapes are properly parented before snapshot
+  editor.run(() => {
+    reparentShapesToFrames(editor);
+  }, { history: "ignore" });
+
   const frames = getFramesSorted(editor);
+
+  // Handle case where all frames have been deleted
+  if (frames.length === 0) {
+    const response: SnapshotResponse = {
+      type: "snapshot-response",
+      requestId: msg.requestId,
+      page: "NO_FRAMES",
+      png: "",
+    };
+    ws.send(JSON.stringify(response));
+    return;
+  }
 
   // Find requested frame by name, or default to first
   let targetFrame = frames[0];
@@ -241,11 +366,12 @@ async function handleSnapshotRequest(
     if (found) targetFrame = found;
   }
 
+  // This shouldn't happen if frames.length > 0, but check anyway
   if (!targetFrame) {
     const response: SnapshotResponse = {
       type: "snapshot-response",
       requestId: msg.requestId,
-      page: "",
+      page: "ERROR",
       png: "",
     };
     ws.send(JSON.stringify(response));
@@ -253,10 +379,7 @@ async function handleSnapshotRequest(
   }
 
   const frameName = (targetFrame.props as { name: string }).name;
-  const childIds = editor.getSortedChildIdsForParent(targetFrame.id);
-  const children = childIds
-    .map((id) => editor.getShape(id))
-    .filter((s): s is TLShape => s != null);
+  const children = getFrameChildren(editor, targetFrame);
 
   let png = "";
   if (children.length > 0) {
@@ -285,21 +408,43 @@ async function handleSnapshotRequest(
 /**
  * Handle an export request by exporting each frame individually.
  * Iterates all frames sorted by Y position, exports each with its bounds.
+ *
+ * Robustness: Returns empty pages array if no frames exist (frameless canvas).
  */
 async function handleExportRequest(
   editor: Editor,
   ws: WebSocket,
   msg: ExportRequest,
 ) {
-  const frames = getFramesSorted(editor);
+  // Ensure shapes are properly parented before export
+  editor.run(() => {
+    reparentShapesToFrames(editor);
+  }, { history: "ignore" });
+
+  const allFrames = getFramesSorted(editor);
+
+  // Handle case where all frames have been deleted (frameless canvas)
+  if (allFrames.length === 0) {
+    const response: ExportResponse = {
+      type: "export-response",
+      requestId: msg.requestId,
+      pages: [],
+    };
+    ws.send(JSON.stringify(response));
+    return;
+  }
+
+  const frames = trimTrailingBlankFrames(
+    allFrames.map((frame) => ({
+      frame,
+      isBlank: frameIsBlank(editor, frame),
+    })),
+  ).map((entry) => entry.frame);
   const pageImages: Array<{ name: string; png: string }> = [];
 
   for (const frame of frames) {
     const frameName = (frame.props as { name: string }).name;
-    const childIds = editor.getSortedChildIdsForParent(frame.id);
-    const children = childIds
-      .map((id) => editor.getShape(id))
-      .filter((s): s is TLShape => s != null);
+    const children = getFrameChildren(editor, frame);
 
     let png = "";
     if (children.length > 0) {

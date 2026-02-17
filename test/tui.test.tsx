@@ -91,6 +91,38 @@ describe("StatusBar", () => {
     expect(lastFrame()!).toContain("connected");
   });
 
+  test("shows reconnecting status in the canvas indicator", () => {
+    const { lastFrame } = render(
+      <StatusBar
+        provider="mock"
+        model="test"
+        canvasConnected={false}
+        canvasStatus="reconnecting"
+        canvasUrl="http://192.168.1.1:3000"
+        canvasName="HW1"
+        isThinking={false}
+      />,
+    );
+
+    expect(lastFrame()!).toContain("reconnecting");
+  });
+
+  test("shows failed status in the canvas indicator", () => {
+    const { lastFrame } = render(
+      <StatusBar
+        provider="mock"
+        model="test"
+        canvasConnected={false}
+        canvasStatus="failed"
+        canvasUrl="http://192.168.1.1:3000"
+        canvasName="HW1"
+        isThinking={false}
+      />,
+    );
+
+    expect(lastFrame()!).toContain("failed");
+  });
+
   test("shows thinking indicator", () => {
     const { lastFrame } = render(
       <StatusBar

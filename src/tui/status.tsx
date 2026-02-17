@@ -4,11 +4,13 @@
 
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
+import type { CanvasConnectionState } from "../app/canvas-session.ts";
 
 export interface StatusBarProps {
   provider: string;
   model: string;
   canvasConnected: boolean;
+  canvasStatus?: CanvasConnectionState | null;
   canvasUrl: string | null;
   canvasName: string | null;
   isThinking: boolean;
@@ -16,8 +18,16 @@ export interface StatusBarProps {
 
 const SPINNER_FRAMES = [".", "..", "..."];
 
-export function StatusBar({ provider, model, canvasConnected, canvasUrl, canvasName, isThinking }: StatusBarProps) {
+function statusColor(status: CanvasConnectionState): "green" | "yellow" | "cyan" | "red" {
+  if (status === "connected") return "green";
+  if (status === "connecting") return "cyan";
+  if (status === "failed") return "red";
+  return "yellow";
+}
+
+export function StatusBar({ provider, model, canvasConnected, canvasStatus, canvasUrl, canvasName, isThinking }: StatusBarProps) {
   const [frame, setFrame] = useState(0);
+  const effectiveStatus = canvasStatus ?? (canvasConnected ? "connected" : "disconnected");
 
   useEffect(() => {
     if (!isThinking) return;
@@ -36,10 +46,14 @@ export function StatusBar({ provider, model, canvasConnected, canvasUrl, canvasN
 
       <Box>
         {canvasName ? (
-          canvasConnected ? (
-            <Text color="green">{"[canvas: "}{canvasName}{" connected]"}</Text>
+          effectiveStatus === "connected" ? (
+            <Text color={statusColor(effectiveStatus)}>{"[canvas: "}{canvasName}{" connected]"}</Text>
           ) : (
-            <Text color="yellow">{"[canvas: "}{canvasName}{" "}{canvasUrl}{"]"}</Text>
+            <Text color={statusColor(effectiveStatus)}>
+              {"[canvas: "}{canvasName}{" "}{effectiveStatus}
+              {canvasUrl ? ` ${canvasUrl}` : ""}
+              {"]"}
+            </Text>
           )
         ) : (
           <Text color="gray" dimColor>{"[no canvas — /canvas to open]"}</Text>

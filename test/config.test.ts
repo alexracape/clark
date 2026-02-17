@@ -14,7 +14,6 @@ import {
   applyConfigToEnv,
   loadConfig,
   saveConfig,
-  migrateLegacyApiKeys,
   type ClarkConfig,
 } from "../src/config.ts";
 
@@ -47,13 +46,6 @@ describe("needsOnboarding", () => {
     expect(await needsOnboarding({})).toBe(false);
   });
 
-  test("returns false with legacy config key", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENAI_API_KEY;
-    delete process.env.GOOGLE_API_KEY;
-    expect(await needsOnboarding({ anthropicApiKey: "sk-ant-test" })).toBe(false);
-  });
-
   test("returns false with ollama provider in config", async () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENAI_API_KEY;
@@ -77,14 +69,9 @@ describe("resolveApiKey", () => {
     process.env.GOOGLE_API_KEY = savedEnv.GOOGLE_API_KEY;
   });
 
-  test("env var takes precedence over config for anthropic", async () => {
+  test("env var takes precedence over secret store for anthropic", async () => {
     process.env.ANTHROPIC_API_KEY = "env-key";
-    expect(await resolveApiKey("anthropic", { anthropicApiKey: "config-key" })).toBe("env-key");
-  });
-
-  test("falls back to legacy config when no env var", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    expect(await resolveApiKey("anthropic", { anthropicApiKey: "config-key" })).toBe("config-key");
+    expect(await resolveApiKey("anthropic", {})).toBe("env-key");
   });
 
   test("returns undefined when nothing is set", async () => {
@@ -119,16 +106,6 @@ describe("applyConfigToEnv", () => {
     applyConfigToEnv({ ollamaBaseUrl: "http://custom:11434" });
     expect(process.env.OLLAMA_HOST).toBe("http://custom:11434");
   });
-
-  test("does not set api key env vars from config", () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENAI_API_KEY;
-    delete process.env.GOOGLE_API_KEY;
-    applyConfigToEnv({ anthropicApiKey: "a", openaiApiKey: "o", geminiApiKey: "g" });
-    expect(process.env.ANTHROPIC_API_KEY).toBeUndefined();
-    expect(process.env.OPENAI_API_KEY).toBeUndefined();
-    expect(process.env.GOOGLE_API_KEY).toBeUndefined();
-  });
 });
 
 describe("resolveMaxToolCallsPerTurn", () => {
@@ -146,15 +123,6 @@ describe("resolveMaxToolCallsPerTurn", () => {
 
   test("clamps maximum to 50", () => {
     expect(resolveMaxToolCallsPerTurn({ maxToolCallsPerTurn: 999 })).toBe(50);
-  });
-});
-
-describe("migrateLegacyApiKeys", () => {
-  test("returns unchanged when no legacy keys are present", async () => {
-    const base: ClarkConfig = { provider: "anthropic", model: "claude-sonnet-4-5-20250929" };
-    const out = await migrateLegacyApiKeys(base);
-    expect(out.changed).toBe(false);
-    expect(out.config).toEqual(base);
   });
 });
 

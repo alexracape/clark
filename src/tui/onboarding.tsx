@@ -11,6 +11,23 @@ import { useSelectableList } from "./primitives/use-selectable-list.ts";
 
 type Step = "welcome" | "provider" | "api-key" | "done";
 
+const STEP_INFO: Record<Step, { index: number; title: string }> = {
+  welcome: { index: 1, title: "Welcome" },
+  provider: { index: 2, title: "Choose Provider" },
+  "api-key": { index: 3, title: "API Key Setup" },
+  done: { index: 3, title: "Complete" },
+};
+
+const TOTAL_STEPS = 3;
+
+function StepIndicator({ current, total, label }: {
+  current: number;
+  total: number;
+  label: string;
+}) {
+  return <Text color="blue" dimColor>[{current}/{total}] {label}</Text>;
+}
+
 interface ProviderOption {
   id: string;
   name: string;
@@ -45,6 +62,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       ...currentConfig,
       ...partialConfig,
       pdfExportDir: currentConfig.pdfExportDir ?? cwd,
+      hasCompletedOnboarding: true,
     };
 
     await saveConfig(updatedConfig);
@@ -171,9 +189,17 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   \\_____|_|\\__,_|_|  |_|\\_\\
 `}
         </Text>
+        <StepIndicator current={1} total={TOTAL_STEPS} label="Welcome" />
+        <Text color="gray" dimColor> </Text>
         <Text>Welcome to <Text bold>Clark</Text>, your Socratic tutoring assistant.</Text>
         <Text color="gray" dimColor> </Text>
-        <Text>Let's get you set up. You'll need an API key from an LLM provider.</Text>
+        <Text>Clark helps you work through problems by asking guiding questions,</Text>
+        <Text>not giving answers. You can write on your iPad while Clark responds</Text>
+        <Text>to your progress.</Text>
+        <Text color="gray" dimColor> </Text>
+        <Text bold>What you'll need:</Text>
+        <Text>  • An API key from an LLM provider (Anthropic, OpenAI, or Google)</Text>
+        <Text>  • Optional: An iPad for handwritten work</Text>
         <Text color="gray" dimColor> </Text>
         <Text color="gray">Press <Text bold color="white">Enter</Text> to continue, <Text bold color="white">Ctrl+C</Text> to exit.</Text>
       </Box>
@@ -183,6 +209,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   if (step === "provider") {
     return (
       <Box flexDirection="column" padding={1}>
+        <StepIndicator current={2} total={TOTAL_STEPS} label="Choose Provider" />
+        <Text color="gray" dimColor> </Text>
+        <Text color="green">✓ Welcome</Text>
+        <Text color="gray" dimColor> </Text>
         <Text bold>Choose your LLM provider:</Text>
         <Text color="gray" dimColor> </Text>
         {PROVIDERS.map((provider, i) => (
@@ -216,6 +246,11 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   if (step === "api-key") {
     return (
       <Box flexDirection="column" padding={1}>
+        <StepIndicator current={3} total={TOTAL_STEPS} label="API Key Setup" />
+        <Text color="gray" dimColor> </Text>
+        <Text color="green">✓ Welcome</Text>
+        <Text color="green">✓ Provider selected: {provider.name}</Text>
+        <Text color="gray" dimColor> </Text>
         <Text bold>Enter your {provider.name} API key:</Text>
         <Text color="gray" dimColor> </Text>
         <Text color="gray" dimColor>
@@ -246,9 +281,22 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     );
   }
 
+  const selectedProvider = PROVIDERS[providerList.selected]!;
+  const workspaceDir = process.cwd();
+
   return (
     <Box flexDirection="column" padding={1}>
-      <Text color="green">Setup complete. Starting Clark...</Text>
+      <Text color="green">✓ Setup complete!</Text>
+      <Text color="gray" dimColor> </Text>
+      <Text>Provider: <Text bold>{selectedProvider.name}</Text></Text>
+      <Text>Workspace: <Text bold>{workspaceDir}</Text></Text>
+      <Text color="gray" dimColor> </Text>
+      <Text bold>Next steps:</Text>
+      <Text>  • Type <Text bold color="white">/help</Text> to see available commands</Text>
+      <Text>  • Type <Text bold color="white">/tutorial</Text> to learn the basics</Text>
+      <Text>  • Type <Text bold color="white">/canvas</Text> to start drawing</Text>
+      <Text color="gray" dimColor> </Text>
+      <Text color="yellow">Starting Clark...</Text>
     </Box>
   );
 }

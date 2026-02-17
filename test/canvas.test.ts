@@ -32,6 +32,19 @@ describe("CanvasBroker", () => {
     const broker = new CanvasBroker();
     expect(broker.handleMessage('{"type":"unknown"}')).toBe(false);
   });
+
+  test("rejects in-flight export when client disconnects", async () => {
+    const broker = new CanvasBroker();
+    broker.setClientSocket({
+      send: () => {},
+      close: () => {},
+    });
+
+    const pending = broker.requestExport(10_000);
+    broker.setClientSocket(null);
+
+    await expect(pending).rejects.toThrow("Canvas client disconnected");
+  });
 });
 
 describe("TLSocketRoom", () => {

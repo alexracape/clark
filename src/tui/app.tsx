@@ -5,13 +5,14 @@
  * Handles the streaming LLM conversation loop including tool dispatch.
  */
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { Box, Text } from "ink";
 import { Chat, type ChatMessage } from "./chat.tsx";
 import { Input, parseSlashCommand } from "./input.tsx";
 import { StatusBar } from "./status.tsx";
 import { ModelPicker } from "./model-picker.tsx";
 import { CanvasPicker } from "./canvas-picker.tsx";
+import { Tutorial } from "./tutorial.tsx";
 import { createProvider } from "../llm/provider.ts";
 import { setProviderOptions } from "../llm/provider.ts";
 import { formatContextGrid } from "./context.ts";
@@ -21,6 +22,7 @@ import { Conversation } from "../llm/messages.ts";
 import type { ToolDefinition, ToolResult } from "../mcp/tools.ts";
 import type { CommandHistory } from "./history.ts";
 import { detectFilePath, ingestFile } from "../app/ingest.ts";
+import type { CanvasConnectionStatus } from "../app/canvas-session.ts";
 
 export interface AppProps {
   provider: LLMProvider;
@@ -30,6 +32,8 @@ export interface AppProps {
   systemPrompt: string;
   tools: ToolDefinition[];
   isCanvasConnected: () => boolean;
+  getCanvasConnectionStatus?: () => CanvasConnectionStatus;
+  subscribeCanvasConnectionStatus?: (listener: (status: CanvasConnectionStatus) => void) => () => void;
   onSlashCommand: (name: string, args: string) => Promise<string | null>;
   onOpenCanvas: (name: string) => Promise<{ url: string }>;
   listCanvases: () => Promise<string[]>;
@@ -55,6 +59,8 @@ export function App({
   systemPrompt,
   tools,
   isCanvasConnected,
+  getCanvasConnectionStatus,
+  subscribeCanvasConnectionStatus,
   onSlashCommand,
   onOpenCanvas,
   listCanvases,
@@ -76,10 +82,21 @@ export function App({
   const [activeProvider, setActiveProvider] = useState<LLMProvider>(provider);
   const [activeModel, setActiveModel] = useState(model);
   const [showModelPicker, setShowModelPicker] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
 
   // Canvas state — starts closed, populated when user opens via /canvas
   const [showCanvasPicker, setShowCanvasPicker] = useState(false);
   const [canvasNames, setCanvasNames] = useState<string[]>([]);
+  const [canvasConnectionStatus, setCanvasConnectionStatus] = useState<CanvasConnectionStatus | null>(
+    getCanvasConnectionStatus ? getCanvasConnectionStatus() : null,
+  );
+
+  useEffect(() => {
+    if (!subscribeCanvasConnectionStatus) return;
+    return subscribeCanvasConnectionStatus((status) => {
+      setCanvasConnectionStatus(status);
+    });
+  }, [subscribeCanvasConnectionStatus]);
 
   const addMessage = useCallback((role: ChatMessage["role"], content: string) => {
     setMessages((prev) => [...prev, { role, content, timestamp: new Date() }]);
@@ -314,6 +331,12 @@ export function App({
         return;
       }
 
+      // Intercept /tutorial to show the tutorial modal
+      if (command.name === "tutorial") {
+        setShowTutorial(true);
+        return;
+      }
+
       // Intercept /context — needs activeModel from component state
       if (command.name === "context") {
         addMessage("system", formatContextGrid(activeModel, conversation, systemPrompt, tools));
@@ -332,13 +355,18 @@ export function App({
   }, [conversation, runConversationTurn, onSlashCommand, addMessage, activeModel, activeProvider, systemPrompt, tools, listCanvases, workspaceDir]);
 
   const canvasInfo = getActiveCanvas();
+  const canvasConnected = canvasConnectionStatus
+    ? canvasConnectionStatus.state === "connected"
+    : isCanvasConnected();
+  const canvasStatus = canvasConnectionStatus?.state ?? null;
 
   return (
     <Box flexDirection="column">
       <StatusBar
         provider={activeProvider.name}
         model={activeModel}
-        canvasConnected={isCanvasConnected()}
+        canvasConnected={canvasConnected}
+        canvasStatus={canvasStatus}
         canvasUrl={canvasInfo?.url ?? null}
         canvasName={canvasInfo?.name ?? null}
         isThinking={isThinking}
@@ -354,7 +382,27 @@ export function App({
         <Text color="gray" dimColor>{"─".repeat(60)}</Text>
       </Box>
 
-      {showModelPicker ? (
+      {showTutorial ? (
+        <Tutorial
+          onComplete={() => {
+            setShowTutorial(false);
+            loadConfig().then((cfg) =>
+              saveConfig({
+                ...cfg,
+                tutorialProgress: {
+                  completed: true,
+                  lastCompletedAt: new Date().toISOString(),
+                },
+              }),
+            );
+            addMessage("system", "Tutorial complete! Type /help to see all commands.");
+          }}
+          onSkip={() => {
+            setShowTutorial(false);
+            addMessage("system", "Tutorial skipped. Type /tutorial to restart anytime.");
+          }}
+        />
+      ) : showModelPicker ? (
         <ModelPicker
           currentProvider={activeProvider.name}
           currentModel={activeModel}

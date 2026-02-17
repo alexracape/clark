@@ -476,13 +476,13 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
     {
       name: "read_canvas",
       description:
-        "Capture a PNG snapshot of a canvas page from the student's iPad. Returns the image for visual analysis of handwritten work.",
+        "Capture a PNG snapshot of a canvas page from the student's iPad. Returns the image for visual analysis of handwritten work. This captures a specific frame (page), not the user's current viewport.",
       inputSchema: {
         type: "object",
         properties: {
           page: {
             type: "string",
-            description: "Page ID to snapshot (omit for current page)",
+            description: "Page name to snapshot (e.g., 'Page 1'). Omit to capture the first page.",
           },
         },
       },
@@ -500,6 +500,35 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         }
         try {
           const response = await broker.requestSnapshot(input.page as string | undefined);
+
+          // Handle special cases
+          if (response.page === "NO_FRAMES") {
+            return {
+              content: [{
+                type: "text",
+                text: "The canvas has no pages (frames). The student may have deleted all frames. Ask them to create content on the canvas or use the canvas normally - frames will be auto-created when they start drawing.",
+              }],
+              isError: true,
+            };
+          }
+
+          if (response.page === "ERROR") {
+            return {
+              content: [{ type: "text", text: "Error: Unable to find the requested page on the canvas." }],
+              isError: true,
+            };
+          }
+
+          // Empty PNG means the page exists but has no content
+          if (!response.png) {
+            return {
+              content: [{
+                type: "text",
+                text: `Page "${response.page}" exists but is currently blank (no content to display).`,
+              }],
+            };
+          }
+
           return {
             content: [
               { type: "image", data: response.png, mimeType: "image/png" },
@@ -518,7 +547,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
     {
       name: "export_pdf",
       description:
-        "Export all canvas pages as an A4 PDF file. Returns the file path.",
+        "Export all canvas pages as an A4 PDF file. Returns the file path. Only exports pages with content (blank trailing pages are excluded).",
       inputSchema: {
         type: "object",
           properties: {
@@ -544,9 +573,22 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         const outputPath = (input.output_path as string) ?? join(currentExportDir(), "clark-export.pdf");
         try {
           const response = await broker.requestExport();
+
+          // Handle case where canvas has no frames
+          if (response.pages.length === 0) {
+            return {
+              content: [{
+                type: "text",
+                text: "The canvas has no pages to export. The student may have deleted all frames or the canvas is empty. Ask them to create content on the canvas first.",
+              }],
+              isError: true,
+            };
+          }
+
           const path = await exportPDFToFile(response.pages, outputPath);
+          const pageCount = response.pages.length;
           return {
-            content: [{ type: "text", text: `PDF exported to: ${path}` }],
+            content: [{ type: "text", text: `PDF exported to: ${path} (${pageCount} page${pageCount === 1 ? "" : "s"})` }],
           };
         } catch (err) {
           return {
