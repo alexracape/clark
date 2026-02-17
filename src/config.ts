@@ -37,7 +37,7 @@ export interface ClarkConfig {
   /** Max tokens for LLM output. Provider-specific defaults apply if unset. */
   maxTokens?: number;
   /** Secret backend used for API keys. */
-  secretStoreBackend?: "macos-keychain" | "fallback";
+  secretStoreBackend?: "macos-keychain" | "linux-libsecret" | "windows-credential" | "fallback";
 
   /** Flag indicating user has completed initial onboarding. */
   hasCompletedOnboarding?: boolean;
@@ -50,10 +50,11 @@ export interface ClarkConfig {
 }
 
 interface SecretStore {
-  readonly backend: "macos-keychain" | "fallback";
+  readonly backend: "macos-keychain" | "linux-libsecret" | "windows-credential" | "fallback";
   isSupported(): boolean;
   get(provider: ProviderName): Promise<string | undefined>;
   set(provider: ProviderName, value: string): Promise<void>;
+  delete(provider: ProviderName): Promise<void>;
 }
 
 class MacOSKeychainSecretStore implements SecretStore {
@@ -92,6 +93,121 @@ class MacOSKeychainSecretStore implements SecretStore {
       value,
     ]);
   }
+
+  async delete(provider: ProviderName): Promise<void> {
+    try {
+      await execFileAsync("security", [
+        "delete-generic-password",
+        "-s",
+        KEYCHAIN_SERVICE,
+        "-a",
+        provider,
+      ]);
+    } catch {
+      // Ignore errors (item might not exist)
+    }
+  }
+}
+
+class LinuxLibsecretStore implements SecretStore {
+  readonly backend = "linux-libsecret" as const;
+
+  isSupported(): boolean {
+    return platform() === "linux";
+  }
+
+  async get(provider: ProviderName): Promise<string | undefined> {
+    try {
+      const { stdout } = await execFileAsync("secret-tool", [
+        "lookup",
+        "service",
+        KEYCHAIN_SERVICE,
+        "account",
+        provider,
+      ]);
+      const value = stdout.trim();
+      return value.length > 0 ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async set(provider: ProviderName, value: string): Promise<void> {
+    await execFileAsync("secret-tool", [
+      "store",
+      "--label",
+      `Clark API key for ${provider}`,
+      "service",
+      KEYCHAIN_SERVICE,
+      "account",
+      provider,
+    ], {
+      input: value,
+    });
+  }
+
+  async delete(provider: ProviderName): Promise<void> {
+    try {
+      await execFileAsync("secret-tool", [
+        "clear",
+        "service",
+        KEYCHAIN_SERVICE,
+        "account",
+        provider,
+      ]);
+    } catch {
+      // Ignore errors (item might not exist)
+    }
+  }
+}
+
+class WindowsCredentialStore implements SecretStore {
+  readonly backend = "windows-credential" as const;
+
+  isSupported(): boolean {
+    return platform() === "win32";
+  }
+
+  private getTargetName(provider: ProviderName): string {
+    return `${KEYCHAIN_SERVICE}:${provider}`;
+  }
+
+  async get(provider: ProviderName): Promise<string | undefined> {
+    try {
+      const target = this.getTargetName(provider);
+      // cmdkey /list doesn't show passwords, need to use PowerShell
+      const { stdout } = await execFileAsync("powershell", [
+        "-NoProfile",
+        "-Command",
+        `$cred = (cmdkey /list | Select-String '${target}'); if ($cred) { (New-Object System.Net.NetworkCredential('', (Get-StoredCredential -Target '${target}').Password)).Password }`,
+      ]);
+      const value = stdout.trim();
+      return value.length > 0 ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async set(provider: ProviderName, value: string): Promise<void> {
+    const target = this.getTargetName(provider);
+    // cmdkey /generic requires username, using provider name as username
+    await execFileAsync("cmdkey", [
+      "/generic:" + target,
+      "/user:" + provider,
+      "/pass:" + value,
+    ]);
+  }
+
+  async delete(provider: ProviderName): Promise<void> {
+    try {
+      const target = this.getTargetName(provider);
+      await execFileAsync("cmdkey", [
+        "/delete:" + target,
+      ]);
+    } catch {
+      // Ignore errors (item might not exist)
+    }
+  }
 }
 
 class FallbackSecretStore implements SecretStore {
@@ -108,14 +224,36 @@ class FallbackSecretStore implements SecretStore {
   async set(_provider: ProviderName, _value: string): Promise<void> {
     throw new Error("Secret storage backend unavailable on this platform. Set provider API keys via environment variables for now.");
   }
+
+  async delete(_provider: ProviderName): Promise<void> {
+    // No-op for fallback
+  }
 }
 
 function getSecretStore(config?: ClarkConfig): SecretStore {
   const preferred = config?.secretStoreBackend;
-  const macos = new MacOSKeychainSecretStore();
-  if ((preferred === undefined || preferred === "macos-keychain") && macos.isSupported()) {
-    return macos;
+
+  // Try platform-specific backend first based on OS
+  const currentPlatform = platform();
+
+  if (currentPlatform === "darwin") {
+    const macos = new MacOSKeychainSecretStore();
+    if (preferred === undefined || preferred === "macos-keychain") {
+      return macos;
+    }
+  } else if (currentPlatform === "linux") {
+    const linux = new LinuxLibsecretStore();
+    if (preferred === undefined || preferred === "linux-libsecret") {
+      return linux;
+    }
+  } else if (currentPlatform === "win32") {
+    const windows = new WindowsCredentialStore();
+    if (preferred === undefined || preferred === "windows-credential") {
+      return windows;
+    }
   }
+
+  // Fall back if preferred backend doesn't match platform or is explicitly "fallback"
   return new FallbackSecretStore();
 }
 

@@ -81,6 +81,7 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
           "  /context           Show context window usage",
           "  /compact           Summarize conversation to save context",
           "  /clear             Clear conversation history",
+          "  /exit or /quit     Exit Clark",
           "  Ctrl+C             Exit",
         ];
 
@@ -172,6 +173,10 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
       case "clear":
         conversation.clear();
         return "Conversation cleared.";
+
+      case "exit":
+      case "quit":
+        return "__EXIT__";
 
       default:
         return `Unknown command: /${name}. Type /help for available commands.`;

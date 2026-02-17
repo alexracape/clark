@@ -86,6 +86,7 @@ This is the simplest approach and always works during active tutoring sessions (
 - `/context` — Show context window usage breakdown (10x10 color-coded grid with per-category token estimates)
 - `/compact` — Summarize conversation to reclaim context tokens
 - `/clear` — Clear conversation history
+- `/exit` or `/quit` — Exit Clark (same as Ctrl+C)
 
 **Structures (via NLU):**
 - Structure definitions live in `Clark/Structures/` as `.md` files (user-editable)
@@ -445,6 +446,7 @@ clark --provider anthropic --model claude-sonnet-4-5-20250929
 | `--provider` | `anthropic` | LLM provider (`anthropic`, `openai`, `gemini`, `ollama`) |
 | `--model` | provider default | Specific model ID |
 | `--port` | `3000` | Port for tldraw canvas server |
+| `--version` (or `-v`) | - | Print version and exit |
 
 **Config file (`~/.clark/config.json`):**
 ```ts
@@ -453,7 +455,7 @@ interface ClarkConfig {
   model?: string;
   ollamaBaseUrl?: string;
   pdfExportDir?: string;  // Default PDF export directory
-  secretStoreBackend?: "macos-keychain" | "fallback";
+  secretStoreBackend?: "macos-keychain" | "linux-libsecret" | "windows-credential" | "fallback";
   hasCompletedOnboarding?: boolean;  // Tracks first-run completion
   tutorialProgress?: {
     completed: boolean;
@@ -465,7 +467,11 @@ interface ClarkConfig {
 }
 ```
 
-**Note**: API keys are stored via environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`) or macOS Keychain (via `secretStoreBackend`). Legacy plaintext key storage in config.json has been removed.
+**Note**: API keys are stored via environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`) or OS-native secret stores:
+- **macOS**: Keychain (via `security` CLI)
+- **Linux**: libsecret (via `secret-tool` CLI)
+- **Windows**: Credential Manager (via `cmdkey` CLI)
+- **Fallback**: Environment variables only (when native backend unavailable)
 
 ## Non-Goals (v1)
 
@@ -475,17 +481,8 @@ interface ClarkConfig {
 - **Instructor dashboard or analytics** — Student-facing tool only.
 - **Mobile-native app** — iPad accesses tldraw via Safari.
 
-## Known Limitations
-
-1. **OpenAI/Gemini image tool results** — When the LLM calls `read_canvas` and gets a PNG back, the OpenAI and Gemini providers convert the image to the string `"[image]"` in tool results. Canvas reading effectively only works with Anthropic and Ollama vision models.
-2. **Ollama vision detection** — `supportsVision` is hardcoded to `true` for Ollama, but not all local models support vision. Text-only models will fail on canvas snapshot tool results.
-3. **No conversation persistence** — Sessions are ephemeral. Closing the TUI loses all conversation history.
-4. **Single concurrent session** — Only one canvas can be open at a time. Only one Clark instance should run per workspace.
-
 ## Open Questions
 
 1. **tldraw canvas export fidelity** — Need to validate that `editor.toImage()` at `pixelRatio: 2` captures Apple Pencil strokes at sufficient resolution for vision API OCR. May need to experiment with scale factor.
 2. **PDF rendering for vision** — For PDFs with diagrams/equations, should we send page images to the vision API, or is text extraction sufficient? Likely need both paths depending on content type.
-3. **A4 frame enforcement** — Camera constraints with `behavior: 'contain'` prevent panning away from the frame, but students can still draw outside it. On export, we clip to frame bounds via the `bounds` option in `editor.toImage()`. Verify this produces clean results.
-4. **BlurryShape extraction cost** — Evaluate whether including structured shape data alongside PNG snapshots meaningfully improves LLM comprehension of handwritten content, or if vision alone is sufficient. If vision alone works well, skip the shape extraction for simplicity.
-5. **Security for LAN canvas access** — The canvas server currently accepts any WebSocket connection. Before distribution, add session token authentication to prevent unauthorized users on the same network from accessing or modifying the student's canvas.
+3. **BlurryShape extraction cost** — Evaluate whether including structured shape data alongside PNG snapshots meaningfully improves LLM comprehension of handwritten content, or if vision alone is sufficient. If vision alone works well, skip the shape extraction for simplicity.

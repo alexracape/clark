@@ -20,38 +20,6 @@ Some future enhancements and things that need fixing, organized into parallel ex
   - Include metadata headers (source file, page mapping, OCR confidence if available).
   - Acceptance: deterministic conversion policy documented and implemented.
 
-## Session 4: Architecture + platform hardening
-
-- **Cross-platform secret store support**
-  - Add Linux backend via `libsecret` and Windows backend via Credential Manager.
-  - Maintain common interface parity with existing macOS keychain implementation.
-  - Add graceful fallback path when OS store is unavailable/misconfigured.
-  - Acceptance: secrets can be set/get/delete reliably across macOS/Linux/Windows.
-
-- **Standardize filesystem APIs (`node:fs` vs `Bun.file`)**
-  - Audit current usage and define preferred patterns per operation type (streaming, metadata, content reads).
-  - Refactor for consistency aligned with project guidance in `CLAUDE.md`.
-  - Validate no behavior regressions in path handling, encoding, and error mapping.
-  - Acceptance: codebase follows one coherent file I/O strategy.
-
-- **Fix `useCallback` dependency arrays in `app.tsx`**
-  - Identify incomplete dependency lists (e.g., `runConversationTurn` missing `addMessage`).
-  - Refactor callback structure where dependency churn is causing re-render issues.
-  - Add lint checks/tests to prevent future stale-closure regressions.
-  - Acceptance: hook dependency warnings resolved; behavior stable under repeated interactions.
-
-- **Graceful shutdown**
-  - Ensure SIGINT/SIGTERM path saves canvas state and flushes history before process exit.
-  - Add timeout guard so shutdown cannot hang indefinitely.
-  - Reuse for `/quit` and `/exit` command path.
-  - Acceptance: shutdown is safe, bounded, and data-loss resistant.
-
-- **CLI `--version` flag**
-  - Implement `--version` and optional short alias if CLI conventions allow.
-  - Print semantic version + build metadata (if available) in machine-parseable format.
-  - Ensure command exits successfully without launching full app.
-  - Acceptance: version command works in scripts and manual usage.
-
 ## Session 5: Test coverage + signal quality
 
 - **Clean up benign tldraw sync test noise**
@@ -115,6 +83,7 @@ Some future enhancements and things that need fixing, organized into parallel ex
   - Add a websearch tool with safe defaults (rate limits, timeout, source filtering if configured).
   - Return concise result objects (title, URL, snippet, timestamp if available).
   - Integrate with tool-call planning so model can choose local context first, then web if needed.
+  - Should follow standard production equivalents
   - Acceptance: tool is stable and produces attributable, linkable results.
 
 ## Session 8: TUI enhancments
@@ -147,11 +116,12 @@ Some future enhancements and things that need fixing, organized into parallel ex
 
 ## Backlog of future enhancements
 
-- **Canvas/PDF mode toggle with explicit export rules**
-  - Add a mode toggle in UX/state model between `pdf` and `canvas`.
-  - In `canvas` mode, disable or hide PDF export actions and present a short explanation.
-  - Ensure mode state is persisted/restored correctly per session.
-  - Acceptance: impossible to trigger unsupported export path while in canvas mode.
+- **Test Linux/Windows secret store backends**
+  - Add integration tests for LinuxLibsecretStore and WindowsCredentialStore
+  - Mock platform-specific CLI commands (`secret-tool`, `cmdkey`, PowerShell)
+  - Test get/set/delete operations and fallback behavior
+  - Requires CI/CD with Linux/Windows runners or local test devices
+  - Acceptance: cross-platform secret storage verified on all target platforms
 
 - **Add /feedback command**
   - Allow users to submit feedback and report issues

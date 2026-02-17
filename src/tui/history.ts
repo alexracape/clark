@@ -5,7 +5,6 @@
  * and deduplicates consecutive identical entries.
  */
 
-import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { mkdir } from "node:fs/promises";
@@ -22,16 +21,22 @@ export class CommandHistory {
   constructor({ persist = true }: { persist?: boolean } = {}) {
     this.shouldPersist = persist;
     if (persist) {
-      try {
-        if (existsSync(HISTORY_PATH)) {
-          const data = JSON.parse(readFileSync(HISTORY_PATH, "utf-8"));
-          if (Array.isArray(data)) {
-            this.entries = data.slice(-MAX_ENTRIES);
-          }
+      // Load history asynchronously (non-blocking)
+      this.loadHistory();
+    }
+  }
+
+  private async loadHistory() {
+    try {
+      const file = Bun.file(HISTORY_PATH);
+      if (await file.exists()) {
+        const data = await file.json();
+        if (Array.isArray(data)) {
+          this.entries = data.slice(-MAX_ENTRIES);
         }
-      } catch {
-        // Corrupt or missing — start fresh
       }
+    } catch {
+      // Corrupt or missing — start fresh
     }
   }
 

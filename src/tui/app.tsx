@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useCallback, useEffect } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useApp } from "ink";
 import { Chat, type ChatMessage } from "./chat.tsx";
 import { Input, parseSlashCommand } from "./input.tsx";
 import { StatusBar } from "./status.tsx";
@@ -68,6 +68,7 @@ export function App({
   history,
   workspaceDir,
 }: AppProps) {
+  const { exit } = useApp();
   const maxToolCallsPerTurn = resolveMaxToolCallsPerTurn(config);
   const [messages, setMessages] = useState<ChatMessage[]>([{
     role: "system",
@@ -237,7 +238,7 @@ export function App({
     } finally {
       setIsThinking(false);
     }
-  }, [streamLLM, conversation, dispatchTool, addMessage, maxToolCallsPerTurn]);
+  }, [streamLLM, conversation, dispatchTool, addMessage, maxToolCallsPerTurn, activeProvider]);
 
   /** Handle model selection from the picker */
   const handleModelSelect = useCallback(async (providerName: string, modelName: string) => {
@@ -344,6 +345,10 @@ export function App({
       }
 
       const result = await onSlashCommand(command.name, command.args);
+      if (result === "__EXIT__") {
+        exit();
+        return;
+      }
       if (result) addMessage("system", result);
       return;
     }
@@ -352,7 +357,7 @@ export function App({
     addMessage("user", text);
     conversation.addUserMessage(text);
     await runConversationTurn();
-  }, [conversation, runConversationTurn, onSlashCommand, addMessage, activeModel, activeProvider, systemPrompt, tools, listCanvases, workspaceDir]);
+  }, [conversation, runConversationTurn, onSlashCommand, addMessage, activeModel, activeProvider, systemPrompt, tools, listCanvases, workspaceDir, exit]);
 
   const canvasInfo = getActiveCanvas();
   const canvasConnected = canvasConnectionStatus

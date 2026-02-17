@@ -41,6 +41,8 @@ export const BUILTIN_COMMANDS: CommandEntry[] = [
   { name: "context", description: "Show context window usage" },
   { name: "compact", description: "Summarize conversation to save context" },
   { name: "clear", description: "Clear conversation history" },
+  { name: "exit", description: "Exit Clark" },
+  { name: "quit", description: "Exit Clark" },
 ];
 
 /** All available commands */
