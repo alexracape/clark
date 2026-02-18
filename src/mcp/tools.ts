@@ -115,6 +115,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
                 { type: "image", data: base64, mimeType: imageMimeType(absolutePath) },
                 { type: "text", text: `Image: ${inputPath}` },
               ],
+              isError: false,
             };
           }
 
@@ -126,14 +127,14 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
             if (avgCharsPerPage < 50) {
               content += `\n\n[Note: This PDF has very little extractable text (~${Math.round(avgCharsPerPage)} chars/page across ${info.pages} page${info.pages === 1 ? "" : "s"}). It may be scanned or image-based. Use transcribe_pdf to OCR it if you need the full content.]`;
             }
-            return { content: [{ type: "text", text: content }] };
+            return { content: [{ type: "text", text: content }], isError: false };
           }
 
           // Markdown / text file
           const text = await Bun.file(absolutePath).text();
           const links = extractWikilinks(text);
           const footer = await buildLinkFooter(links, vaultDir);
-          return { content: [{ type: "text", text: wrapFileContent(inputPath, text + footer) }] };
+          return { content: [{ type: "text", text: wrapFileContent(inputPath, text + footer) }], isError: false };
         } catch (err) {
           return {
             content: [{ type: "text", text: `Error reading file: ${err}` }],
@@ -166,7 +167,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         const query = (input.query as string).toLowerCase();
         const results = await searchDirectory(vaultDir, query);
         if (results.length === 0) {
-          return { content: [{ type: "text", text: `No results found for "${query}"` }] };
+          return { content: [{ type: "text", text: `No results found for "${query}"` }], isError: false };
         }
 
         const text = results
@@ -175,7 +176,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           .map((r) => `### ${r.path} (${r.matchCount} matches)\n${wrapFileContent(r.path, r.snippets.join("\n...\n"))}`)
           .join("\n\n---\n\n");
 
-        return { content: [{ type: "text", text }] };
+        return { content: [{ type: "text", text }], isError: false };
       },
     },
 
@@ -219,6 +220,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
 
           return {
             content: [{ type: "text", text: filtered.join("\n") || "(empty directory)" }],
+            isError: false,
           };
         } catch (err) {
           return {
@@ -276,7 +278,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           await mkdir(dirname(absolutePath), { recursive: true });
           await Bun.write(absolutePath, input.content as string);
           invalidateFileIndex();
-          return { content: [{ type: "text", text: `Created: ${inputPath}` }] };
+          return { content: [{ type: "text", text: `Created: ${inputPath}` }], isError: false };
         } catch (err) {
           return {
             content: [{ type: "text", text: `Error creating file: ${err}` }],
@@ -339,7 +341,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
 
           const updated = content.replace(oldText, newText);
           await Bun.write(absolutePath, updated);
-          return { content: [{ type: "text", text: `Updated: ${inputPath}` }] };
+          return { content: [{ type: "text", text: `Updated: ${inputPath}` }], isError: false };
         } catch (err) {
           return {
             content: [{ type: "text", text: `Error editing file: ${err}` }],
@@ -411,7 +413,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           await mkdir(dirname(absoluteNewPath), { recursive: true });
           await rename(absoluteOldPath, absoluteNewPath);
           invalidateFileIndex();
-          return { content: [{ type: "text", text: `Renamed: ${oldPath} → ${newPath}` }] };
+          return { content: [{ type: "text", text: `Renamed: ${oldPath} → ${newPath}` }], isError: false };
         } catch (err) {
           return {
             content: [{ type: "text", text: `Error renaming file: ${err}` }],
@@ -473,7 +475,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
 
           await unlink(absolutePath);
           invalidateFileIndex();
-          return { content: [{ type: "text", text: `Deleted: ${inputPath}` }] };
+          return { content: [{ type: "text", text: `Deleted: ${inputPath}` }], isError: false };
         } catch (err) {
           return {
             content: [{ type: "text", text: `Error deleting file: ${err}` }],
@@ -538,6 +540,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
                 type: "text",
                 text: `Page "${response.page}" exists but is currently blank (no content to display).`,
               }],
+              isError: false,
             };
           }
 
@@ -546,6 +549,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
               { type: "image", data: response.png, mimeType: "image/png" },
               { type: "text", text: `Snapshot of page: ${response.page}` },
             ],
+            isError: false,
           };
         } catch (err) {
           return {
@@ -601,6 +605,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           const pageCount = response.pages.length;
           return {
             content: [{ type: "text", text: `PDF exported to: ${path} (${pageCount} page${pageCount === 1 ? "" : "s"})` }],
+            isError: false,
           };
         } catch (err) {
           return {
@@ -636,6 +641,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           await saveCanvas();
           return {
             content: [{ type: "text", text: "Canvas state saved." }],
+            isError: false,
           };
         } catch (err) {
           return {
@@ -692,6 +698,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           if (results.length === 0) {
             return {
               content: [{ type: "text", text: `No files found with tag #${tag}` }],
+              isError: false,
             };
           }
 
@@ -705,6 +712,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           const summary = `Found ${results.length} file${results.length > 1 ? 's' : ''} with tag #${tag}:\n\n`;
           return {
             content: [{ type: "text", text: summary + formatted.join("\n\n") }],
+            isError: false,
           };
         } catch (err) {
           return {
@@ -755,6 +763,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           if (results.length === 0) {
             return {
               content: [{ type: "text", text: `No web results found for query: "${query}"` }],
+              isError: false,
             };
           }
 
@@ -765,6 +774,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           const summary = `Found ${results.length} web result${results.length > 1 ? 's' : ''} for "${query}":\n\n`;
           return {
             content: [{ type: "text", text: summary + formatted }],
+            isError: false,
           };
         } catch (err) {
           return {
@@ -939,6 +949,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
               type: "text",
               text: `Transcription saved to ${outputPath} (${renderedPages.length} page${renderedPages.length === 1 ? "" : "s"}).`,
             }],
+            isError: false,
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);

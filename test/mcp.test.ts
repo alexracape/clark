@@ -207,7 +207,7 @@ describe("MCP Tools", () => {
     test("reads markdown file with wikilink footer", async () => {
       const tool = findTool("read_file");
       const result = await tool.handler({ path: "Notes/RLHF.md" });
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
 
       const text = result.content[0] as { type: "text"; text: string };
       expect(text.text).toContain("<<<BEGIN_FILE_CONTENT");
@@ -229,7 +229,7 @@ describe("MCP Tools", () => {
     test("reads image file as base64", async () => {
       const tool = findTool("read_file");
       const result = await tool.handler({ path: "Resources/Images/lecture_1_class_notes.png" });
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       expect(result.content[0]!.type).toBe("image");
 
       const img = result.content[0] as { type: "image"; data: string; mimeType: string };
@@ -329,7 +329,7 @@ describe("MCP Tools", () => {
     test("creates a new file", async () => {
       const tool = findTool("create_file");
       const result = await tool.handler({ path: tempFile, content: "# Test\nHello world" });
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
 
       const written = await Bun.file(tempAbsolute).text();
       expect(written).toBe("# Test\nHello world");
@@ -355,7 +355,7 @@ describe("MCP Tools", () => {
 
       const tool = findTool("create_file");
       const result = await tool.handler({ path: deepPath, content: "deep file" });
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
 
       const written = await Bun.file(deepAbsolute).text();
       expect(written).toBe("deep file");
@@ -408,7 +408,7 @@ describe("MCP Tools", () => {
         old_text: "Line two",
         new_text: "Updated line",
       });
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
 
       const content = await Bun.file(tempAbsolute).text();
       expect(content).toBe("Hello world\nUpdated line\nLine three");
@@ -461,7 +461,7 @@ describe("MCP Tools", () => {
       });
       const tool = toolsWithSave.find((t) => t.name === "save_canvas")!;
       const result = await tool.handler({});
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
       expect(called).toBe(true);
     });
   });
@@ -470,7 +470,7 @@ describe("MCP Tools", () => {
     test("finds files by simple tag", async () => {
       const tool = findTool("search_by_tag");
       const result = await tool.handler({ tag: "class" });
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
 
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("ML Class.md");
@@ -481,7 +481,7 @@ describe("MCP Tools", () => {
     test("finds files by nested tag", async () => {
       const tool = findTool("search_by_tag");
       const result = await tool.handler({ tag: "class/cs229" });
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
 
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("Nested Tag Test.md");
@@ -491,7 +491,7 @@ describe("MCP Tools", () => {
     test("parent tag matches nested tags", async () => {
       const tool = findTool("search_by_tag");
       const result = await tool.handler({ tag: "class" });
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
 
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("Nested Tag Test.md"); // class matches class/cs229
@@ -502,8 +502,8 @@ describe("MCP Tools", () => {
       const result1 = await tool.handler({ tag: "CLASS" });
       const result2 = await tool.handler({ tag: "class" });
 
-      expect(result1.isError).toBeUndefined();
-      expect(result2.isError).toBeUndefined();
+      expect(result1.isError).toBe(false);
+      expect(result2.isError).toBe(false);
 
       const text1 = (result1.content[0] as { type: "text"; text: string }).text;
       const text2 = (result2.content[0] as { type: "text"; text: string }).text;
@@ -525,7 +525,7 @@ describe("MCP Tools", () => {
     test("returns no results for non-existent tag", async () => {
       const tool = findTool("search_by_tag");
       const result = await tool.handler({ tag: "nonexistenttag123" });
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
 
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("No files found");
@@ -543,7 +543,7 @@ describe("MCP Tools", () => {
     test("respects max_results parameter", async () => {
       const tool = findTool("search_by_tag");
       const result = await tool.handler({ tag: "class", max_results: 1 });
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(false);
 
       const text = (result.content[0] as { type: "text"; text: string }).text;
       expect(text).toContain("Found 1 file");

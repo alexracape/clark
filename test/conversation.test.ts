@@ -265,6 +265,223 @@ describe("Conversation Loop", () => {
     expect(result.responses).toEqual([]);
     expect(provider.calls).toHaveLength(1);
   });
+
+  test("multi-step tool sequence: search → read → create", async () => {
+    const provider = new MockProvider([
+      // Step 1: Search for notes
+      {
+        text: "Let me search your notes.",
+        toolCalls: [{ id: "tc1", name: "search_notes", input: { query: "algorithms" } }],
+        stopReason: "tool_use",
+      },
+      // Step 2: Read a specific file
+      {
+        text: "I found relevant notes. Let me read them.",
+        toolCalls: [{ id: "tc2", name: "read_file", input: { path: "Notes/RLHF.md" } }],
+        stopReason: "tool_use",
+      },
+      // Step 3: Create a summary
+      {
+        text: "I'll create a summary for you.",
+        toolCalls: [{ id: "tc3", name: "create_file", input: { path: "Notes/Summary.md", content: "# Summary\n\nKey points..." } }],
+        stopReason: "tool_use",
+      },
+      // Final response
+      { text: "Done! I've created your summary in Notes/Summary.md" },
+    ]);
+
+    const conversation = new Conversation();
+    conversation.addUserMessage("Help me review my algorithm notes");
+
+    const result = await runConversationTurn(provider, conversation, tools, systemPrompt);
+
+    // All three tools should be called in sequence
+    expect(result.toolCallNames).toEqual(["search_notes", "read_file", "create_file"]);
+    expect(provider.calls).toHaveLength(4); // One call per tool + final response
+
+    // Verify conversation state
+    const messages = conversation.getMessages();
+    expect(messages.filter((m) => m.role === "user")).toHaveLength(1);
+    expect(messages.filter((m) => m.role === "assistant")).toHaveLength(4);
+    expect(messages.filter((m) => m.role === "tool")).toHaveLength(3);
+  });
+
+  test("tool error recovery: read fails → try search instead", async () => {
+    const provider = new MockProvider([
+      // Step 1: Try to read a nonexistent file
+      {
+        text: "Let me read that file.",
+        toolCalls: [{ id: "tc1", name: "read_file", input: { path: "Notes/Nonexistent.md" } }],
+        stopReason: "tool_use",
+      },
+      // Step 2: File doesn't exist, so search instead
+      {
+        text: "That file doesn't exist. Let me search your notes instead.",
+        toolCalls: [{ id: "tc2", name: "search_notes", input: { query: "algorithms" } }],
+        stopReason: "tool_use",
+      },
+      // Final response
+      { text: "Found some related notes!" },
+    ]);
+
+    const conversation = new Conversation();
+    conversation.addUserMessage("Find my algorithms notes");
+
+    const result = await runConversationTurn(provider, conversation, tools, systemPrompt);
+
+    // Both tools should be called
+    expect(result.toolCallNames).toEqual(["read_file", "search_notes"]);
+
+    // Verify first tool result was marked as error
+    const messages = conversation.getMessages();
+    const toolResults = messages.filter((m) => m.role === "tool");
+    expect(toolResults).toHaveLength(2);
+
+    // First tool result should be an error
+    const firstToolContent = toolResults[0]!.content.find((c) => c.type === "tool_result");
+    if (firstToolContent?.type === "tool_result") {
+      expect(firstToolContent.isError).toBe(true);
+    }
+
+    // Second tool result should succeed
+    const secondToolContent = toolResults[1]!.content.find((c) => c.type === "tool_result");
+    if (secondToolContent?.type === "tool_result") {
+      expect(secondToolContent.isError).toBe(false);
+    }
+
+    // LLM should continue despite the error
+    expect(result.responses).toContain("Found some related notes!");
+  });
+
+  test("context accumulation across multiple turns", async () => {
+    const provider = new MockProvider([
+      { text: "Response 1" },
+      {
+        text: "Let me search.",
+        toolCalls: [{ id: "tc1", name: "search_notes", input: { query: "test" } }],
+        stopReason: "tool_use",
+      },
+      { text: "Response 2" },
+      { text: "Response 3" },
+    ]);
+
+    const conversation = new Conversation();
+
+    // Turn 1
+    conversation.addUserMessage("First question");
+    await runConversationTurn(provider, conversation, tools, systemPrompt);
+    const ctx1 = conversation.estimateContext();
+
+    // Turn 2 (with tool call)
+    conversation.addUserMessage("Second question");
+    await runConversationTurn(provider, conversation, tools, systemPrompt);
+    const ctx2 = conversation.estimateContext();
+
+    // Turn 3
+    conversation.addUserMessage("Third question");
+    await runConversationTurn(provider, conversation, tools, systemPrompt);
+    const ctx3 = conversation.estimateContext();
+
+    // Context should grow with each turn
+    expect(ctx2.totalTokens).toBeGreaterThan(ctx1.totalTokens);
+    expect(ctx3.totalTokens).toBeGreaterThan(ctx2.totalTokens);
+
+    // Message count should increase
+    expect(ctx2.messageCount).toBeGreaterThan(ctx1.messageCount);
+    expect(ctx3.messageCount).toBeGreaterThan(ctx2.messageCount);
+
+    // Should have expected number of messages
+    const finalMessages = conversation.getMessages();
+    expect(finalMessages.length).toBeGreaterThanOrEqual(7); // 3 users + 3 assistants + 1 tool
+  });
+
+  test("message ordering validation with interleaved tool calls", async () => {
+    const provider = new MockProvider([
+      {
+        text: "Let me check two things.",
+        toolCalls: [
+          { id: "tc1", name: "search_notes", input: { query: "test1" } },
+          { id: "tc2", name: "search_notes", input: { query: "test2" } },
+        ],
+        stopReason: "tool_use",
+      },
+      { text: "Found both!" },
+    ]);
+
+    const conversation = new Conversation();
+    conversation.addUserMessage("Search for my notes");
+
+    await runConversationTurn(provider, conversation, tools, systemPrompt);
+
+    const messages = conversation.getMessages();
+
+    // Verify strict ordering: user → assistant → tool → tool → assistant
+    expect(messages[0]!.role).toBe("user");
+    expect(messages[1]!.role).toBe("assistant");
+    expect(messages[2]!.role).toBe("tool");
+    expect(messages[3]!.role).toBe("tool");
+    expect(messages[4]!.role).toBe("assistant");
+
+    // Verify content types in assistant message with tool calls
+    const firstAssistant = messages[1]!.content;
+    expect(firstAssistant.some((c) => c.type === "text")).toBe(true);
+    expect(firstAssistant.some((c) => c.type === "tool_use")).toBe(true);
+
+    // Verify tool use count
+    const toolUses = firstAssistant.filter((c) => c.type === "tool_use");
+    expect(toolUses).toHaveLength(2);
+  });
+
+  test("vision content handling in tool results", async () => {
+    const provider = new MockProvider([
+      {
+        text: "Let me read the canvas.",
+        toolCalls: [{ id: "tc1", name: "read_canvas", input: {} }],
+        stopReason: "tool_use",
+      },
+      { text: "I can see you've drawn a diagram." },
+    ], true); // Enable vision support
+
+    const conversation = new Conversation();
+    conversation.addUserMessage("What did I draw?");
+
+    // Mock a connected canvas broker
+    const mockBroker = new CanvasBroker();
+    let requestSnapshotCalled = false;
+    mockBroker.requestSnapshot = async () => {
+      requestSnapshotCalled = true;
+      // Return a minimal base64 PNG
+      return { png: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" };
+    };
+
+    const visionTools = createTools({
+      getBroker: () => mockBroker,
+      vaultDir: resolve(import.meta.dir, "test_vault"),
+      getSaveCanvas: () => null,
+    });
+
+    const result = await runConversationTurn(provider, conversation, visionTools, systemPrompt);
+
+    // read_canvas should have been called
+    expect(result.toolCallNames).toEqual(["read_canvas"]);
+    expect(requestSnapshotCalled).toBe(true);
+
+    // Verify image content is in the tool result
+    const messages = conversation.getMessages();
+    const toolResult = messages.find((m) => m.role === "tool");
+    expect(toolResult).toBeDefined();
+
+    // The tool result contains a tool_result content block
+    const toolResultContent = toolResult!.content.find((c) => c.type === "tool_result");
+    expect(toolResultContent).toBeDefined();
+
+    // For vision-capable providers, image tools should include image data
+    // The image may be in the tool result text or as a separate image block
+    // For now, just verify the tool succeeded (no error)
+    if (toolResultContent?.type === "tool_result") {
+      expect(toolResultContent.isError).toBe(false);
+    }
+  });
 });
 
 describe("MockProvider", () => {

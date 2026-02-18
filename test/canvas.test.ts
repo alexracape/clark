@@ -6,6 +6,7 @@ import { CanvasBroker, startCanvasServer, listCanvasFiles } from "../src/canvas/
 import { composePDF } from "../src/canvas/pdf-export.ts";
 import { extractBlurryShapes } from "../src/canvas/context.ts";
 import { TLSocketRoom, InMemorySyncStorage } from "@tldraw/sync-core";
+import { suppressConsoleError } from "./test-utils.ts";
 
 describe("CanvasBroker", () => {
   test("starts disconnected", () => {
@@ -253,6 +254,9 @@ describe("Canvas Server", () => {
     await new Promise((r) => setTimeout(r, 100));
   });
 
+  // Note: This test intentionally sends a malformed message to verify robustness.
+  // tldraw's sync library logs an error internally which cannot be suppressed without
+  // invasive mocking. This error output is expected and benign.
   test("/sync endpoint handles messages without crashing", async () => {
     const broker = new CanvasBroker();
     const { server, room, authToken } = await startCanvasServer({ port: 0, broker, snapshotPath });
@@ -270,13 +274,16 @@ describe("Canvas Server", () => {
 
     // Send an arbitrary message — the room should handle it without crashing
     // (it may reject/ignore malformed protocol messages, but should not throw)
-    ws.send("test message");
-    await new Promise((r) => setTimeout(r, 200));
+    // Suppress expected error output from tldraw sync protocol
+    await suppressConsoleError(async () => {
+      ws.send("test message");
+      await new Promise((r) => setTimeout(r, 200));
 
-    // Server should still be running and room intact
-    const snapshot = room.getCurrentSnapshot();
-    expect(snapshot).toBeDefined();
-    expect(typeof snapshot.documentClock).toBe("number");
+      // Server should still be running and room intact
+      const snapshot = room.getCurrentSnapshot();
+      expect(snapshot).toBeDefined();
+      expect(typeof snapshot.documentClock).toBe("number");
+    });
 
     ws.close();
     await new Promise((r) => setTimeout(r, 100));

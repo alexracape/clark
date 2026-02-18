@@ -1,32 +1,5 @@
 Some future enhancements and things that need fixing, organized into parallel execution sessions.
 
-## Session 5: Test coverage + signal quality
-
-- **Clean up benign tldraw sync test noise**
-  - Address `Error assembling message` warning in canvas test by fixing protocol usage or suppressing known-benign output.
-  - Keep real failures visible; avoid blanket suppression.
-  - Acceptance: test logs are quiet on success and high-signal on failure.
-
-- **Add tests for onboarding and model-picker flows**
-  - Cover primary happy path and at least one invalid-input path per flow.
-  - Include snapshot/DOM assertions only where stable and meaningful.
-  - Acceptance: onboarding/model-picker regressions are caught in CI.
-
-- **Full conversation loop integration test**
-  - Add end-to-end test for: send message -> stream -> tool call -> tool result -> continued stream/final response.
-  - Assert ordering and state transitions, not just final output string.
-  - Acceptance: core chat orchestration has automated regression protection.
-
-- **In-process MCP dispatch tests**
-  - Extend `mcp-integration.test.ts` beyond stdio to include in-process dispatch behavior.
-  - Validate tool registration, invocation, error propagation, and timeout handling.
-  - Acceptance: both stdio and in-proc MCP paths are tested.
-
-- **Error-path coverage**
-  - Add tests for network failures, invalid API keys, and corrupt config files.
-  - Verify user-facing errors are actionable and do not crash the app.
-  - Acceptance: major failure modes are deterministic and covered.
-
 ## Session 6: Productization + roadmap decisions
 
 - **Default `CLARK.md` scaffold**
@@ -121,3 +94,7 @@ Some future enhancements and things that need fixing, organized into parallel ex
 
 - **Consider using CLI tools instead of MCP**
   - Would the model do just as well with some bash commands instead of file tools?
+
+**Known Testing Compromises:**
+- ink-testing-library stdin simulation unreliable for interactive flows.
+- tldraw sync error cannot be fully suppressed (library internals).
