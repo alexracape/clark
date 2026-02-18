@@ -21,7 +21,7 @@ import { loadConfig, resolveApiKey, resolveMaxToolCallsPerTurn, saveConfig, type
 import { Conversation } from "../llm/messages.ts";
 import type { ToolDefinition, ToolResult } from "../mcp/tools.ts";
 import type { CommandHistory } from "./history.ts";
-import { detectFilePath, ingestFile } from "../app/ingest.ts";
+import { detectFilePath, copyFileToResources } from "../app/ingest.ts";
 import type { CanvasConnectionStatus } from "../app/canvas-session.ts";
 
 export interface AppProps {
@@ -40,6 +40,10 @@ export interface AppProps {
   getActiveCanvas?: () => { name: string; url: string } | null;
   history: CommandHistory;
   workspaceDir: string;
+  /** Called once on mount so tool progress messages appear in the TUI. */
+  onSetProgressCallback?: (cb: (message: string) => void) => void;
+  /** Called when the user switches providers, so OCR uses the current one. */
+  onProviderChange?: (provider: LLMProvider) => void;
 }
 
 /** Convert our MCP tool definitions to LLM tool format */
@@ -67,6 +71,8 @@ export function App({
   getActiveCanvas = () => null,
   history,
   workspaceDir,
+  onSetProgressCallback,
+  onProviderChange,
 }: AppProps) {
   const { exit } = useApp();
   const maxToolCallsPerTurn = resolveMaxToolCallsPerTurn(config);
@@ -102,6 +108,11 @@ export function App({
   const addMessage = useCallback((role: ChatMessage["role"], content: string) => {
     setMessages((prev) => [...prev, { role, content, timestamp: new Date() }]);
   }, []);
+
+  // Wire progress callback so MCP tools can emit inline status messages
+  useEffect(() => {
+    onSetProgressCallback?.((msg) => addMessage("system", msg));
+  }, [addMessage, onSetProgressCallback]);
 
   /**
    * Run the LLM, streaming text to the UI.
@@ -264,6 +275,7 @@ export function App({
       });
       const newProvider = createProvider(providerName, modelName);
       setActiveProvider(newProvider);
+      onProviderChange?.(newProvider);
       setActiveModel(modelName);
       setShowModelPicker(false);
       const note = providerName === "ollama"
@@ -298,17 +310,21 @@ export function App({
     // /Users/alex/file.pdf would be misinterpreted as a "/Users" command.
     const filePath = await detectFilePath(text);
     if (filePath) {
-      addMessage("system", `Ingesting file: ${text.trim()}`);
       setIsThinking(true);
       try {
-        const result = await ingestFile(filePath, workspaceDir, activeProvider);
+        const result = await copyFileToResources(filePath, workspaceDir);
         addMessage("system", result.summary);
-        // Tell the model about the new resource so it can acknowledge it
-        conversation.addUserMessage(`I just added a file to my resources: ${result.fileName} (saved to ${result.destPath}).${result.transcriptionPath ? ` A transcription was saved to ${result.transcriptionPath}.` : ""} Please acknowledge and let me know if you have any questions about it.`);
+        // Let the model decide how to process the file using MCP tools
+        conversation.addUserMessage(
+          `I've added a file to my vault: ${result.fileName} (${result.fileSize}, saved to ${result.destPath}). ` +
+          `Please check what type of file it is and process it appropriately — ` +
+          `use read_file to inspect it, and if it's a scanned PDF with little extractable text, ` +
+          `use transcribe_pdf to OCR it. Save any transcriptions where they make sense based on my vault structure.`,
+        );
         await runConversationTurn();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        addMessage("system", `Failed to ingest file: ${msg}`);
+        addMessage("system", `Failed to copy file: ${msg}`);
       } finally {
         setIsThinking(false);
       }

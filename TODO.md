@@ -1,25 +1,5 @@
 Some future enhancements and things that need fixing, organized into parallel execution sessions.
 
-## Session 3: Ingestion + OCR
-
-- **Scanned PDF OCR pipeline**
-  - Detect low-text PDFs and route to vision OCR/transcription fallback.
-  - Keep original file + extracted text side-by-side for auditability.
-  - Add retry and timeout strategy for OCR provider failures.
-  - Acceptance: scanned/handwritten PDFs become searchable text with clear failure modes.
-
-- **Improved file ingestion feedback**
-  - Show explicit phases: detected -> parsing -> OCR (if applicable) -> indexed -> done/failed.
-  - Add spinner/progress indicator and actionable error messages.
-  - Surface file name and size so users can confirm the correct file was ingested.
-  - Acceptance: users can track ingestion progress without guessing.
-
-- **PDF -> Markdown conversion strategy**
-  - Define when conversion runs (eager on ingest vs lazy on first query).
-  - Specify storage format and naming conventions for generated markdown artifacts.
-  - Include metadata headers (source file, page mapping, OCR confidence if available).
-  - Acceptance: deterministic conversion policy documented and implemented.
-
 ## Session 5: Test coverage + signal quality
 
 - **Clean up benign tldraw sync test noise**
@@ -71,21 +51,6 @@ Some future enhancements and things that need fixing, organized into parallel ex
   - Include platform detection hints and checksum/signature visibility.
   - Acceptance: users can discover, download, and verify releases from one place.
 
-## Session 7: MCP Tools
-
-- **MCP `search_by_tag` tool**
-  - Implement tool for Obsidian-style `#tag` queries over indexed notes/documents.
-  - Define tag parsing rules (case sensitivity, punctuation boundaries, nested tags).
-  - Return structured results with source path/snippet for grounding.
-  - Acceptance: `search_by_tag` is discoverable, tested, and useful in normal chat workflows.
-
-- **MCP websearch tool**
-  - Add a websearch tool with safe defaults (rate limits, timeout, source filtering if configured).
-  - Return concise result objects (title, URL, snippet, timestamp if available).
-  - Integrate with tool-call planning so model can choose local context first, then web if needed.
-  - Should follow standard production equivalents
-  - Acceptance: tool is stable and produces attributable, linkable results.
-
 ## Session 8: TUI enhancments
 
 - **Color-coded message roles**
@@ -100,12 +65,6 @@ Some future enhancements and things that need fixing, organized into parallel ex
   - Ensure graceful fallback for unsupported markdown features.
   - Preserve copy/paste reliability and terminal wrapping behavior.
   - Acceptance: assistant responses are formatted, readable, and stable under long outputs.
-
-- **Add `/quit` and `/exit` commands**
-  - Map both commands to graceful shutdown sequence.
-  - Reuse same teardown logic as SIGINT where possible.
-  - Confirm unsaved state when needed before exiting.
-  - Acceptance: command exit path matches Ctrl+C safety guarantees.
 
 - **Multiline input (Shift+Enter)**
   - Enter sends message; Shift+Enter inserts newline.
@@ -122,6 +81,10 @@ Some future enhancements and things that need fixing, organized into parallel ex
   - Test get/set/delete operations and fallback behavior
   - Requires CI/CD with Linux/Windows runners or local test devices
   - Acceptance: cross-platform secret storage verified on all target platforms
+  
+- **Test web search tool Captcha issue**
+  - Ensure this doesn't happen regularly and fix accordingly
+  - Evaluate usefulness of the results and frequency of use
 
 - **Add /feedback command**
   - Allow users to submit feedback and report issues
@@ -151,12 +114,10 @@ Some future enhancements and things that need fixing, organized into parallel ex
   - Document obligations (attribution, restrictions, paid terms if applicable).
   - Acceptance: legal/licensing go/no-go criteria documented.
 
-- **Desktop GUI direction (Electrobun vs Tauri v2 fallback)**
-  - Define evaluation matrix: performance, native integrations, packaging, maintenance cost, team familiarity.
-  - Spike both paths enough to derisk major unknowns.
-  - Acceptance: explicit platform decision with rationale and migration implications.
+- **Work out kinks in resource upload**
+  - If file is drag and dropped first, it is read as a /command
+  - Need to add better default prompting to guide tool use and scaffold processing
+  - Verify that the poppler methods are working well
 
-- **macOS code signing + notarization in CI/CD**
-  - Add Developer ID signing pipeline and notarization step.
-  - Validate installer/app launches cleanly on fresh macOS machine without trust warnings.
-  - Acceptance: release artifacts pass Gatekeeper checks.
+- **Consider using CLI tools instead of MCP**
+  - Would the model do just as well with some bash commands instead of file tools?

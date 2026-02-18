@@ -177,11 +177,12 @@ describe("scaffoldLibrary", () => {
     expect(quoteContent).toContain("Yoda");
   });
 
-  test("creates an empty CLARK.md by default", async () => {
+  test("creates a default CLARK.md with template content", async () => {
     const libPath = join(tmpDir, "mylib");
     await scaffoldLibrary(libPath);
     const content = await Bun.file(join(libPath, "Clark", "CLARK.md")).text();
-    expect(content).toBe("");
+    expect(content).toContain("# CLARK.md");
+    expect(content).toContain("File Processing Conventions");
   });
 
   test("does not scaffold top-level defaults when workspace already has content", async () => {

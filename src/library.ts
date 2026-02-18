@@ -16,6 +16,20 @@ export const CLARK_CANVAS_DIR_NAME = "Canvas";
 export const CLARK_STRUCTURES_DIR_NAME = "Structures";
 export const CLARK_CONTEXT_FILE_NAME = "CLARK.md";
 
+const DEFAULT_CLARK_MD = `# CLARK.md
+
+Add context about your courses, preferences, and workflow here.
+Clark reads this file at startup and uses it to personalize responses.
+
+## File Processing Conventions
+
+When processing files added to Resources/:
+- Save transcriptions to \`Resources/Transcriptions/<source-name>.md\`
+- Include YAML frontmatter with source path, timestamp, and page range
+- For scanned/handwritten PDFs, use OCR via \`transcribe_pdf\`
+- For text-based PDFs, extract text directly via \`read_file\`
+`;
+
 const DEFAULT_ROOT_DIRS = [
   "Notes",
   "Resources",
@@ -130,7 +144,7 @@ async function ensureClarkCore(path: string): Promise<void> {
     await mkdir(dir, { recursive: true });
   }
 
-  await writeIfMissing(clarkContextFilePath(path), "");
+  await writeIfMissing(clarkContextFilePath(path), DEFAULT_CLARK_MD);
   for (const [relPath, content] of Object.entries(CLARK_STRUCTURE_TEMPLATES)) {
     await writeIfMissing(join(path, relPath), content);
   }

@@ -9,8 +9,10 @@ import { readdir, mkdir, rename, unlink } from "node:fs/promises";
 import { join, extname, dirname, relative } from "node:path";
 import type { CanvasBroker } from "../canvas/server.ts";
 import { exportPDFToFile } from "../canvas/pdf-export.ts";
-import { extractPDFText } from "./pdf.ts";
+import { extractPDFText, getPDFInfo } from "./pdf.ts";
 import type { ToolInputSchema } from "../llm/provider.ts";
+import type { OCRProvider } from "../ocr/provider.ts";
+import { checkPopplerAvailable, getPopplerInstallInstructions, renderPDFPages } from "../ocr/pdf-renderer.ts";
 import {
   extractWikilinks,
   buildLinkFooter,
@@ -59,6 +61,10 @@ export interface ToolsConfig {
   getExportDir?: () => string;
   /** Dynamic getter for canvas save function. Returns null when no canvas is open. */
   getSaveCanvas: () => (() => Promise<void>) | null;
+  /** Callback for emitting progress messages to the TUI during long operations. */
+  onProgress?: (message: string) => void;
+  /** Dynamic getter for the OCR provider. Returns null if vision is not available. */
+  getOCRProvider?: () => OCRProvider | null;
 }
 
 /**
@@ -114,7 +120,13 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
 
           if (isPDFFile(absolutePath)) {
             const text = await extractPDFText(absolutePath);
-            return { content: [{ type: "text", text: wrapFileContent(inputPath, text) }] };
+            const info = await getPDFInfo(absolutePath);
+            const avgCharsPerPage = text.length / Math.max(info.pages, 1);
+            let content = wrapFileContent(inputPath, text);
+            if (avgCharsPerPage < 50) {
+              content += `\n\n[Note: This PDF has very little extractable text (~${Math.round(avgCharsPerPage)} chars/page across ${info.pages} page${info.pages === 1 ? "" : "s"}). It may be scanned or image-based. Use transcribe_pdf to OCR it if you need the full content.]`;
+            }
+            return { content: [{ type: "text", text: content }] };
           }
 
           // Markdown / text file
@@ -633,6 +645,310 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         }
       },
     },
+
+    {
+      name: "search_by_tag",
+      description:
+        "Search notes by Obsidian-style tags (e.g., #class, #paper, #class/cs101). Supports nested tags with slash notation. Returns files containing the specified tag with context snippets.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          tag: {
+            type: "string",
+            description: "Tag to search for (with or without # prefix, e.g., 'class' or '#class'). Supports nested tags like 'class/cs101'.",
+          },
+          max_results: {
+            type: "number",
+            description: "Maximum number of results to return (default: 10)",
+          },
+        },
+        required: ["tag"],
+      },
+      annotations: {
+        readOnlyHint: true,
+        openWorldHint: false,
+      },
+      handler: async (input) => {
+        const vaultDir = currentVaultDir();
+        let tag = (input.tag as string).trim();
+
+        // Normalize tag: remove leading # if present
+        if (tag.startsWith("#")) {
+          tag = tag.slice(1);
+        }
+
+        if (!tag) {
+          return {
+            content: [{ type: "text", text: "Error: tag cannot be empty." }],
+            isError: true,
+          };
+        }
+
+        const maxResults = (input.max_results as number) ?? 10;
+
+        try {
+          const results = await searchByTag(vaultDir, tag, maxResults);
+
+          if (results.length === 0) {
+            return {
+              content: [{ type: "text", text: `No files found with tag #${tag}` }],
+            };
+          }
+
+          const formatted = results.map((r) => {
+            const snippetText = r.snippets.length > 0
+              ? `\n\nContext snippets:\n${r.snippets.map(s => `  ${s}`).join('\n')}`
+              : '';
+            return wrapFileContent(r.path, `Found tag #${tag} (${r.matchCount} occurrence${r.matchCount > 1 ? 's' : ''})${snippetText}`);
+          });
+
+          const summary = `Found ${results.length} file${results.length > 1 ? 's' : ''} with tag #${tag}:\n\n`;
+          return {
+            content: [{ type: "text", text: summary + formatted.join("\n\n") }],
+          };
+        } catch (err) {
+          return {
+            content: [{ type: "text", text: `Error searching for tag: ${err}` }],
+            isError: true,
+          };
+        }
+      },
+    },
+
+    {
+      name: "websearch",
+      description:
+        "Search the web using DuckDuckGo. Returns titles, URLs, and snippets from search results. Use this when local notes don't contain the information needed.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search query to send to DuckDuckGo",
+          },
+          max_results: {
+            type: "number",
+            description: "Maximum number of results to return (default: 5, max: 10)",
+          },
+        },
+        required: ["query"],
+      },
+      annotations: {
+        readOnlyHint: true,
+        openWorldHint: true,
+      },
+      handler: async (input) => {
+        const query = (input.query as string).trim();
+
+        if (!query) {
+          return {
+            content: [{ type: "text", text: "Error: search query cannot be empty." }],
+            isError: true,
+          };
+        }
+
+        const maxResults = Math.min((input.max_results as number) ?? 5, 10);
+
+        try {
+          const results = await performWebSearch(query, maxResults);
+
+          if (results.length === 0) {
+            return {
+              content: [{ type: "text", text: `No web results found for query: "${query}"` }],
+            };
+          }
+
+          const formatted = results.map((r, i) =>
+            `${i + 1}. **${r.title}**\n   URL: ${r.url}\n   ${r.snippet}`
+          ).join('\n\n');
+
+          const summary = `Found ${results.length} web result${results.length > 1 ? 's' : ''} for "${query}":\n\n`;
+          return {
+            content: [{ type: "text", text: summary + formatted }],
+          };
+        } catch (err) {
+          return {
+            content: [{ type: "text", text: `Error performing web search: ${err}` }],
+            isError: true,
+          };
+        }
+      },
+    },
+
+    // --- OCR tools ---
+
+    {
+      name: "transcribe_pdf",
+      description:
+        "OCR a scanned or image-based PDF using vision AI. Renders PDF pages to images via poppler and transcribes each page to markdown. Use this when read_file shows a PDF has little extractable text (likely scanned or handwritten). Returns the transcribed markdown content and saves it to the specified output path.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Path to the PDF file, relative to the vault root",
+          },
+          page_range: {
+            type: "string",
+            description: "Optional page range to transcribe (e.g., '1-5' or '3'). Omit to transcribe all pages.",
+          },
+          output_path: {
+            type: "string",
+            description: "Path for the output markdown file, relative to the vault root. Choose based on vault structure and CLARK.md conventions.",
+          },
+        },
+        required: ["path", "output_path"],
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: false,
+      },
+      handler: async (input) => {
+        const vaultDir = currentVaultDir();
+        const inputPath = input.path as string;
+        const outputPath = input.output_path as string;
+        const pageRangeStr = input.page_range as string | undefined;
+        const progress = config.onProgress;
+
+        // Resolve and validate paths
+        const absolutePdfPath = await resolveVaultPath(inputPath, vaultDir);
+        if (!absolutePdfPath) {
+          return {
+            content: [{ type: "text", text: "Error: PDF path is outside the vault directory." }],
+            isError: true,
+          };
+        }
+
+        const absoluteOutputPath = await resolveVaultPath(outputPath, vaultDir);
+        if (!absoluteOutputPath) {
+          return {
+            content: [{ type: "text", text: "Error: output path is outside the vault directory." }],
+            isError: true,
+          };
+        }
+
+        if (!isPDFFile(absolutePdfPath)) {
+          return {
+            content: [{ type: "text", text: "Error: the specified file is not a PDF." }],
+            isError: true,
+          };
+        }
+
+        try {
+          if (!(await Bun.file(absolutePdfPath).exists())) {
+            return {
+              content: [{ type: "text", text: `Error: file not found: ${inputPath}` }],
+              isError: true,
+            };
+          }
+        } catch {
+          return {
+            content: [{ type: "text", text: `Error: cannot access file: ${inputPath}` }],
+            isError: true,
+          };
+        }
+
+        // Check poppler
+        const hasPop = await checkPopplerAvailable();
+        if (!hasPop) {
+          return {
+            content: [{
+              type: "text",
+              text: `Error: pdftoppm (poppler) is not installed. PDF OCR requires poppler to render pages to images.\n${getPopplerInstallInstructions()}`,
+            }],
+            isError: true,
+          };
+        }
+
+        // Check OCR provider
+        const ocrProvider = config.getOCRProvider?.();
+        if (!ocrProvider) {
+          return {
+            content: [{
+              type: "text",
+              text: "Error: No OCR provider available. The current LLM provider may not support vision. Switch to a vision-capable provider (Anthropic, OpenAI, or Gemini) to use OCR.",
+            }],
+            isError: true,
+          };
+        }
+
+        // Parse page range
+        let pageRange: { start: number; end: number } | undefined;
+        if (pageRangeStr) {
+          const match = pageRangeStr.match(/^(\d+)(?:-(\d+))?$/);
+          if (!match) {
+            return {
+              content: [{ type: "text", text: `Error: invalid page range "${pageRangeStr}". Use format like "1-5" or "3".` }],
+              isError: true,
+            };
+          }
+          const start = parseInt(match[1]!, 10);
+          const end = match[2] ? parseInt(match[2], 10) : start;
+          pageRange = { start, end };
+        }
+
+        try {
+          // Render PDF pages to images
+          progress?.(`Rendering PDF pages from ${inputPath}...`);
+          const renderedPages = await renderPDFPages(absolutePdfPath, { pageRange }, (page, total) => {
+            progress?.(`Rendered page ${page}/${total}`);
+          });
+
+          if (renderedPages.length === 0) {
+            return {
+              content: [{ type: "text", text: "Error: no pages were rendered from the PDF." }],
+              isError: true,
+            };
+          }
+
+          // OCR each page
+          const pageTexts: string[] = [];
+          for (let i = 0; i < renderedPages.length; i++) {
+            const page = renderedPages[i]!;
+            progress?.(`Transcribing page ${page.pageNumber} (${i + 1}/${renderedPages.length})...`);
+            const text = await ocrProvider.transcribeImage(page.imageBuffer, page.mimeType);
+            pageTexts.push(text);
+          }
+
+          // Assemble markdown with metadata header
+          const now = new Date().toISOString();
+          const rangeStr = pageRange
+            ? `${pageRange.start}-${pageRange.end}`
+            : `1-${renderedPages.length}`;
+
+          let markdown = `---\nsource: ${inputPath}\ngenerated: ${now}\npages: ${rangeStr}\nmethod: ${ocrProvider.name}\n---\n\n`;
+
+          for (let i = 0; i < pageTexts.length; i++) {
+            const pageNum = renderedPages[i]!.pageNumber;
+            if (renderedPages.length > 1) {
+              markdown += `## Page ${pageNum}\n\n`;
+            }
+            markdown += pageTexts[i]!.trim() + "\n\n";
+          }
+
+          // Write output file
+          await mkdir(dirname(absoluteOutputPath), { recursive: true });
+          await Bun.write(absoluteOutputPath, markdown);
+          invalidateFileIndex();
+
+          progress?.(`OCR complete: ${renderedPages.length} page${renderedPages.length === 1 ? "" : "s"} transcribed.`);
+
+          return {
+            content: [{
+              type: "text",
+              text: `Transcription saved to ${outputPath} (${renderedPages.length} page${renderedPages.length === 1 ? "" : "s"}).`,
+            }],
+          };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return {
+            content: [{ type: "text", text: `Error during PDF OCR: ${msg}` }],
+            isError: true,
+          };
+        }
+      },
+    },
   ];
 }
 
@@ -696,4 +1012,276 @@ async function searchDirectory(dirPath: string, query: string): Promise<SearchRe
   }
 
   return results;
+}
+
+// --- Tag search helpers ---
+
+/**
+ * Extract all tags from markdown content.
+ * Tags match #word or #word/nested/path format.
+ * Returns normalized tags (lowercase, without # prefix).
+ */
+function extractTags(content: string): string[] {
+  // Match #tag or #tag/nested/path
+  // Must be preceded by whitespace or start of line
+  // Must be followed by whitespace, punctuation, or end of line
+  const tagRegex = /(?:^|[\s])#([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*)/g;
+  const tags = new Set<string>();
+
+  let match: RegExpExecArray | null;
+  while ((match = tagRegex.exec(content)) !== null) {
+    if (match[1]) {
+      // Normalize to lowercase for case-insensitive matching
+      tags.add(match[1].toLowerCase());
+    }
+  }
+
+  return Array.from(tags);
+}
+
+/**
+ * Check if a tag matches the search query (supports nested tags).
+ * For example, searching for "class" matches both "#class" and "#class/cs101".
+ */
+function tagMatches(tag: string, query: string): boolean {
+  const normalizedTag = tag.toLowerCase();
+  const normalizedQuery = query.toLowerCase();
+
+  // Exact match
+  if (normalizedTag === normalizedQuery) {
+    return true;
+  }
+
+  // Nested tag match: query "class" matches "class/cs101"
+  if (normalizedTag.startsWith(normalizedQuery + "/")) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Search for files containing a specific tag.
+ */
+async function searchByTag(dirPath: string, tag: string, maxResults: number): Promise<SearchResult[]> {
+  const entries = await readdir(dirPath, { recursive: true });
+  const candidates = entries.filter((e) => {
+    const ext = extname(e).toLowerCase();
+    return ext === ".md" || ext === ".txt";
+  });
+
+  const BATCH_SIZE = 20;
+  const results: SearchResult[] = [];
+
+  for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+    const batch = candidates.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map((entry) => searchFileForTag(dirPath, entry, tag))
+    );
+    results.push(...batchResults.filter((r): r is SearchResult => r !== null));
+
+    if (results.length >= maxResults) {
+      break;
+    }
+  }
+
+  return results.slice(0, maxResults);
+}
+
+async function searchFileForTag(dirPath: string, entry: string, queryTag: string): Promise<SearchResult | null> {
+  const fullPath = join(dirPath, entry);
+  try {
+    const content = await Bun.file(fullPath).text();
+    const tags = extractTags(content);
+
+    // Find matching tags
+    const matchingTags = tags.filter((t) => tagMatches(t, queryTag));
+
+    if (matchingTags.length === 0) {
+      return null;
+    }
+
+    // Extract snippets around tag occurrences
+    const lines = content.split("\n");
+    const snippets: string[] = [];
+    let matchCount = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const lineTags = extractTags(lines[i]!);
+      const hasMatch = lineTags.some((t) => tagMatches(t, queryTag));
+
+      if (hasMatch) {
+        matchCount++;
+        if (snippets.length < 3) {
+          const start = Math.max(0, i - 1);
+          const end = Math.min(lines.length - 1, i + 1);
+          const snippet = lines.slice(start, end + 1).join("\n").trim();
+          snippets.push(snippet);
+        }
+      }
+    }
+
+    return {
+      path: relative(dirPath, fullPath),
+      snippets,
+      matchCount,
+    };
+  } catch {
+    // Skip unreadable files
+  }
+  return null;
+}
+
+// --- Web search helpers ---
+
+interface WebSearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+interface CacheEntry {
+  results: WebSearchResult[];
+  timestamp: number;
+}
+
+// Simple in-memory cache with 5-minute TTL
+const searchCache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Rate limiting: max 10 requests per minute
+const rateLimitQueue: number[] = [];
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10;
+
+/**
+ * Check rate limit and wait if necessary.
+ */
+async function checkRateLimit(): Promise<void> {
+  const now = Date.now();
+
+  // Remove old timestamps outside the window
+  while (rateLimitQueue.length > 0 && rateLimitQueue[0]! < now - RATE_LIMIT_WINDOW_MS) {
+    rateLimitQueue.shift();
+  }
+
+  // If we've hit the limit, wait until the oldest request expires
+  if (rateLimitQueue.length >= RATE_LIMIT_MAX_REQUESTS) {
+    const oldestRequest = rateLimitQueue[0]!;
+    const waitTime = oldestRequest + RATE_LIMIT_WINDOW_MS - now;
+    if (waitTime > 0) {
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
+    }
+    // After waiting, remove the expired request
+    rateLimitQueue.shift();
+  }
+
+  // Record this request
+  rateLimitQueue.push(now);
+}
+
+/**
+ * Perform a web search using DuckDuckGo HTML scraping.
+ */
+async function performWebSearch(query: string, maxResults: number): Promise<WebSearchResult[]> {
+  // Check cache first
+  const cacheKey = `${query}:${maxResults}`;
+  const cached = searchCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.results;
+  }
+
+  // Apply rate limiting
+  await checkRateLimit();
+
+  const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+
+  try {
+    const response = await fetch(searchUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+      },
+      signal: AbortSignal.timeout(10000), // 10 second timeout
+    });
+
+    if (!response.ok) {
+      throw new Error(`DuckDuckGo returned status ${response.status}`);
+    }
+
+    const html = await response.text();
+
+    // Detect CAPTCHA/anomaly detection
+    if (html.includes("anomaly-modal") || html.includes("challenge-form")) {
+      throw new Error("DuckDuckGo CAPTCHA detected. Web search may be temporarily unavailable due to rate limiting.");
+    }
+
+    const results = parseDuckDuckGoResults(html, maxResults);
+
+    // Cache the results
+    searchCache.set(cacheKey, {
+      results,
+      timestamp: Date.now(),
+    });
+
+    return results;
+  } catch (err) {
+    throw new Error(`Web search failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * Parse DuckDuckGo HTML results.
+ * Simple regex-based extraction (no DOM parser needed).
+ */
+function parseDuckDuckGoResults(html: string, maxResults: number): WebSearchResult[] {
+  const results: WebSearchResult[] = [];
+
+  // DuckDuckGo HTML results are in <div class="result"> elements
+  // Title is in <a class="result__a">
+  // URL is in the href
+  // Snippet is in <a class="result__snippet">
+
+  // Match result blocks
+  const resultRegex = /<div class="result[^"]*">[\s\S]*?<\/div>\s*<\/div>/g;
+  const matches = html.matchAll(resultRegex);
+
+  for (const match of matches) {
+    if (results.length >= maxResults) break;
+
+    const resultHtml = match[0];
+
+    // Extract title and URL
+    const titleMatch = resultHtml.match(/<a class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/);
+    if (!titleMatch) continue;
+
+    const url = decodeURIComponent(titleMatch[1] || "");
+    const titleHtml = titleMatch[2] || "";
+    const title = stripHtmlTags(titleHtml).trim();
+
+    // Extract snippet
+    const snippetMatch = resultHtml.match(/<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
+    const snippetHtml = snippetMatch?.[1] || "";
+    const snippet = stripHtmlTags(snippetHtml).trim();
+
+    if (title && url) {
+      results.push({ title, url, snippet });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Simple HTML tag stripper.
+ */
+function stripHtmlTags(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, "") // Remove tags
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " "); // Normalize whitespace
 }

@@ -1,27 +1,23 @@
 /**
- * File ingestion — detect file paths in user input, copy to Resources/,
- * and generate transcriptions for PDFs and images.
+ * File ingestion — detect file paths in user input and copy to Resources/.
+ *
+ * Processing (text extraction, OCR, transcription) is handled by the model
+ * using MCP tools (read_file, transcribe_pdf, create_file) rather than
+ * a hardcoded pipeline.
  */
 
-import { basename, extname, join, resolve } from "node:path";
-import { mkdir } from "node:fs/promises";
+import { basename, join, resolve } from "node:path";
+import { mkdir, stat } from "node:fs/promises";
 import { expandPath } from "../library.ts";
-import { isImageFile, isPDFFile, imageMimeType } from "../mcp/vault.ts";
-import { extractPDFText, getPDFInfo } from "../mcp/pdf.ts";
-import type { LLMProvider, Message } from "../llm/provider.ts";
+import { isImageFile, isPDFFile } from "../mcp/vault.ts";
 
-const MAX_PDF_PAGES = 50;
-
-/** Characters per page below which we consider a PDF to be scanned/image-based. */
-const SPARSE_TEXT_THRESHOLD = 50;
-
-export interface IngestResult {
+export interface CopyResult {
   /** Display name of the file */
   fileName: string;
   /** Where the file was copied to (relative to workspace) */
   destPath: string;
-  /** Path to transcription file if generated (relative to workspace) */
-  transcriptionPath?: string;
+  /** Human-readable file size */
+  fileSize: string;
   /** Brief summary of what was done */
   summary: string;
 }
@@ -75,14 +71,22 @@ function resourceSubfolder(filePath: string): string {
 }
 
 /**
- * Ingest a file into the workspace Resources/ directory.
- * Copies the file and generates a transcription if applicable.
+ * Format a byte count as a human-readable string.
  */
-export async function ingestFile(
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Copy a file into the workspace Resources/ directory.
+ * Does not perform any processing — the model handles that via MCP tools.
+ */
+export async function copyFileToResources(
   filePath: string,
   workspaceDir: string,
-  provider?: LLMProvider,
-): Promise<IngestResult> {
+): Promise<CopyResult> {
   const fileName = basename(filePath);
   const subfolder = resourceSubfolder(filePath);
   const destDir = join(workspaceDir, subfolder);
@@ -90,109 +94,19 @@ export async function ingestFile(
 
   const destPath = join(destDir, fileName);
 
+  // Get file size before copying
+  const stats = await stat(filePath);
+  const fileSize = formatFileSize(stats.size);
+
   // Copy file to Resources/
   const sourceFile = Bun.file(filePath);
   await Bun.write(destPath, sourceFile);
 
   const relDest = `${subfolder}/${fileName}`;
-  const result: IngestResult = {
+  return {
     fileName,
     destPath: relDest,
-    summary: `Added ${fileName} to ${subfolder}.`,
+    fileSize,
+    summary: `Copied ${fileName} (${fileSize}) to ${subfolder}.`,
   };
-
-  // Generate transcription for PDFs
-  if (isPDFFile(filePath)) {
-    const info = await getPDFInfo(filePath);
-    if (info.pages > MAX_PDF_PAGES) {
-      result.summary += ` PDF has ${info.pages} pages (max ${MAX_PDF_PAGES}) — skipping transcription. Consider splitting the file.`;
-      return result;
-    }
-
-    const extractedText = await extractPDFText(filePath);
-    const avgCharsPerPage = extractedText.length / Math.max(info.pages, 1);
-
-    if (avgCharsPerPage > SPARSE_TEXT_THRESHOLD) {
-      // Text-based PDF — save extracted text as transcription
-      const transcriptionPath = await saveTranscription(workspaceDir, fileName, extractedText);
-      result.transcriptionPath = transcriptionPath;
-      result.summary += ` Transcription saved to ${transcriptionPath}.`;
-    } else if (provider?.supportsVision) {
-      // Scanned PDF with sparse text — note the limitation
-      result.summary += ` PDF appears to be scanned with limited extractable text. Text extraction saved what was found.`;
-      if (extractedText.trim()) {
-        const transcriptionPath = await saveTranscription(workspaceDir, fileName, extractedText);
-        result.transcriptionPath = transcriptionPath;
-        result.summary += ` Partial transcription saved to ${transcriptionPath}.`;
-      }
-    } else {
-      if (extractedText.trim()) {
-        const transcriptionPath = await saveTranscription(workspaceDir, fileName, extractedText);
-        result.transcriptionPath = transcriptionPath;
-        result.summary += ` Transcription saved to ${transcriptionPath}.`;
-      }
-    }
-    return result;
-  }
-
-  // Generate transcription for images using vision LLM
-  if (isImageFile(filePath) && provider?.supportsVision) {
-    try {
-      const transcription = await transcribeImage(filePath, provider);
-      const transcriptionPath = await saveTranscription(workspaceDir, fileName, transcription);
-      result.transcriptionPath = transcriptionPath;
-      result.summary += ` Transcription saved to ${transcriptionPath}.`;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      result.summary += ` Image transcription failed: ${msg}`;
-    }
-    return result;
-  }
-
-  return result;
-}
-
-/**
- * Transcribe an image file using the LLM's vision API.
- */
-async function transcribeImage(filePath: string, provider: LLMProvider): Promise<string> {
-  const buffer = await Bun.file(filePath).arrayBuffer();
-  const base64 = Buffer.from(buffer).toString("base64");
-  const mimeType = imageMimeType(filePath);
-
-  const messages: Message[] = [{
-    role: "user",
-    content: [
-      {
-        type: "image",
-        data: base64,
-        mediaType: mimeType as "image/png" | "image/jpeg" | "image/webp",
-      },
-      {
-        type: "text",
-        text: "Transcribe this document to markdown. Preserve the structure including headings, bullet points, and formatting. Format math expressions in LaTeX. If there are diagrams or figures, describe them briefly in brackets.",
-      },
-    ],
-  }];
-
-  let result = "";
-  for await (const chunk of provider.chat(messages, [], "You are a document transcription assistant. Output only the transcribed content in markdown format.")) {
-    if (chunk.type === "text_delta") result += chunk.text;
-  }
-  return result;
-}
-
-/**
- * Save transcription text to Resources/Transcriptions/.
- * Returns the relative path from workspace root.
- */
-async function saveTranscription(workspaceDir: string, sourceFileName: string, content: string): Promise<string> {
-  const transcriptDir = join(workspaceDir, "Resources", "Transcriptions");
-  await mkdir(transcriptDir, { recursive: true });
-
-  const baseName = sourceFileName.replace(/\.[^.]+$/, "");
-  const transcriptPath = join(transcriptDir, `${baseName}.md`);
-  await Bun.write(transcriptPath, content);
-
-  return `Resources/Transcriptions/${baseName}.md`;
 }

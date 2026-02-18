@@ -94,13 +94,13 @@ This is the simplest approach and always works during active tutoring sessions (
 - The LLM discovers structures from the system prompt and uses `read_file`/`create_file` tools naturally when a student asks to create one (e.g., "create a new class for CS101")
 - No dedicated slash commands — the model handles structure creation conversationally
 
-**File ingestion:**
+**File ingestion (agentic):**
 - When the student drags a file into the terminal or pastes a file path, the TUI detects it as a path (via `detectFilePath()`) before checking for slash commands
 - The file is copied to the appropriate `Resources/` subfolder (PDFs → `Resources/PDFs/`, images → `Resources/Images/`)
-- For PDFs with extractable text, a markdown transcription is saved to `Resources/Transcriptions/`
-- For images, the configured LLM's vision API generates a transcription (if the provider supports vision)
-- PDFs over 50 pages are accepted but transcription is skipped with a suggestion to split the file
-- After ingestion, a message is injected into the conversation so the model can acknowledge the new resource
+- A message is injected into the conversation telling the model about the new file
+- The model then drives processing using MCP tools: `read_file` to inspect content, `transcribe_pdf` to OCR scanned PDFs, `create_file` to save transcriptions
+- The model decides where to place transcriptions based on vault structure and CLARK.md conventions
+- For scanned/handwritten PDFs, `transcribe_pdf` renders pages to images via poppler (`pdftoppm`) and OCRs each page using a pluggable vision API
 
 ### 2. Workspace System
 
@@ -231,17 +231,19 @@ The tldraw Agent SDK defines a pattern for giving AI models rich context about c
 | `read_canvas` | Capture a PNG snapshot of a canvas page from the iPad client (via WebSocket) | readOnly |
 | `export_pdf` | Export canvas pages as A4 PDF via `pdf-lib` | write |
 | `save_canvas` | Persist current canvas state to disk | write, idempotent |
+| `transcribe_pdf` | OCR scanned/handwritten PDFs: renders pages via poppler, transcribes via vision API, saves markdown | write |
 
 **Tool implementation:**
 All file tools are vault-scoped — paths are resolved relative to the vault root, and path traversal outside the vault is rejected. The MCP server holds references to:
 - A `CanvasBroker` instance (for `read_canvas` and `export_pdf` — sends requests to the iPad, awaits responses)
 - An optional `saveCanvas` callback (for `save_canvas` — provided by `index.ts` when the canvas server is running)
+- An optional `OCRProvider` (for `transcribe_pdf` — default uses LLM vision API, pluggable for dedicated OCR models)
 
 This keeps the MCP server decoupled from tldraw internals. It doesn't import tldraw or know about shapes — it just sends messages and receives images.
 
 **File format support:**
 - **Markdown (.md):** Read as plain text. Wikilinks (`[[...]]` and `![[...]]`) are extracted and resolved to vault paths, appended as a link footer so the LLM can follow references.
-- **PDF (.pdf):** Text extracted via `pdf-parse` for search and reading.
+- **PDF (.pdf):** Text extracted via `pdf-parse` for search and reading. `read_file` hints when a PDF has sparse text (likely scanned). `transcribe_pdf` provides full OCR via poppler + vision API.
 - **Images (.png, .jpg, .gif, etc.):** Returned as base64-encoded data for the LLM's vision API.
 
 **Search (v1):** Keyword/substring search over file contents. Results ranked by relevance (match density).
@@ -376,6 +378,11 @@ clark/
 │   │   ├── mock.ts            # Mock provider for tests
 │   │   ├── messages.ts        # Conversation class (history, tokens, compaction)
 │   │   └── index.ts           # LLM module exports (+ side-effect provider registration)
+│   │
+│   ├── ocr/                    # OCR pipeline (pluggable provider + PDF rendering)
+│   │   ├── provider.ts         # OCRProvider interface + VisionOCRProvider (LLM vision)
+│   │   ├── pdf-renderer.ts     # PDF-to-image rendering via poppler (pdftoppm)
+│   │   └── index.ts            # OCR module exports
 │   │
 │   └── prompts/
 │       └── system.md          # Socratic system prompt

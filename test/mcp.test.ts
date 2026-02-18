@@ -197,7 +197,10 @@ describe("MCP Tools", () => {
     expect(names).toContain("save_canvas");
     expect(names).toContain("rename_file");
     expect(names).toContain("delete_file");
-    expect(names).toHaveLength(10);
+    expect(names).toContain("search_by_tag");
+    expect(names).toContain("websearch");
+    expect(names).toContain("transcribe_pdf");
+    expect(names).toHaveLength(13);
   });
 
   describe("read_file", () => {
@@ -461,5 +464,137 @@ describe("MCP Tools", () => {
       expect(result.isError).toBeUndefined();
       expect(called).toBe(true);
     });
+  });
+
+  describe("search_by_tag", () => {
+    test("finds files by simple tag", async () => {
+      const tool = findTool("search_by_tag");
+      const result = await tool.handler({ tag: "class" });
+      expect(result.isError).toBeUndefined();
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("ML Class.md");
+      expect(text).toContain("Algorithms Class.md");
+      expect(text).toContain("Found 4 files"); // Including nested tag test and Class.md structure
+    });
+
+    test("finds files by nested tag", async () => {
+      const tool = findTool("search_by_tag");
+      const result = await tool.handler({ tag: "class/cs229" });
+      expect(result.isError).toBeUndefined();
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Nested Tag Test.md");
+      expect(text).not.toContain("ML Class.md"); // Should not match parent tag
+    });
+
+    test("parent tag matches nested tags", async () => {
+      const tool = findTool("search_by_tag");
+      const result = await tool.handler({ tag: "class" });
+      expect(result.isError).toBeUndefined();
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Nested Tag Test.md"); // class matches class/cs229
+    });
+
+    test("tag matching is case-insensitive", async () => {
+      const tool = findTool("search_by_tag");
+      const result1 = await tool.handler({ tag: "CLASS" });
+      const result2 = await tool.handler({ tag: "class" });
+
+      expect(result1.isError).toBeUndefined();
+      expect(result2.isError).toBeUndefined();
+
+      const text1 = (result1.content[0] as { type: "text"; text: string }).text;
+      const text2 = (result2.content[0] as { type: "text"; text: string }).text;
+      expect(text1).toContain("ML Class.md");
+      expect(text2).toContain("ML Class.md");
+    });
+
+    test("accepts tags with or without # prefix", async () => {
+      const tool = findTool("search_by_tag");
+      const result1 = await tool.handler({ tag: "#paper" });
+      const result2 = await tool.handler({ tag: "paper" });
+
+      const text1 = (result1.content[0] as { type: "text"; text: string }).text;
+      const text2 = (result2.content[0] as { type: "text"; text: string }).text;
+      expect(text1).toContain("Attention Paper.md");
+      expect(text2).toContain("Attention Paper.md");
+    });
+
+    test("returns no results for non-existent tag", async () => {
+      const tool = findTool("search_by_tag");
+      const result = await tool.handler({ tag: "nonexistenttag123" });
+      expect(result.isError).toBeUndefined();
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("No files found");
+    });
+
+    test("returns error for empty tag", async () => {
+      const tool = findTool("search_by_tag");
+      const result = await tool.handler({ tag: "" });
+      expect(result.isError).toBe(true);
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("cannot be empty");
+    });
+
+    test("respects max_results parameter", async () => {
+      const tool = findTool("search_by_tag");
+      const result = await tool.handler({ tag: "class", max_results: 1 });
+      expect(result.isError).toBeUndefined();
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Found 1 file");
+    });
+  });
+
+  describe("websearch", () => {
+    test("returns error for empty query", async () => {
+      const tool = findTool("websearch");
+      const result = await tool.handler({ query: "" });
+      expect(result.isError).toBe(true);
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("cannot be empty");
+    });
+
+    test("performs basic web search or handles CAPTCHA gracefully", async () => {
+      const tool = findTool("websearch");
+      const result = await tool.handler({ query: "wikipedia" });
+
+      // Note: This test requires internet access and may encounter CAPTCHA
+      // DuckDuckGo may block automated requests with CAPTCHA challenges
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+
+      if (result.isError) {
+        // If error, should be CAPTCHA or other network issue
+        expect(text).toMatch(/CAPTCHA|search failed/i);
+      } else if (text.includes("No web results found")) {
+        // CAPTCHA prevented results - this is acceptable
+        expect(text).toContain("No web results found");
+      } else {
+        // If successful, should have results with URLs
+        expect(text).toContain("web result");
+        expect(text).toMatch(/https?:\/\//);
+      }
+    }, 15000); // 15 second timeout for network request
+
+    test("respects max_results parameter when successful", async () => {
+      const tool = findTool("websearch");
+      const result = await tool.handler({ query: "wikipedia", max_results: 2 });
+
+      // Only verify max_results if we got successful results
+      if (!result.isError) {
+        const text = (result.content[0] as { type: "text"; text: string }).text;
+        // Results should be limited to 2
+        const matches = text.match(/^\d+\./gm); // Count numbered list items
+        if (matches) {
+          expect(matches.length).toBeLessThanOrEqual(2);
+        }
+      }
+      // If CAPTCHA or error, test passes (can't verify max_results)
+    }, 15000);
   });
 });

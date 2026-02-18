@@ -38,7 +38,7 @@ afterAll(async () => {
 });
 
 describe("MCP Protocol — tools/list", () => {
-  test("lists all 8 tools", async () => {
+  test("lists all 12 tools", async () => {
     const result = await client.listTools();
     const names = result.tools.map((t) => t.name);
 
@@ -52,7 +52,10 @@ describe("MCP Protocol — tools/list", () => {
     expect(names).toContain("save_canvas");
     expect(names).toContain("rename_file");
     expect(names).toContain("delete_file");
-    expect(result.tools).toHaveLength(10);
+    expect(names).toContain("search_by_tag");
+    expect(names).toContain("websearch");
+    expect(names).toContain("transcribe_pdf");
+    expect(result.tools).toHaveLength(13);
   });
 
   test("each tool has a description and valid inputSchema", async () => {

@@ -94,7 +94,7 @@ describe("COMMANDS", () => {
     expect(filter("co")).toHaveLength(2); // context, compact
     expect(filter("xyz")).toHaveLength(0); // no match
     expect(filter("h")).toHaveLength(1); // help
-    expect(filter("e")).toHaveLength(1); // export
+    expect(filter("e")).toHaveLength(2); // export, exit
     expect(filter("m")).toHaveLength(1); // model
     expect(filter("l")).toHaveLength(0); // no built-in l command
   });

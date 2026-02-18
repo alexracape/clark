@@ -14,6 +14,8 @@ import { resolveProvider } from "./provider.ts";
 import { loadEffectiveSystemPrompt } from "./system-prompt.ts";
 import { CanvasSessionManager } from "../app/canvas-session.ts";
 import { createSlashCommandHandler } from "../app/command-router.ts";
+import { VisionOCRProvider } from "../ocr/provider.ts";
+import { checkPopplerAvailable, getPopplerInstallInstructions } from "../ocr/pdf-renderer.ts";
 
 function getLanIP(): string {
   const nets = networkInterfaces();
@@ -42,13 +44,33 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
     bindHost: "0.0.0.0",
   });
 
+  // Non-blocking poppler check — warn early if PDF OCR won't work
+  checkPopplerAvailable().then((available) => {
+    if (!available) {
+      console.error(
+        `\n⚠  pdftoppm (poppler) not found — PDF OCR will not be available.\n   ${getPopplerInstallInstructions()}\n`,
+      );
+    }
+  });
+
   const conversation = new Conversation();
+
+  // Mutable ref for progress callback — set by the App component once mounted
+  let progressCallback: ((message: string) => void) | undefined;
+
+  // Mutable ref for current provider — updated when user switches models
+  let currentProvider = provider;
 
   const tools = createTools({
     getBroker: () => canvas.broker,
     getVaultDir: () => workspaceDir,
     getExportDir: () => exportDir,
     getSaveCanvas: () => canvas.saveCanvas,
+    onProgress: (msg) => progressCallback?.(msg),
+    getOCRProvider: () => {
+      if (!currentProvider.supportsVision) return null;
+      return new VisionOCRProvider(currentProvider);
+    },
   });
 
   const onSlashCommand = createSlashCommandHandler({
@@ -88,6 +110,12 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
       getActiveCanvas: () => canvas.activeInfo,
       history,
       workspaceDir,
+      onSetProgressCallback: (cb: (message: string) => void) => {
+        progressCallback = cb;
+      },
+      onProviderChange: (newProvider: typeof provider) => {
+        currentProvider = newProvider;
+      },
     }),
   );
 }
