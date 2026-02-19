@@ -9,7 +9,8 @@
     "start": "bun index.ts",
     "test": "bun test",
     "mcp": "bun src/mcp/standalone.ts",
-    "inspect": "bunx @modelcontextprotocol/inspector bun src/mcp/standalone.ts"
+    "inspect": "bunx @modelcontextprotocol/inspector bun src/mcp/standalone.ts",
+    "build": "bun scripts/build.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -33,7 +34,8 @@
     "@types/pdf-parse": "^1.1.4",
     "@types/react": "^18.3.18",
     "@types/yargs": "^17.0.33",
-    "ink-testing-library": "^4.0.0"
+    "ink-testing-library": "^4.0.0",
+    "react-devtools-core": "^7.0.1"
   },
   "peerDependencies": {
     "typescript": "^5"

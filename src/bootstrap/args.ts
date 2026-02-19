@@ -8,10 +8,15 @@ export interface CliArgs {
   port: number;
 }
 
-// Read version from package.json (navigate to project root from src/bootstrap/)
-const packageJsonPath = join(import.meta.dir, "..", "..", "package.json");
-const packageJson = await Bun.file(packageJsonPath).json();
-const version = packageJson.version || "0.1.0";
+// Read version — inlined at compile time via --define, with runtime fallback
+declare const CLARK_VERSION: string | undefined;
+const version: string =
+  typeof CLARK_VERSION !== "undefined"
+    ? CLARK_VERSION
+    : await Bun.file(join(import.meta.dir, "..", "..", "package.json"))
+        .json()
+        .then((p: { version?: string }) => p.version ?? "0.1.0")
+        .catch(() => "0.1.0");
 
 export async function parseCliArgs(argv = process.argv): Promise<CliArgs> {
   const parsed = await yargs(hideBin(argv))

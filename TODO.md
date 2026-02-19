@@ -1,28 +1,30 @@
 Some future enhancements and things that need fixing, organized into parallel execution sessions.
 
-## Session 6: Productization + roadmap decisions
-
-- **Default `CLARK.md` scaffold**
-  - Ship a default `CLARK.md` template with practical examples students can customize.
-  - Include sections for tone/preferences, course context, and workflow constraints.
-  - Include library assumptions like tags, structures, etc
-  - Add generation/bootstrap behavior for new workspaces.
-  - Acceptance: new users start with a useful, editable baseline config file.
-
-- **Office hours + class notes user stories**
-  - Write concrete user journeys (student, TA/instructor) for office hours and notes workflows.
-  - Identify required features vs nice-to-have add-ons.
-  - Acceptance: prioritized stories that can feed implementation tickets.
-
-- **Auto-update infrastructure**
-  - Implement secure update channel with signature verification.
-  - Define rollout strategy (manual/percentage staged rollouts) and rollback mechanism.
-  - Acceptance: app can update safely with recovery path on bad release.
+## Session 5: Website distribution
 
 - **Distribution site for desktop binary + docs**
   - Build a lightweight site for downloads, release notes, install instructions, and docs links.
   - Include platform detection hints and checksum/signature visibility.
   - Acceptance: users can discover, download, and verify releases from one place.
+
+
+## Session 6: Productization + roadmap decisions
+
+- [x] **Default `CLARK.md` scaffold**
+  - Shipped default template with workspace layout, tags, file processing, and linking conventions.
+  - Updated test_vault CLARK.md to match.
+
+- [x] **Binary build + install script**
+  - `bun run build` compiles standalone binaries via `bun build --compile`
+  - `scripts/build.ts` supports cross-compilation (`--target`, `--all`) with SHA-256 checksums
+  - `install.sh` curl-based installer with platform detection and checksum verification
+  - `.github/workflows/release.yml` builds for macOS (arm64/x64) and Linux (x64/arm64) on tag push
+  - Version inlined at compile time via `--define CLARK_VERSION`
+
+- **Remaining: Auto-update enhancements**
+  - Startup version check (ping GitHub Releases API for newer versions)
+  - `clark --update` flag to re-run install script
+  - Staged rollout strategy and rollback mechanism
 
 ## Session 8: TUI enhancments
 
@@ -33,7 +35,7 @@ Some future enhancements and things that need fixing, organized into parallel ex
   - Avoid color-only meaning by adding role labels or prefixes when needed.
   - Acceptance: role identity is obvious at a glance.
 
-- **Markdown rendering in chat**
+- **Basic Markdown rendering in chat**
   - Render common markdown blocks: headings, bold/italic, inline code, fenced code blocks, lists, links.
   - Ensure graceful fallback for unsupported markdown features.
   - Preserve copy/paste reliability and terminal wrapping behavior.
@@ -47,6 +49,11 @@ Some future enhancements and things that need fixing, organized into parallel ex
 
 
 ## Backlog of future enhancements
+
+- **Office hours + class notes user stories**
+  - Write concrete user journeys (student, TA/instructor) for office hours and notes workflows.
+  - Identify required features vs nice-to-have add-ons.
+  - Acceptance: prioritized stories that can feed implementation tickets.
 
 - **Test Linux/Windows secret store backends**
   - Add integration tests for LinuxLibsecretStore and WindowsCredentialStore

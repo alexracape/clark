@@ -318,7 +318,14 @@ clark/
 ├── tsconfig.json
 ├── index.ts                   # Entry point — onboarding, canvas server, TUI
 │
-├── d/                         # Default Structure/Template files (copied during scaffolding)
+├── install.sh                 # Curl-based installer (platform detection + checksum)
+│
+├── scripts/
+│   └── build.ts               # Cross-platform binary compilation via bun build --compile
+│
+├── .github/
+│   └── workflows/
+│       └── release.yml        # Build + publish binaries on git tag push
 │
 ├── docs/
 │   └── dependencies/          # Vendored LLM-friendly docs for tldraw, MCP
@@ -479,6 +486,29 @@ interface ClarkConfig {
 - **Linux**: libsecret (via `secret-tool` CLI)
 - **Windows**: Credential Manager (via `cmdkey` CLI)
 - **Fallback**: Environment variables only (when native backend unavailable)
+
+## Distribution
+
+Clark is distributed as a standalone compiled binary via GitHub Releases.
+
+**Build:** `bun run build` runs `scripts/build.ts`, which:
+- Compiles `index.ts` into a single executable via `bun build --compile`
+- Inlines the version at compile time (`--define CLARK_VERSION`)
+- Generates SHA-256 checksums for each binary
+- Supports cross-compilation: `--target darwin-arm64`, `--target linux-x64`, `--all`
+
+**Supported platforms:** macOS (arm64, x64), Linux (arm64, x64)
+
+**Release workflow:** Pushing a git tag (`v*`) triggers `.github/workflows/release.yml`, which:
+1. Builds binaries on GitHub Actions runners for each platform
+2. Creates a GitHub Release with generated release notes and all binaries + checksums
+
+**Installation:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/alexracape/clark/main/install.sh | bash
+```
+
+The install script detects the user's platform, downloads the correct binary, verifies the SHA-256 checksum, and installs to `/usr/local/bin/clark` (or a custom `INSTALL_DIR`).
 
 ## Non-Goals (v1)
 
