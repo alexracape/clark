@@ -5,6 +5,8 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import type { CanvasConnectionState } from "../app/canvas-session.ts";
+import { theme, componentTheme, hex } from "./theme.ts";
+import chalk from "chalk";
 
 export interface StatusBarProps {
   provider: string;
@@ -18,11 +20,11 @@ export interface StatusBarProps {
 
 const SPINNER_FRAMES = [".", "..", "..."];
 
-function statusColor(status: CanvasConnectionState): "green" | "yellow" | "cyan" | "red" {
-  if (status === "connected") return "green";
-  if (status === "connecting") return "cyan";
-  if (status === "failed") return "red";
-  return "yellow";
+function statusColorHex(status: CanvasConnectionState): string {
+  if (status === "connected") return hex.sage;
+  if (status === "connecting") return hex.thinkingSpinner;
+  if (status === "failed") return "#C47A5A"; // Red from window dots
+  return hex.brass; // Yellow/brass for disconnected
 }
 
 export function StatusBar({ provider, model, canvasConnected, canvasStatus, canvasUrl, canvasName, isThinking }: StatusBarProps) {
@@ -40,29 +42,31 @@ export function StatusBar({ provider, model, canvasConnected, canvasStatus, canv
   return (
     <Box paddingX={1} flexDirection="row" justifyContent="space-between">
       <Text>
-        <Text color="blue" bold>{provider}</Text>
-        <Text color="gray" dimColor>{"/"}{model}</Text>
+        {componentTheme.statusBar.provider(provider)}
+        {componentTheme.statusBar.separator(`/${model}`)}
       </Text>
 
       <Box>
         {canvasName ? (
           effectiveStatus === "connected" ? (
-            <Text color={statusColor(effectiveStatus)}>{"[canvas: "}{canvasName}{" connected]"}</Text>
+            <Text color={statusColorHex(effectiveStatus)}>
+              {"[canvas: "}{canvasName}{" connected]"}
+            </Text>
           ) : (
-            <Text color={statusColor(effectiveStatus)}>
+            <Text color={statusColorHex(effectiveStatus)}>
               {"[canvas: "}{canvasName}{" "}{effectiveStatus}
               {canvasUrl ? ` ${canvasUrl}` : ""}
               {"]"}
             </Text>
           )
         ) : (
-          <Text color="gray" dimColor>{"[no canvas — /canvas to open]"}</Text>
+          <Text>{theme.dim("[no canvas — /canvas to open]")}</Text>
         )}
       </Box>
 
       <Box width={14}>
         {isThinking && (
-          <Text color="cyan">{"thinking"}{SPINNER_FRAMES[frame]}</Text>
+          <Text>{theme.spinner(`thinking${SPINNER_FRAMES[frame]}`)}</Text>
         )}
       </Box>
     </Box>

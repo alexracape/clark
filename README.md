@@ -8,6 +8,8 @@ Socratic tutoring assistant. See [SPEC.md](SPEC.md) for full details.
 bun install
 ```
 
+curl -fsSL https://raw.githubusercontent.com/alexracape/clark/main/install.sh | bash
+
 ## Run
 
 ```bash

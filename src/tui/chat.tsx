@@ -3,10 +3,13 @@
  *
  * Renders the conversation as a list of messages with role indicators.
  * Supports a streaming partial message at the end.
+ * Uses markdown rendering for assistant messages.
  */
 
 import React from "react";
-import { Box, Text, Newline } from "ink";
+import { Box, Text } from "ink";
+import { Markdown } from "./markdown.tsx";
+import { theme } from "./theme.ts";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -25,12 +28,26 @@ export interface ChatProps {
 function RoleLabel({ role }: { role: ChatMessage["role"] }) {
   switch (role) {
     case "user":
-      return <Text color="green" bold>{"you "}</Text>;
+      return <Text>{theme.user("you ")}</Text>;
     case "assistant":
-      return <Text color="blue" bold>{"clark "}</Text>;
+      return <Text>{theme.assistant("clark ")}</Text>;
     case "system":
-      return <Text color="gray" dimColor>{"system "}</Text>;
+      return <Text>{theme.system("system ")}</Text>;
   }
+}
+
+function MessageContent({ role, content }: { role: ChatMessage["role"]; content: string }) {
+  // Render markdown for assistant messages, plain text for others
+  if (role === "assistant") {
+    try {
+      return <Markdown>{content}</Markdown>;
+    } catch (error) {
+      // Fallback to plain text if markdown fails
+      return <Text>{theme.message(content)}</Text>;
+    }
+  }
+
+  return <Text wrap="wrap">{theme.message(content)}</Text>;
 }
 
 function MessageBubble({ message }: { message: ChatMessage }) {
@@ -38,7 +55,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     <Box flexDirection="column" marginBottom={1}>
       <RoleLabel role={message.role} />
       <Box marginLeft={2} flexDirection="column">
-        <Text wrap="wrap">{message.content}</Text>
+        <MessageContent role={message.role} content={message.content} />
       </Box>
     </Box>
   );
@@ -53,18 +70,21 @@ export function Chat({ messages, streamingText, streamingThinking }: ChatProps) 
 
       {streamingThinking !== undefined && (
         <Box flexDirection="column" marginBottom={1}>
-          <Text color="gray" dimColor bold>{"thinking "}</Text>
+          <Text>{theme.thinking("thinking ")}</Text>
           <Box marginLeft={2}>
-            <Text wrap="wrap" dimColor>{streamingThinking}</Text>
+            <Text wrap="wrap">{theme.dim(streamingThinking)}</Text>
           </Box>
         </Box>
       )}
 
       {streamingText !== undefined && (
         <Box flexDirection="column" marginBottom={1}>
-          <Text color="blue" bold>{"clark "}</Text>
+          <Text>{theme.assistant("clark ")}</Text>
           <Box marginLeft={2}>
-            <Text wrap="wrap">{streamingText}<Text color="cyan">{"_"}</Text></Text>
+            <Text wrap="wrap">
+              {theme.message(streamingText)}
+              {theme.cursor("_")}
+            </Text>
           </Box>
         </Box>
       )}

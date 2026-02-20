@@ -23,6 +23,7 @@ import type { ToolDefinition, ToolResult } from "../mcp/tools.ts";
 import type { CommandHistory } from "./history.ts";
 import { detectFilePath, copyFileToResources } from "../app/ingest.ts";
 import type { CanvasConnectionStatus } from "../app/canvas-session.ts";
+import { theme } from "./theme.ts";
 
 export interface AppProps {
   provider: LLMProvider;
@@ -394,13 +395,13 @@ export function App({
       />
 
       <Box marginY={1}>
-        <Text color="gray" dimColor>{"─".repeat(60)}</Text>
+        <Text>{theme.divider("─".repeat(60))}</Text>
       </Box>
 
       <Chat messages={messages} streamingText={streamingText} streamingThinking={streamingThinking} />
 
       <Box marginTop={1}>
-        <Text color="gray" dimColor>{"─".repeat(60)}</Text>
+        <Text>{theme.divider("─".repeat(60))}</Text>
       </Box>
 
       {showTutorial ? (

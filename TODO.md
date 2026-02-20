@@ -1,54 +1,18 @@
 Some future enhancements and things that need fixing, organized into parallel execution sessions.
 
-## Session 5: Website distribution
-
-- **Distribution site for desktop binary + docs**
-  - Build a lightweight site for downloads, release notes, install instructions, and docs links.
-  - Include platform detection hints and checksum/signature visibility.
-  - Acceptance: users can discover, download, and verify releases from one place.
-
-
-## Session 6: Productization + roadmap decisions
-
-- [x] **Default `CLARK.md` scaffold**
-  - Shipped default template with workspace layout, tags, file processing, and linking conventions.
-  - Updated test_vault CLARK.md to match.
-
-- [x] **Binary build + install script**
-  - `bun run build` compiles standalone binaries via `bun build --compile`
-  - `scripts/build.ts` supports cross-compilation (`--target`, `--all`) with SHA-256 checksums
-  - `install.sh` curl-based installer with platform detection and checksum verification
-  - `.github/workflows/release.yml` builds for macOS (arm64/x64) and Linux (x64/arm64) on tag push
-  - Version inlined at compile time via `--define CLARK_VERSION`
-
-- **Remaining: Auto-update enhancements**
-  - Startup version check (ping GitHub Releases API for newer versions)
-  - `clark --update` flag to re-run install script
-  - Staged rollout strategy and rollback mechanism
-
-## Session 8: TUI enhancments
-
-- **Color-coded message roles**
-  - Apply distinct styles for student/user, Clark/assistant, and system messages.
-  - Keep palette accessible in low-contrast terminal environments.
-  - Extract the pallette to a place that can be defined globally for the application
-  - Avoid color-only meaning by adding role labels or prefixes when needed.
-  - Acceptance: role identity is obvious at a glance.
-
-- **Basic Markdown rendering in chat**
-  - Render common markdown blocks: headings, bold/italic, inline code, fenced code blocks, lists, links.
-  - Ensure graceful fallback for unsupported markdown features.
-  - Preserve copy/paste reliability and terminal wrapping behavior.
-  - Acceptance: assistant responses are formatted, readable, and stable under long outputs.
-
-- **Multiline input (Shift+Enter)**
-  - Enter sends message; Shift+Enter inserts newline.
-  - Handle platform/terminal keybinding differences robustly.
-  - Keep message editing cursor behavior predictable.
-  - Acceptance: users can compose multi-paragraph prompts without accidental sends.
-
-
 ## Backlog of future enhancements
+
+- Testing
+  - multiline input
+  - installing via curl
+  - updating with --update
+  - theme consistency
+  - tool calling and actual usability with good models
+  - canvas theme
+  - OCR and resource handling in general
+  - web search tool
+
+- Add Ollama and Default library to the docs
 
 - **Office hours + class notes user stories**
   - Write concrete user journeys (student, TA/instructor) for office hours and notes workflows.

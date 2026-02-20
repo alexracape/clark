@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Getting Started — Clark</title>
+        <meta
+            name="description"
+            content="Learn how to install and use Clark, a Socratic teaching assistant for your terminal."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            *,
+            *::before,
+            *::after {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+
+            :root {
+                --lamp-green: #3d7a5f;
+                --deep-fern: #2e6049;
+                --leather: #1c1408;
+                --walnut: #6b5e4f;
+                --parchment: #faf6ee;
+                --patina: #7a6b52;
+                --brass: #c9a84c;
+                --chrome: #251c0f;
+                --text-base: #b8a88a;
+                --text-white: #e8dcca;
+                --text-dim: #5c4e38;
+                --text-green: #6dbf8b;
+                --text-blue: #7eb8c9;
+                --divider: #3d3020;
+            }
+
+            html {
+                scroll-behavior: smooth;
+            }
+
+            body {
+                font-family: Georgia, "Times New Roman", serif;
+                background: var(--parchment);
+                color: #2c2417;
+                min-height: 100vh;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            /* ===== NAVBAR ===== */
+            .navbar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 100;
+                background: rgba(250, 246, 238, 0.92);
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
+                border-bottom: 1px solid #d6cbaf;
+                padding: 0 48px;
+            }
+
+            .navbar-inner {
+                max-width: 1100px;
+                margin: 0 auto;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                height: 56px;
+            }
+
+            .navbar-logo {
+                font-family: Georgia, "Times New Roman", serif;
+                font-size: 22px;
+                font-weight: 700;
+                color: var(--leather);
+                text-decoration: none;
+                letter-spacing: -0.02em;
+            }
+
+            .navbar-links {
+                display: flex;
+                gap: 28px;
+                align-items: center;
+            }
+
+            .navbar-links a {
+                font-family: "DM Mono", monospace;
+                font-size: 13px;
+                font-weight: 500;
+                color: var(--patina);
+                text-decoration: none;
+                transition: color 0.2s;
+            }
+
+            .navbar-links a:hover {
+                color: var(--lamp-green);
+            }
+
+            .navbar-links a.active {
+                color: var(--lamp-green);
+            }
+
+            /* ===== LAYOUT ===== */
+            .container {
+                max-width: 780px;
+                margin: 0 auto;
+                padding: 0 48px;
+            }
+
+            /* ===== HEADER ===== */
+            .page-header {
+                padding: 120px 0 48px;
+                border-bottom: 1px solid #d6cbaf;
+            }
+
+            .page-header h1 {
+                font-family: Georgia, "Times New Roman", serif;
+                font-size: 48px;
+                font-weight: 700;
+                color: var(--leather);
+                letter-spacing: -0.02em;
+                margin-bottom: 12px;
+            }
+
+            .page-header p {
+                font-size: 19px;
+                line-height: 1.7;
+                color: var(--patina);
+                max-width: 520px;
+            }
+
+            /* ===== CONTENT ===== */
+            .guide {
+                padding: 48px 0 80px;
+            }
+
+            .step {
+                padding: 40px 0;
+                border-bottom: 1px solid #e8e0d0;
+            }
+
+            .step:last-child {
+                border-bottom: none;
+            }
+
+            .step-number {
+                font-family: "DM Mono", monospace;
+                font-size: 12px;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: var(--lamp-green);
+                font-weight: 500;
+                margin-bottom: 12px;
+            }
+
+            .step h2 {
+                font-family: Georgia, "Times New Roman", serif;
+                font-size: 28px;
+                font-weight: 700;
+                color: var(--leather);
+                margin-bottom: 16px;
+                letter-spacing: -0.01em;
+            }
+
+            .step p {
+                font-size: 17px;
+                line-height: 1.75;
+                color: var(--walnut);
+                margin-bottom: 16px;
+            }
+
+            .step p:last-child {
+                margin-bottom: 0;
+            }
+
+            /* Code blocks */
+            .code-block {
+                background: var(--leather);
+                border-radius: 8px;
+                padding: 16px 20px;
+                margin: 16px 0;
+                font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+                font-size: 13px;
+                line-height: 1.7;
+                color: var(--text-white);
+                overflow-x: auto;
+            }
+
+            .code-block .prompt {
+                color: var(--text-green);
+                user-select: none;
+            }
+
+            .code-block .comment {
+                color: var(--text-dim);
+            }
+
+            .code-inline {
+                background: #f0eadc;
+                padding: 2px 8px;
+                border-radius: 4px;
+                font-family: "IBM Plex Mono", "Menlo", monospace;
+                font-size: 14px;
+                color: var(--lamp-green);
+            }
+
+            /* Command list */
+            .command-list {
+                margin: 16px 0;
+                list-style: none;
+            }
+
+            .command-list li {
+                padding: 8px 0;
+                border-bottom: 1px solid #ede7da;
+                display: flex;
+                gap: 16px;
+                align-items: baseline;
+                font-size: 16px;
+                line-height: 1.6;
+            }
+
+            .command-list li:last-child {
+                border-bottom: none;
+            }
+
+            .command-list .cmd {
+                font-family: "IBM Plex Mono", monospace;
+                font-size: 14px;
+                color: var(--lamp-green);
+                font-weight: 500;
+                white-space: nowrap;
+                min-width: 100px;
+            }
+
+            .command-list .desc {
+                color: var(--walnut);
+            }
+
+            /* Tip blocks */
+            .tip {
+                background: #f2ecdf;
+                border-left: 3px solid var(--lamp-green);
+                border-radius: 0 8px 8px 0;
+                padding: 16px 20px;
+                margin: 20px 0;
+                font-size: 15px;
+                line-height: 1.7;
+                color: var(--text-dim);
+            }
+
+            .tip strong {
+                color: var(--lamp-green);
+                font-weight: 600;
+            }
+
+            /* File types */
+            .file-types {
+                list-style: none;
+                margin: 12px 0;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .file-types li {
+                font-family: "DM Mono", monospace;
+                font-size: 12px;
+                letter-spacing: 0.06em;
+                color: var(--walnut);
+                padding: 4px 12px;
+                border: 1px solid #d6cbaf;
+                border-radius: 4px;
+            }
+
+            /* Steps list */
+            .steps-list {
+                list-style: none;
+                margin: 16px 0;
+                counter-reset: steps;
+            }
+
+            .steps-list li {
+                counter-increment: steps;
+                padding: 6px 0 6px 0;
+                font-size: 16px;
+                line-height: 1.7;
+                color: var(--walnut);
+                display: flex;
+                gap: 12px;
+            }
+
+            .steps-list li::before {
+                content: counter(steps) ".";
+                font-family: "DM Mono", monospace;
+                font-size: 14px;
+                color: var(--lamp-green);
+                font-weight: 500;
+                min-width: 24px;
+            }
+
+            /* Uses list */
+            .uses-list {
+                list-style: none;
+                margin: 12px 0;
+            }
+
+            .uses-list li {
+                padding: 4px 0;
+                font-size: 16px;
+                line-height: 1.7;
+                color: var(--walnut);
+            }
+
+            .uses-list li::before {
+                content: "\2022  ";
+                color: var(--lamp-green);
+            }
+
+            /* ===== FOOTER ===== */
+            footer {
+                border-top: 1px solid #d6cbaf;
+                padding: 40px 0;
+            }
+
+            .footer-inner {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 16px;
+            }
+
+            .footer-left {
+                font-family: "DM Mono", monospace;
+                font-size: 13px;
+                color: var(--patina);
+            }
+
+            .footer-left a {
+                color: var(--lamp-green);
+                text-decoration: none;
+            }
+
+            .footer-left a:hover {
+                text-decoration: underline;
+            }
+
+            /* ===== RESPONSIVE ===== */
+            @media (max-width: 768px) {
+                .navbar {
+                    padding: 0 24px;
+                }
+                .container {
+                    padding: 0 24px;
+                }
+                .page-header {
+                    padding: 100px 0 36px;
+                }
+                .page-header h1 {
+                    font-size: 36px;
+                }
+                .command-list li {
+                    flex-direction: column;
+                    gap: 2px;
+                }
+                .command-list .cmd {
+                    min-width: unset;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <!-- ===== NAVBAR ===== -->
+        <nav class="navbar">
+            <div class="navbar-inner">
+                <a href="index.html" class="navbar-logo">Clark</a>
+                <div class="navbar-links">
+                    <a href="getting-started.html" class="active"
+                        >Getting Started</a
+                    >
+                    <a
+                        href="https://github.com/alexracape/clark"
+                        target="_blank"
+                        rel="noopener"
+                        >GitHub</a
+                    >
+                </div>
+            </div>
+        </nav>
+
+        <!-- ===== HEADER ===== -->
+        <header class="page-header">
+            <div class="container">
+                <h1>Getting Started</h1>
+                <p>
+                    Set up Clark in a few minutes and learn the basics of
+                    Socratic tutoring from your terminal.
+                </p>
+            </div>
+        </header>
+
+        <!-- ===== GUIDE ===== -->
+        <main class="guide">
+            <div class="container">
+                <!-- Step 1: Install -->
+                <div class="step">
+                    <div class="step-number">Step 1</div>
+                    <h2>Install Clark</h2>
+                    <p>
+                        Run the install script to download Clark and add it to
+                        your path. It requires
+                        <a
+                            href="https://bun.sh"
+                            style="color: var(--lamp-green)"
+                            >Bun</a
+                        >
+                        as the runtime.
+                    </p>
+                    <div class="code-block">
+                        <span class="prompt">$ </span>curl -fsSL
+                        https://raw.githubusercontent.com/alexracape/clark/main/install.sh
+                        | bash
+                    </div>
+                    <p>
+                        Once installed, navigate to your project or course
+                        folder and start Clark:
+                    </p>
+                    <div class="code-block">
+                        <span class="prompt">$ </span>cd ~/cs161<br />
+                        <span class="prompt">$ </span>clark
+                    </div>
+                </div>
+
+                <!-- Step 2: Set up a provider -->
+                <div class="step">
+                    <div class="step-number">Step 2</div>
+                    <h2>Choose a Provider</h2>
+                    <p>
+                        On first launch, Clark will guide you through picking an
+                        LLM provider. You'll need an API key from one of the
+                        following:
+                    </p>
+                    <ul class="command-list">
+                        <li>
+                            <span class="cmd">Anthropic</span>
+                            <span class="desc"
+                                >Claude models &mdash; get a key at
+                                console.anthropic.com</span
+                            >
+                        </li>
+                        <li>
+                            <span class="cmd">OpenAI</span>
+                            <span class="desc"
+                                >GPT-4o models &mdash; get a key at
+                                platform.openai.com</span
+                            >
+                        </li>
+                        <li>
+                            <span class="cmd">Google</span>
+                            <span class="desc"
+                                >Gemini models &mdash; get a key at
+                                aistudio.google.com</span
+                            >
+                        </li>
+                        <li>
+                            <span class="cmd">Ollama</span>
+                            <span class="desc"
+                                >Run models locally &mdash; no API key
+                                needed</span
+                            >
+                        </li>
+                    </ul>
+                    <p>
+                        Your API key is saved securely in macOS Keychain. You
+                        can also set it as an environment variable (e.g.
+                        <span class="code-inline">ANTHROPIC_API_KEY</span>) to
+                        override.
+                    </p>
+                    <div class="tip">
+                        <strong>Tip:</strong> You can switch providers anytime
+                        with the <span class="code-inline">/model</span>
+                        command.
+                    </div>
+                </div>
+
+                <!-- Step 3: Asking questions -->
+                <div class="step">
+                    <div class="step-number">Step 3</div>
+                    <h2>Asking Questions</h2>
+                    <p>
+                        Type your question in the input field and press Enter.
+                        Clark responds with guiding questions to help you think
+                        through the concept, rather than giving you the answer
+                        directly.
+                    </p>
+                    <div class="code-block">
+                        <span style="color: var(--text-green); font-weight: 500"
+                            >you</span
+                        >
+                        <span style="color: var(--text-white); margin-left: 6px"
+                            >What is recursion?</span
+                        ><br /><br />
+                        <span style="color: var(--text-blue); font-weight: 500"
+                            >clark</span
+                        >
+                        <span style="color: var(--text-white); margin-left: 4px"
+                            >Good question! Have you ever seen a function</span
+                        ><br />
+                        <span
+                            style="
+                                color: var(--text-white);
+                                margin-left: 52px;
+                            "
+                            >that calls itself? What do you think would</span
+                        ><br />
+                        <span
+                            style="
+                                color: var(--text-white);
+                                margin-left: 52px;
+                            "
+                            >happen if it kept going forever?</span
+                        >
+                    </div>
+                    <div class="tip">
+                        <strong>Tip:</strong> The more specific your question,
+                        the better Clark can help. Instead of "explain sorting",
+                        try "why is my bubble sort returning duplicates?"
+                    </div>
+                </div>
+
+                <!-- Step 4: Slash commands -->
+                <div class="step">
+                    <div class="step-number">Step 4</div>
+                    <h2>Slash Commands</h2>
+                    <p>
+                        Clark supports a set of slash commands for quick actions.
+                        Type
+                        <span class="code-inline">/</span> and press Tab to see
+                        suggestions.
+                    </p>
+                    <ul class="command-list">
+                        <li>
+                            <span class="cmd">/help</span>
+                            <span class="desc"
+                                >See all available commands</span
+                            >
+                        </li>
+                        <li>
+                            <span class="cmd">/model</span>
+                            <span class="desc"
+                                >Switch between LLM models and providers</span
+                            >
+                        </li>
+                        <li>
+                            <span class="cmd">/canvas</span>
+                            <span class="desc"
+                                >Open a drawing board (great for iPad)</span
+                            >
+                        </li>
+                        <li>
+                            <span class="cmd">/export</span>
+                            <span class="desc"
+                                >Save your canvas as a PDF</span
+                            >
+                        </li>
+                        <li>
+                            <span class="cmd">/context</span>
+                            <span class="desc"
+                                >Check your current context usage</span
+                            >
+                        </li>
+                        <li>
+                            <span class="cmd">/clear</span>
+                            <span class="desc"
+                                >Start a fresh conversation</span
+                            >
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Step 5: Adding context -->
+                <div class="step">
+                    <div class="step-number">Step 5</div>
+                    <h2>Adding Context</h2>
+                    <p>
+                        You can share files with Clark by pasting paths directly
+                        into your messages. Clark will read the file and use it
+                        as context for the conversation.
+                    </p>
+                    <div class="code-block">
+                        <span style="color: var(--text-green); font-weight: 500"
+                            >you</span
+                        >
+                        <span style="color: var(--text-white); margin-left: 6px"
+                            >Can you explain this code? ~/homework/sort.py</span
+                        >
+                    </div>
+                    <p>Clark can read and understand:</p>
+                    <ul class="file-types">
+                        <li>.py</li>
+                        <li>.js</li>
+                        <li>.java</li>
+                        <li>.c</li>
+                        <li>.pdf</li>
+                        <li>.png</li>
+                        <li>.jpg</li>
+                        <li>.md</li>
+                    </ul>
+                    <p>
+                        Clark also automatically reads markdown files in your
+                        workspace directory. Your class notes, problem sets, and
+                        study guides become part of the conversation without any
+                        extra steps.
+                    </p>
+                    <div class="tip">
+                        <strong>Tip:</strong> Drag and drop files into your
+                        terminal to paste their path automatically.
+                    </div>
+                </div>
+
+                <!-- Step 6: Canvas -->
+                <div class="step">
+                    <div class="step-number">Step 6</div>
+                    <h2>Canvas and Handwriting</h2>
+                    <p>
+                        Clark includes a tldraw canvas that you can open on your
+                        iPad. Write, sketch, and diagram with Apple Pencil while
+                        Clark sees your work in real time.
+                    </p>
+                    <ol class="steps-list">
+                        <li>
+                            Type
+                            <span class="code-inline">/canvas</span> to create
+                            or open a canvas
+                        </li>
+                        <li>Open the URL on your iPad's browser</li>
+                        <li>
+                            Start drawing, writing, or diagramming with Apple
+                            Pencil
+                        </li>
+                        <li>
+                            Clark can see your canvas and respond to your work
+                        </li>
+                    </ol>
+                    <p>The canvas is perfect for:</p>
+                    <ul class="uses-list">
+                        <li>Working through math problems step by step</li>
+                        <li>Sketching diagrams and flowcharts</li>
+                        <li>Handwritten notes and brainstorming</li>
+                        <li>Drawing data structures and algorithms</li>
+                    </ul>
+                    <div class="tip">
+                        <strong>Tip:</strong> Use
+                        <span class="code-inline">/export</span> to save your
+                        canvas as a PDF when you're done.
+                    </div>
+                </div>
+
+                <!-- Done -->
+                <div class="step">
+                    <div class="step-number">Ready to go</div>
+                    <h2>Start Learning</h2>
+                    <p>
+                        You now know everything you need to get started with
+                        Clark. Open a terminal, navigate to your course folder,
+                        and run
+                        <span class="code-inline">clark</span> to begin.
+                    </p>
+                    <p>
+                        Remember: type
+                        <span class="code-inline">/help</span> anytime to see
+                        all available commands, or
+                        <span class="code-inline">/tutorial</span> to replay the
+                        interactive walkthrough inside the TUI.
+                    </p>
+                </div>
+            </div>
+        </main>
+
+        <!-- ===== FOOTER ===== -->
+        <footer>
+            <div class="container" style="max-width: 1100px">
+                <div class="footer-inner">
+                    <div class="footer-left">
+                        <a href="https://github.com/alexracape/clark"
+                            >github.com/alexracape/clark</a
+                        >
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </body>
+</html>

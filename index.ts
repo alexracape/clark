@@ -14,10 +14,17 @@ import {
   needsOnboarding,
   type ClarkConfig,
 } from "./src/config.ts";
-import { parseCliArgs } from "./src/bootstrap/args.ts";
+import { parseCliArgs, version } from "./src/bootstrap/args.ts";
 import { startClarkApp } from "./src/bootstrap/start-app.ts";
+import { runUpgrade } from "./src/bootstrap/upgrade.ts";
 
 const args = await parseCliArgs();
+
+if (args.upgrade) {
+  await runUpgrade(version);
+  process.exit(0);
+}
+
 const config = await loadConfig();
 applyConfigToEnv(config);
 

@@ -1,5 +1,6 @@
 /**
  * User input component — text input with slash command hints and cursor.
+ * Supports multiline input with Shift+Enter.
  */
 
 import React, { useState, useRef, useMemo } from "react";
@@ -8,6 +9,7 @@ import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CommandHistory } from "./history.ts";
 import { expandPath } from "../library.ts";
+import { theme, componentTheme } from "./theme.ts";
 
 export interface InputProps {
   onSubmit: (text: string) => void;
@@ -238,6 +240,14 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
     }
 
     if (key.return) {
+      // Shift+Enter: insert newline (multiline support)
+      if (key.shift) {
+        browsingHistoryRef.current = false;
+        setValue(val.slice(0, cur) + "\n" + val.slice(cur));
+        setCursor(cur + 1);
+        return;
+      }
+
       // If hints are showing, submit the highlighted command
       if (showHints && hintMode === "commands" && !val.includes(" ")) {
         const selected = matchingCommands[hintIndex];
@@ -322,20 +332,42 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
   });
 
   // Render
-  const before = value.slice(0, cursor);
-  const cursorChar = value[cursor] ?? " ";
-  const after = value.slice(cursor + 1);
   const isSlashCommand = value.startsWith("/");
+  const hasNewlines = value.includes("\n");
 
   if (disabled) {
     return (
       <Box flexDirection="column">
         <Box paddingX={1}>
-          <Text color="gray" dimColor>{"  "}waiting for response...</Text>
+          <Text>{theme.dim("  waiting for response...")}</Text>
         </Box>
       </Box>
     );
   }
+
+  // Calculate cursor position for rendering
+  const before = value.slice(0, cursor);
+  const cursorChar = value[cursor] ?? " ";
+  const after = value.slice(cursor + 1);
+
+  // Split into lines for multiline rendering
+  const lines = value.split("\n");
+  let currentLine = 0;
+  let charsBeforeCursor = 0;
+
+  // Find which line the cursor is on
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+    const lineLength = line.length + (i < lines.length - 1 ? 1 : 0); // +1 for \n
+    if (charsBeforeCursor + lineLength >= cursor) {
+      currentLine = i;
+      break;
+    }
+    charsBeforeCursor += lineLength;
+  }
+
+  const cursorColumn = cursor - charsBeforeCursor;
 
   return (
     <Box flexDirection="column">
@@ -343,35 +375,88 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
         <Box flexDirection="column" paddingX={3} marginBottom={0}>
           {hintItems.map((hint, i) => (
             <Box key={hint.key}>
-              <Text color={i === hintIndex ? "blue" : "gray"} bold={i === hintIndex}>
-                {i === hintIndex ? "> " : "  "}
-              </Text>
-              <Text color={i === hintIndex ? "yellow" : "gray"} bold={i === hintIndex}>
-                {hint.label}
-              </Text>
-              <Text color="gray" dimColor>
-                {"  "}{hint.description}
+              <Text>
+                {componentTheme.hints.selected(i === hintIndex ? "> " : "  ")}
+                {i === hintIndex
+                  ? componentTheme.hints.label(hint.label)
+                  : componentTheme.hints.unselected(hint.label)}
+                {componentTheme.hints.description(`  ${hint.description}`)}
               </Text>
             </Box>
           ))}
           <Box>
-            <Text color="gray" dimColor>
-              {"  "}
-              <Text color="gray">tab</Text> complete  <Text color="gray">↑↓</Text> navigate  <Text color="gray">esc</Text> dismiss
+            <Text>
+              {theme.dim("  tab")} complete  {theme.dim("↑↓")} navigate  {theme.dim("esc")} dismiss
             </Text>
           </Box>
         </Box>
       )}
-      <Box paddingX={1}>
-        <Text color="green" bold>{"> "}</Text>
-        <Text color={isSlashCommand ? "yellow" : "white"}>
-          {before}
-        </Text>
-        <Text inverse>{cursorChar}</Text>
-        <Text color={isSlashCommand ? "yellow" : "white"}>
-          {after}
-        </Text>
-      </Box>
+
+      {/* Mode indicator when not in multiline */}
+      {!hasNewlines && !showHints && (
+        <Box paddingX={1} marginBottom={0}>
+          <Text>{theme.dim("Shift+Enter for new line")}</Text>
+        </Box>
+      )}
+
+      {/* Input area - render as single or multiple lines */}
+      {hasNewlines ? (
+        <Box flexDirection="column" paddingX={1}>
+          {lines.map((line, i) => {
+            const isCurrentLine = i === currentLine;
+            const linePrefix = i === 0 ? componentTheme.input.prompt("> ") : "  ";
+
+            if (isCurrentLine) {
+              const lineBefore = line.slice(0, cursorColumn);
+              const lineCursorChar = line[cursorColumn] ?? " ";
+              const lineAfter = line.slice(cursorColumn + 1);
+
+              return (
+                <Box key={i}>
+                  <Text>
+                    {linePrefix}
+                    {isSlashCommand && i === 0
+                      ? componentTheme.input.slashCommand(lineBefore)
+                      : componentTheme.input.text(lineBefore)}
+                  </Text>
+                  <Text>{componentTheme.input.cursor(lineCursorChar)}</Text>
+                  <Text>
+                    {isSlashCommand && i === 0
+                      ? componentTheme.input.slashCommand(lineAfter)
+                      : componentTheme.input.text(lineAfter)}
+                  </Text>
+                </Box>
+              );
+            }
+
+            return (
+              <Box key={i}>
+                <Text>
+                  {linePrefix}
+                  {isSlashCommand && i === 0
+                    ? componentTheme.input.slashCommand(line)
+                    : componentTheme.input.text(line)}
+                </Text>
+              </Box>
+            );
+          })}
+        </Box>
+      ) : (
+        <Box paddingX={1}>
+          <Text>
+            {componentTheme.input.prompt("> ")}
+            {isSlashCommand
+              ? componentTheme.input.slashCommand(before)
+              : componentTheme.input.text(before)}
+          </Text>
+          <Text>{componentTheme.input.cursor(cursorChar)}</Text>
+          <Text>
+            {isSlashCommand
+              ? componentTheme.input.slashCommand(after)
+              : componentTheme.input.text(after)}
+          </Text>
+        </Box>
+      )}
     </Box>
   );
 }

@@ -6,11 +6,12 @@ export interface CliArgs {
   provider?: string;
   model?: string;
   port: number;
+  upgrade?: boolean;
 }
 
 // Read version — inlined at compile time via --define, with runtime fallback
 declare const CLARK_VERSION: string | undefined;
-const version: string =
+export const version: string =
   typeof CLARK_VERSION !== "undefined"
     ? CLARK_VERSION
     : await Bun.file(join(import.meta.dir, "..", "..", "package.json"))
@@ -35,6 +36,10 @@ export async function parseCliArgs(argv = process.argv): Promise<CliArgs> {
       default: 3000,
       describe: "Port for tldraw canvas server",
     })
+    .option("upgrade", {
+      type: "boolean",
+      describe: "Upgrade Clark to the latest version",
+    })
     .help()
     .parse();
 
@@ -42,5 +47,6 @@ export async function parseCliArgs(argv = process.argv): Promise<CliArgs> {
     provider: parsed.provider,
     model: parsed.model,
     port: parsed.port,
+    upgrade: parsed.upgrade,
   };
 }

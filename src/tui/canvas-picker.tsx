@@ -11,6 +11,7 @@ import { Box, Text, useInput } from "ink";
 import { useLineEditor } from "./primitives/use-line-editor.ts";
 import { useSelectableList } from "./primitives/use-selectable-list.ts";
 import { validateCanvasName } from "../canvas/name.ts";
+import { theme } from "./theme.ts";
 
 export interface CanvasPickerProps {
   existingCanvases: string[];
@@ -120,36 +121,44 @@ export function CanvasPicker({ existingCanvases, onSelect, onCancel }: CanvasPic
       {matchingCanvases.length > 0 ? (
         matchingCanvases.map((name, i) => (
           <Box key={name} paddingLeft={2}>
-            <Text color={i === list.selected ? "blue" : "gray"}>{i === list.selected ? "> " : "  "}</Text>
-            <Text bold={i === list.selected} color={i === list.selected ? "white" : "gray"}>{name}</Text>
+            <Text>
+              {i === list.selected
+                ? theme.hints.selected("> ")
+                : theme.hints.unselected("  ")}
+              {i === list.selected
+                ? theme.selectedText(name)
+                : theme.dim(name)}
+            </Text>
           </Box>
         ))
       ) : editor.value.trim() ? (
         <Box paddingLeft={2}>
-          <Text color="yellow">+ Create new canvas: &quot;{editor.value.trim()}&quot;</Text>
+          <Text>{theme.highlight(`+ Create new canvas: "${editor.value.trim()}"`)}</Text>
         </Box>
       ) : (
         <Box paddingLeft={2}>
-          <Text color="gray" dimColor>No canvases found. Type a name to create one.</Text>
+          <Text>{theme.dim("No canvases found. Type a name to create one.")}</Text>
         </Box>
       )}
 
       <Text> </Text>
       <Box paddingLeft={2}>
-        <Text color="green" bold>{"name: "}</Text>
-        <Text color="yellow">{before}</Text>
+        <Text>
+          {theme.user("name: ")}
+          {theme.slashCommand(before)}
+        </Text>
         <Text inverse>{cursorChar}</Text>
-        <Text color="yellow">{after}</Text>
+        <Text>{theme.slashCommand(after)}</Text>
       </Box>
       <Text> </Text>
       {error && (
         <Box paddingLeft={2}>
-          <Text color="red">{error}</Text>
+          <Text color="#C47A5A">{error}</Text>
         </Box>
       )}
       {error && <Text> </Text>}
-      <Text color="gray">
-        {"  "}<Text color="gray">tab</Text> complete  <Text color="gray">{"↑↓"}</Text> navigate  <Text color="gray">enter</Text> open  <Text color="gray">esc</Text> cancel
+      <Text>
+        {theme.dim("  tab")} complete  {theme.dim("↑↓")} navigate  {theme.dim("enter")} open  {theme.dim("esc")} cancel
       </Text>
     </Box>
   );

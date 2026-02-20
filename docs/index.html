@@ -1,0 +1,1394 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Clark — Command-Line Teaching Assistant</title>
+        <meta
+            name="description"
+            content="Clark is a supportive, Socratic teaching assistant for your terminal. Ask questions, write on a canvas, and learn by doing."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=DM+Mono:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            *,
+            *::before,
+            *::after {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+
+            :root {
+                --lamp-green: #3d7a5f;
+                --deep-fern: #2e6049;
+                --leather: #1c1408;
+                --walnut: #6b5e4f;
+                --parchment: #faf6ee;
+                --patina: #7a6b52;
+                --brass: #c9a84c;
+                --sky: #7eb8c9;
+                --sage: #81c784;
+                --chrome: #251c0f;
+                --divider: #3d3020;
+                --text-base: #b8a88a;
+                --text-white: #e8dcca;
+                --text-dim: #5c4e38;
+                --text-green: #6dbf8b;
+                --text-blue: #7eb8c9;
+                --text-cyan: #6dbfb8;
+            }
+
+            html {
+                scroll-behavior: smooth;
+            }
+
+            /* ===== NAVBAR ===== */
+            .navbar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 100;
+                background: rgba(250, 246, 238, 0.92);
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
+                border-bottom: 1px solid #d6cbaf;
+                padding: 0 48px;
+            }
+
+            .navbar-inner {
+                max-width: 1100px;
+                margin: 0 auto;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                height: 56px;
+            }
+
+            .navbar-logo {
+                font-family: Georgia, "Times New Roman", serif;
+                font-size: 22px;
+                font-weight: 700;
+                color: var(--leather);
+                text-decoration: none;
+                letter-spacing: -0.02em;
+            }
+
+            .navbar-links {
+                display: flex;
+                gap: 28px;
+                align-items: center;
+            }
+
+            .navbar-links a {
+                font-family: "DM Mono", monospace;
+                font-size: 13px;
+                font-weight: 500;
+                color: var(--patina);
+                text-decoration: none;
+                transition: color 0.2s;
+            }
+
+            .navbar-links a:hover {
+                color: var(--lamp-green);
+            }
+
+            @media (max-width: 768px) {
+                .navbar {
+                    padding: 0 24px;
+                }
+            }
+
+            body {
+                font-family: Georgia, "Times New Roman", serif;
+                background: var(--parchment);
+                color: #2c2417;
+                min-height: 100vh;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            /* ===== LAYOUT ===== */
+            .container {
+                max-width: 1100px;
+                margin: 0 auto;
+                padding: 0 48px;
+            }
+
+            @media (max-width: 768px) {
+                .container {
+                    padding: 0 24px;
+                }
+            }
+
+            /* ===== HERO ===== */
+            .hero {
+                padding: 140px 0 80px;
+                border-bottom: 1px solid #d6cbaf;
+            }
+
+            .hero-label {
+                font-family: "DM Mono", "Menlo", monospace;
+                font-size: 12px;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: var(--lamp-green);
+                margin-bottom: 24px;
+                font-weight: 500;
+            }
+
+            .hero h1 {
+                font-family: Georgia, "Times New Roman", serif;
+                font-size: 64px;
+                font-weight: 700;
+                line-height: 1.08;
+                color: var(--leather);
+                margin-bottom: 20px;
+                letter-spacing: -0.02em;
+            }
+
+            .hero h1 em {
+                font-style: italic;
+                color: var(--lamp-green);
+                font-weight: 700;
+            }
+
+            .hero .subhead {
+                font-size: 19px;
+                line-height: 1.7;
+                color: var(--patina);
+                max-width: 520px;
+                margin-bottom: 40px;
+            }
+
+            /* Install block */
+            .install-block {
+                margin-bottom: 20px;
+            }
+
+            .install-row {
+                display: inline-flex;
+                align-items: stretch;
+                background: var(--leather);
+                border-radius: 8px;
+            }
+
+            .install-command {
+                color: var(--text-white);
+                font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+                font-size: 13px;
+                padding: 16px 20px;
+                display: flex;
+                align-items: center;
+                white-space: nowrap;
+            }
+
+            .install-command .prompt {
+                color: var(--text-green);
+                margin-right: 8px;
+            }
+
+            .install-command .cmd-text {
+                user-select: all;
+            }
+
+            .install-copy {
+                background: var(--lamp-green);
+                color: var(--parchment);
+                border: none;
+                padding: 16px 18px;
+                font-family: "DM Mono", monospace;
+                font-size: 13px;
+                font-weight: 500;
+                cursor: pointer;
+                transition: background 0.2s;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                white-space: nowrap;
+                border-left: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 0 8px 8px 0;
+            }
+
+            .install-copy:hover {
+                background: var(--deep-fern);
+            }
+
+            .install-copy svg {
+                width: 16px;
+                height: 16px;
+                flex-shrink: 0;
+            }
+            .install-copy .icon-check {
+                display: none;
+            }
+
+            .install-copy.copied {
+                background: #2a6b4a;
+            }
+            .install-copy.copied .icon-copy {
+                display: none;
+            }
+            .install-copy.copied .icon-check {
+                display: block;
+            }
+            .install-copy.copied .copy-label {
+                display: none;
+            }
+            .install-copy.copied .copied-label {
+                display: inline;
+            }
+            .install-copy .copied-label {
+                display: none;
+            }
+
+            .hero-actions {
+                display: flex;
+                gap: 14px;
+                align-items: center;
+            }
+
+            .btn-secondary {
+                background: transparent;
+                color: var(--text-dim);
+                border: 1.5px solid #c4b694;
+                padding: 12px 28px;
+                border-radius: 8px;
+                font-family: "DM Mono", monospace;
+                font-size: 14px;
+                font-weight: 500;
+                cursor: pointer;
+                transition:
+                    border-color 0.2s,
+                    color 0.2s;
+                text-decoration: none;
+                display: inline-block;
+            }
+
+            .btn-secondary:hover {
+                border-color: var(--lamp-green);
+                color: var(--lamp-green);
+            }
+
+            /* ===== SHARED ===== */
+            .section-label {
+                font-family: "DM Mono", "Menlo", monospace;
+                font-size: 12px;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: #8b7b5e;
+                margin-bottom: 16px;
+                font-weight: 500;
+            }
+
+            /* ===== TERMINAL ===== */
+            .tui {
+                background: var(--leather);
+                border-radius: 12px;
+                overflow: hidden;
+                font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+                font-size: 13px;
+                line-height: 1.7;
+                box-shadow:
+                    0 16px 48px rgba(28, 20, 8, 0.18),
+                    0 0 0 1px rgba(61, 122, 95, 0.1);
+            }
+
+            .tui-chrome {
+                background: var(--chrome);
+                padding: 12px 16px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .tui-dot {
+                width: 11px;
+                height: 11px;
+                border-radius: 50%;
+            }
+            .tui-dot:nth-child(1) {
+                background: #c47a5a;
+            }
+            .tui-dot:nth-child(2) {
+                background: #c4a85a;
+            }
+            .tui-dot:nth-child(3) {
+                background: #5aa47a;
+            }
+
+            .tui-body {
+                padding: 0 24px 24px;
+                color: var(--text-base);
+            }
+            .tui-status {
+                display: flex;
+                justify-content: space-between;
+                padding: 8px 0;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .tui-divider {
+                color: var(--divider);
+                opacity: 0.25;
+                margin: 6px 0;
+                user-select: none;
+            }
+
+            .t-green {
+                color: var(--text-green);
+            }
+            .t-blue {
+                color: var(--text-blue);
+            }
+            .t-gold {
+                color: var(--brass);
+            }
+            .t-dim {
+                color: var(--text-dim);
+            }
+            .t-white {
+                color: var(--text-white);
+            }
+            .t-cyan {
+                color: var(--text-cyan);
+            }
+
+            .tui-cursor {
+                display: inline-block;
+                width: 8px;
+                height: 15px;
+                background: var(--text-white);
+                vertical-align: text-bottom;
+                margin-left: 1px;
+                animation: blink 1s step-end infinite;
+            }
+
+            @keyframes blink {
+                0%,
+                100% {
+                    opacity: 1;
+                }
+                50% {
+                    opacity: 0;
+                }
+            }
+
+            .thinking-indicator {
+                display: none;
+                padding: 4px 0;
+            }
+            .thinking-dots::after {
+                content: "";
+                animation: dots 1.5s steps(4, end) infinite;
+            }
+            @keyframes dots {
+                0% {
+                    content: "";
+                }
+                25% {
+                    content: ".";
+                }
+                50% {
+                    content: "..";
+                }
+                75% {
+                    content: "...";
+                }
+                100% {
+                    content: "";
+                }
+            }
+
+            /* ===== FEATURES ===== */
+            .features-section {
+                padding: 80px 0;
+                border-top: 1px solid #d6cbaf;
+            }
+
+            .features-section h2 {
+                font-family: Georgia, "Times New Roman", serif;
+                font-size: 36px;
+                font-weight: 700;
+                color: var(--leather);
+                margin: 8px 0;
+                letter-spacing: -0.01em;
+            }
+
+            .features-section .section-sub {
+                font-size: 19px;
+                color: var(--patina);
+                margin-bottom: 32px;
+                line-height: 1.7;
+            }
+
+            .feature-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 24px;
+            }
+
+            .feature-item {
+                border-top: 2px solid var(--lamp-green);
+                padding-top: 20px;
+            }
+
+            .feature-item h3 {
+                font-family: Georgia, "Times New Roman", serif;
+                font-size: 18px;
+                font-weight: 700;
+                color: #2c2417;
+                margin-bottom: 8px;
+            }
+
+            .feature-item p {
+                font-size: 14px;
+                line-height: 1.65;
+                color: var(--patina);
+            }
+
+            @media (max-width: 768px) {
+                .feature-grid {
+                    grid-template-columns: 1fr;
+                    gap: 32px;
+                }
+            }
+            @media (min-width: 769px) and (max-width: 1024px) {
+                .feature-grid {
+                    grid-template-columns: repeat(2, 1fr);
+                }
+            }
+
+            /* ===== SHOWCASE SECTION ===== */
+            .showcase-section {
+                padding: 80px 0;
+                border-top: 1px solid #d6cbaf;
+            }
+
+            .showcase-section h2 {
+                font-family: Georgia, "Times New Roman", serif;
+                font-size: 36px;
+                font-weight: 700;
+                color: var(--leather);
+                margin: 8px 0;
+                letter-spacing: -0.01em;
+            }
+
+            .showcase-section .section-sub {
+                font-size: 19px;
+                color: var(--patina);
+                margin-bottom: 40px;
+                line-height: 1.7;
+            }
+
+            /* Terminal full width */
+            .showcase-terminal {
+                width: 100%;
+            }
+
+            /* Connector arrows */
+            .showcase-arrows {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 32px;
+                padding: 0;
+                margin: 0;
+            }
+
+            .showcase-arrow {
+                display: flex;
+                justify-content: center;
+                padding: 12px 0;
+            }
+
+            .showcase-arrow svg {
+                width: 28px;
+                height: 40px;
+                color: var(--patina);
+                opacity: 0.45;
+            }
+
+            /* Two-column: filesystem left, iPad right */
+            .showcase-panels {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 32px;
+                align-items: start;
+            }
+
+            /* ===== FILESYSTEM TREE ===== */
+            .filetree {
+                background: var(--leather);
+                border-radius: 12px;
+                overflow: hidden;
+                font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+                font-size: 13px;
+                line-height: 1.8;
+                box-shadow:
+                    0 12px 36px rgba(28, 20, 8, 0.15),
+                    0 0 0 1px rgba(61, 122, 95, 0.1);
+            }
+
+            .filetree-header {
+                background: var(--chrome);
+                padding: 10px 16px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-family: "DM Mono", monospace;
+                font-size: 11px;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: var(--text-dim);
+            }
+
+            .filetree-body {
+                padding: 12px 0 16px;
+                color: var(--text-base);
+            }
+
+            .ft-row {
+                padding: 1px 20px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                cursor: default;
+            }
+
+            .ft-row:hover {
+                background: rgba(61, 122, 95, 0.06);
+            }
+
+            .ft-row.ft-active {
+                background: rgba(61, 122, 95, 0.12);
+            }
+
+            .ft-row.ft-active .ft-name {
+                color: var(--text-white);
+                font-weight: 500;
+            }
+
+            .ft-icon {
+                width: 14px;
+                flex-shrink: 0;
+                text-align: center;
+                font-size: 11px;
+            }
+
+            .ft-icon-folder {
+                color: var(--brass);
+            }
+            .ft-icon-file {
+                color: var(--text-dim);
+            }
+            .ft-icon-md {
+                color: var(--lamp-green);
+            }
+            .ft-icon-pdf {
+                color: #c47a5a;
+            }
+
+            .ft-name {
+                color: var(--text-base);
+            }
+
+            .ft-indent-1 {
+                padding-left: 36px;
+            }
+            .ft-indent-2 {
+                padding-left: 52px;
+            }
+
+            .ft-badge {
+                font-size: 10px;
+                color: var(--lamp-green);
+                margin-left: auto;
+                opacity: 0.7;
+            }
+
+            /* ===== iPad MOCKUP ===== */
+            .ipad-panel {
+                display: flex;
+                justify-content: center;
+                align-items: flex-start;
+            }
+
+            .ipad-mockup {
+                background: #1a1a1a;
+                border-radius: 16px;
+                padding: 12px;
+                box-shadow:
+                    0 24px 56px rgba(28, 20, 8, 0.22),
+                    0 0 0 1px rgba(0, 0, 0, 0.12);
+                width: 100%;
+                max-width: 400px;
+            }
+
+            .ipad-screen {
+                background: #fff;
+                border-radius: 6px;
+                overflow: hidden;
+                aspect-ratio: 4/3;
+                position: relative;
+            }
+
+            .ipad-toolbar {
+                background: #f8f8f8;
+                border-bottom: 1px solid #e0e0e0;
+                padding: 6px 12px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-family: "DM Mono", monospace;
+                font-size: 10px;
+                color: #888;
+            }
+
+            .ipad-toolbar .dot {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: var(--lamp-green);
+            }
+
+            .ipad-canvas {
+                padding: 20px 24px;
+                height: calc(100% - 28px);
+                position: relative;
+                background: repeating-linear-gradient(
+                    transparent,
+                    transparent 25px,
+                    #e8e4da 25px,
+                    #e8e4da 26px
+                );
+                background-position-y: 8px;
+            }
+
+            /* Handwritten content */
+            .hw {
+                font-family: "Caveat", cursive;
+                color: #2a2520;
+            }
+
+            .hw-title {
+                font-size: 24px;
+                font-weight: 700;
+                color: var(--leather);
+                margin-bottom: 4px;
+                text-decoration: underline;
+                text-decoration-color: var(--lamp-green);
+                text-underline-offset: 3px;
+                text-decoration-thickness: 2px;
+            }
+
+            .hw-line {
+                font-size: 18px;
+                font-weight: 500;
+                line-height: 1.4;
+                margin-bottom: 2px;
+            }
+
+            .hw-note {
+                font-size: 16px;
+                font-weight: 400;
+                color: #6b5e4f;
+                line-height: 1.4;
+            }
+
+            .hw-emphasis {
+                color: var(--lamp-green);
+                font-weight: 600;
+            }
+
+            .hw-diagram {
+                margin: 10px 0 8px;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                flex-wrap: wrap;
+            }
+
+            .hw-node-box {
+                display: flex;
+                border: 2px solid #2a2520;
+                border-radius: 3px;
+                overflow: hidden;
+            }
+
+            .hw-node-data {
+                padding: 3px 10px;
+                font-size: 17px;
+                font-weight: 600;
+                border-right: 1.5px solid #2a2520;
+            }
+
+            .hw-node-ptr {
+                padding: 3px 7px;
+                font-size: 13px;
+                color: var(--lamp-green);
+                display: flex;
+                align-items: center;
+            }
+
+            .hw-arrow-link {
+                font-size: 18px;
+                color: #2a2520;
+            }
+
+            .hw-question {
+                font-size: 19px;
+                font-weight: 600;
+                color: #c47a5a;
+                margin-top: 6px;
+            }
+
+            @media (max-width: 768px) {
+                .showcase-panels {
+                    grid-template-columns: 1fr;
+                }
+                .ipad-panel {
+                    justify-content: center;
+                }
+                .ipad-mockup {
+                    max-width: 320px;
+                }
+            }
+
+            /* ===== FOOTER ===== */
+            footer {
+                border-top: 1px solid #d6cbaf;
+                padding: 40px 0;
+            }
+
+            .footer-inner {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 16px;
+            }
+
+            .footer-left {
+                font-family: "DM Mono", monospace;
+                font-size: 13px;
+                color: var(--patina);
+            }
+
+            .footer-left a {
+                color: var(--lamp-green);
+                text-decoration: none;
+            }
+
+            .footer-left a:hover {
+                text-decoration: underline;
+            }
+
+            .footer-right {
+                font-size: 14px;
+                color: var(--patina);
+                line-height: 1.7;
+                max-width: 400px;
+                text-align: right;
+            }
+
+            /* ===== RESPONSIVE ===== */
+            @media (max-width: 768px) {
+                .hero {
+                    padding: 100px 0 60px;
+                }
+                .hero h1 {
+                    font-size: 40px;
+                }
+                .hero .subhead {
+                    font-size: 17px;
+                }
+                .install-row {
+                    display: flex;
+                    flex-direction: column;
+                    width: 100%;
+                }
+                .install-command {
+                    font-size: 11px;
+                    overflow-x: auto;
+                }
+                .install-copy {
+                    border-radius: 0 0 8px 8px;
+                    border-left: none;
+                    border-top: 1px solid rgba(255, 255, 255, 0.08);
+                    justify-content: center;
+                }
+                .showcase-section h2,
+                .features-section h2 {
+                    font-size: 28px;
+                }
+                .tui {
+                    font-size: 11px;
+                }
+                .tui-body {
+                    padding: 0 16px 16px;
+                }
+                .footer-inner {
+                    flex-direction: column;
+                    text-align: center;
+                }
+                .footer-right {
+                    text-align: center;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <!-- ===== NAVBAR ===== -->
+        <nav class="navbar">
+            <div class="navbar-inner">
+                <a href="index.html" class="navbar-logo">Clark</a>
+                <div class="navbar-links">
+                    <a href="getting-started.html">Getting Started</a>
+                    <a
+                        href="https://github.com/alexracape/clark"
+                        target="_blank"
+                        rel="noopener"
+                        >GitHub</a
+                    >
+                </div>
+            </div>
+        </nav>
+
+        <!-- ===== HERO ===== -->
+        <section class="hero">
+            <div class="container">
+                <div class="hero-label">command-line teaching assistant</div>
+                <h1>The assistant that<br />helps <em>you</em> answer.</h1>
+                <p class="subhead">
+                    A supportive, Socratic tutor that lives in your terminal.
+                    Ask questions, sketch on a canvas, and build real
+                    understanding.
+                </p>
+
+                <div class="install-block">
+                    <div class="install-row">
+                        <div class="install-command">
+                            <span class="prompt">$</span>
+                            <span class="cmd-text" id="install-text"
+                                >curl -fsSL
+                                https://raw.githubusercontent.com/alexracape/clark/main/install.sh
+                                | bash</span
+                            >
+                        </div>
+                        <button
+                            class="install-copy"
+                            onclick="copyInstall()"
+                            id="copy-btn"
+                        >
+                            <svg
+                                class="icon-copy"
+                                viewBox="0 0 16 16"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <rect
+                                    x="5"
+                                    y="5"
+                                    width="9"
+                                    height="9"
+                                    rx="1.5"
+                                />
+                                <path
+                                    d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5"
+                                />
+                            </svg>
+                            <svg
+                                class="icon-check"
+                                viewBox="0 0 16 16"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                            >
+                                <path d="M3 8.5L6.5 12L13 4" />
+                            </svg>
+                            <span class="copy-label">Copy</span>
+                            <span class="copied-label">Copied</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="hero-actions">
+                    <a
+                        href="https://github.com/alexracape/clark"
+                        class="btn-secondary"
+                        target="_blank"
+                        rel="noopener"
+                        >View on GitHub</a
+                    >
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== FEATURES ===== -->
+        <section class="features-section">
+            <div class="container">
+                <div class="section-label">Features</div>
+                <h2>Built around how you actually learn</h2>
+                <p class="section-sub">
+                    Clark doesn't just give answers. It helps you find them.
+                </p>
+                <div class="feature-grid">
+                    <div class="feature-item">
+                        <h3>Socratic Method</h3>
+                        <p>
+                            Clark asks questions instead of handing you
+                            solutions. You build intuition, not dependence.
+                        </p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>Reads Your Handwriting</h3>
+                        <p>
+                            Open a tldraw canvas on your iPad, write with Apple
+                            Pencil, and Clark reads what you've drawn.
+                        </p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>Multi-Provider</h3>
+                        <p>
+                            Claude, GPT-4o, Gemini, or Ollama for fully local
+                            inference. Pick the model that fits your workflow.
+                        </p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>Local and Private</h3>
+                        <p>
+                            All data stays on your machine. No accounts, no
+                            telemetry, no cloud storage. Your work is yours.
+                        </p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>Canvas + Terminal</h3>
+                        <p>
+                            Sketch diagrams and write notes on your iPad while
+                            discussing them in the terminal. Two screens, one
+                            conversation.
+                        </p>
+                    </div>
+                    <div class="feature-item">
+                        <h3>Workspace Aware</h3>
+                        <p>
+                            Clark reads your notes, code, and project files.
+                            Context flows naturally into the conversation.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== SHOWCASE: Terminal + Filesystem + iPad ===== -->
+        <section class="showcase-section">
+            <div class="container">
+                <div class="section-label">See it in action</div>
+                <h2>Your files, your handwriting, one conversation</h2>
+                <p class="section-sub">
+                    Clark reads your markdown notes and handwritten diagrams
+                    automatically. Everything in your workspace becomes part of
+                    the conversation.
+                </p>
+
+                <!-- Terminal: full width -->
+                <div class="showcase-terminal">
+                    <div class="tui" id="demo-terminal">
+                        <div class="tui-chrome">
+                            <div class="tui-dot"></div>
+                            <div class="tui-dot"></div>
+                            <div class="tui-dot"></div>
+                        </div>
+                        <div class="tui-body">
+                            <div class="tui-status">
+                                <span
+                                    ><span
+                                        class="t-blue"
+                                        style="font-weight: 500"
+                                        >anthropic</span
+                                    ><span class="t-dim"
+                                        >/claude-sonnet-4-5</span
+                                    ></span
+                                >
+                                <span
+                                    ><span class="t-green" style="opacity: 0.7"
+                                        >[canvas: notes connected]</span
+                                    ></span
+                                >
+                                <span></span>
+                            </div>
+                            <div class="tui-divider">
+                                ────────────────────────────────────────────────────────────
+                            </div>
+
+                            <!-- User message (typed) -->
+                            <div style="padding: 6px 0" id="user-line">
+                                <span class="t-green" style="font-weight: 500"
+                                    >you</span
+                                >
+                                <span
+                                    class="t-white"
+                                    style="margin-left: 6px"
+                                    id="user-typed"
+                                ></span>
+                                <span
+                                    class="tui-cursor"
+                                    id="user-cursor"
+                                ></span>
+                            </div>
+
+                            <!-- Thinking indicator -->
+                            <div class="thinking-indicator" id="thinking">
+                                <span class="t-dim" style="font-style: italic"
+                                    >thinking<span class="thinking-dots"></span
+                                ></span>
+                            </div>
+
+                            <!-- Clark response (revealed progressively) -->
+                            <div id="clark-response" style="display: none">
+                                <div style="padding: 4px 0">
+                                    <span
+                                        class="t-blue"
+                                        style="font-weight: 500"
+                                        >clark</span
+                                    >
+                                    <span
+                                        class="t-white"
+                                        style="margin-left: 4px"
+                                        id="clark-line1"
+                                    ></span>
+                                </div>
+                                <div style="padding: 0 0 0 52px">
+                                    <span
+                                        class="t-white"
+                                        id="clark-line2"
+                                    ></span>
+                                </div>
+                                <div style="padding: 4px 0 0 52px">
+                                    <span class="t-dim" id="clark-line3"></span>
+                                </div>
+                            </div>
+
+                            <div
+                                class="tui-divider"
+                                id="bottom-divider"
+                                style="display: none"
+                            >
+                                ────────────────────────────────────────────────────────────
+                            </div>
+                            <div
+                                id="input-row"
+                                style="display: none; padding: 8px 0 0"
+                            >
+                                <span class="t-green" style="font-weight: 500"
+                                    >&gt; </span
+                                ><span class="tui-cursor"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connector arrows -->
+                <div class="showcase-arrows">
+                    <div class="showcase-arrow">
+                        <svg
+                            viewBox="0 0 28 40"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            stroke-linecap="round"
+                        >
+                            <path d="M14 38 L14 6" />
+                            <path d="M7 13 L14 6 L21 13" />
+                        </svg>
+                    </div>
+                    <div class="showcase-arrow">
+                        <svg
+                            viewBox="0 0 28 40"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            stroke-linecap="round"
+                        >
+                            <path d="M14 38 L14 6" />
+                            <path d="M7 13 L14 6 L21 13" />
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Filesystem + iPad side by side -->
+                <div class="showcase-panels">
+                    <!-- Filesystem tree -->
+                    <div class="filetree">
+                        <div class="filetree-header">
+                            <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 16 16"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.5"
+                            >
+                                <path d="M2 4h12M2 8h12M2 12h8" />
+                            </svg>
+                            Explorer
+                        </div>
+                        <div class="filetree-body">
+                            <div class="ft-row">
+                                <span class="ft-icon ft-icon-folder"
+                                    >&#9662;</span
+                                >
+                                <span
+                                    class="ft-name"
+                                    style="
+                                        font-weight: 500;
+                                        color: var(--text-white);
+                                    "
+                                    >cs161/</span
+                                >
+                            </div>
+                            <div class="ft-row ft-indent-1">
+                                <span class="ft-icon ft-icon-folder"
+                                    >&#9662;</span
+                                >
+                                <span class="ft-name">notes/</span>
+                            </div>
+                            <div class="ft-row ft-indent-2 ft-active">
+                                <span class="ft-icon ft-icon-md">&#9724;</span>
+                                <span class="ft-name">linked-lists.md</span>
+                                <span class="ft-badge">in context</span>
+                            </div>
+                            <div class="ft-row ft-indent-2">
+                                <span class="ft-icon ft-icon-md">&#9724;</span>
+                                <span class="ft-name">recursion.md</span>
+                            </div>
+                            <div class="ft-row ft-indent-2">
+                                <span class="ft-icon ft-icon-md">&#9724;</span>
+                                <span class="ft-name">big-o-notation.md</span>
+                            </div>
+                            <div class="ft-row ft-indent-1">
+                                <span class="ft-icon ft-icon-folder"
+                                    >&#9656;</span
+                                >
+                                <span class="ft-name">problem-sets/</span>
+                            </div>
+                            <div class="ft-row ft-indent-1">
+                                <span class="ft-icon ft-icon-folder"
+                                    >&#9656;</span
+                                >
+                                <span class="ft-name">lectures/</span>
+                            </div>
+                            <div class="ft-row ft-indent-1">
+                                <span class="ft-icon ft-icon-file"
+                                    >&#9724;</span
+                                >
+                                <span
+                                    class="ft-name"
+                                    style="color: var(--brass)"
+                                    >CLARK.md</span
+                                >
+                                <span class="ft-badge">config</span>
+                            </div>
+                            <div class="ft-row">
+                                <span class="ft-icon ft-icon-folder"
+                                    >&#9656;</span
+                                >
+                                <span class="ft-name">math240/</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- iPad mockup (smaller, counter-clockwise Z rotation) -->
+                    <div class="ipad-panel">
+                        <div class="ipad-mockup">
+                            <div class="ipad-screen">
+                                <div class="ipad-toolbar">
+                                    <div class="dot"></div>
+                                    <span>notes</span>
+                                    <span style="margin-left: auto; color: #aaa"
+                                        >connected</span
+                                    >
+                                </div>
+                                <div class="ipad-canvas hw">
+                                    <div class="hw-title">Linked Lists</div>
+                                    <div class="hw-line">
+                                        Each node has
+                                        <span class="hw-emphasis">data</span> +
+                                        <span class="hw-emphasis">pointer</span>
+                                    </div>
+                                    <div class="hw-note">
+                                        pointer = address of next node
+                                    </div>
+
+                                    <div class="hw-diagram">
+                                        <div class="hw-node-box">
+                                            <div class="hw-node-data">3</div>
+                                            <div class="hw-node-ptr">*</div>
+                                        </div>
+                                        <div class="hw-arrow-link">&rarr;</div>
+                                        <div class="hw-node-box">
+                                            <div class="hw-node-data">7</div>
+                                            <div class="hw-node-ptr">*</div>
+                                        </div>
+                                        <div class="hw-arrow-link">&rarr;</div>
+                                        <div class="hw-node-box">
+                                            <div class="hw-node-data">12</div>
+                                            <div class="hw-node-ptr">*</div>
+                                        </div>
+                                        <div class="hw-arrow-link">&rarr;</div>
+                                        <span
+                                            style="
+                                                color: #c47a5a;
+                                                font-size: 17px;
+                                                font-weight: 600;
+                                            "
+                                            >???</span
+                                        >
+                                    </div>
+
+                                    <div class="hw-question">
+                                        where does the last node point?
+                                    </div>
+                                    <div
+                                        class="hw-note"
+                                        style="margin-top: 4px"
+                                    >
+                                        ask clark ^
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== FOOTER ===== -->
+        <footer>
+            <div class="container">
+                <div class="footer-inner">
+                    <div class="footer-left">
+                        <a href="https://github.com/alexracape/clark"
+                            >github.com/alexracape/clark</a
+                        >
+                    </div>
+                    <div class="footer-right">
+                        Supportive, patient, honest. Clark helps you answer.
+                    </div>
+                </div>
+            </div>
+        </footer>
+
+        <script>
+            // ===== Copy to clipboard =====
+            function copyInstall() {
+                const text =
+                    document.getElementById("install-text").textContent;
+                navigator.clipboard.writeText(text).then(() => {
+                    const btn = document.getElementById("copy-btn");
+                    btn.classList.add("copied");
+                    setTimeout(() => btn.classList.remove("copied"), 2000);
+                });
+            }
+
+            // ===== Typed terminal animation =====
+            const userMessage =
+                "can you check my linked list notes on the canvas?";
+            const clarkLine1 =
+                "I see your diagram and your notes from linked-lists.md.";
+            const clarkLine2 =
+                "Your nodes look right! But the last one needs something.";
+            const clarkLine3 = 'What value means "there\'s nothing after me"?';
+
+            let hasPlayed = false;
+
+            function typeText(element, text, speed, callback) {
+                let i = 0;
+                function type() {
+                    if (i < text.length) {
+                        element.textContent += text.charAt(i);
+                        i++;
+                        setTimeout(type, speed);
+                    } else if (callback) {
+                        callback();
+                    }
+                }
+                type();
+            }
+
+            function revealText(element, text, speed, callback) {
+                let i = 0;
+                function reveal() {
+                    if (i < text.length) {
+                        element.textContent = text.substring(0, i + 1);
+                        i++;
+                        setTimeout(reveal, speed);
+                    } else if (callback) {
+                        callback();
+                    }
+                }
+                reveal();
+            }
+
+            function runAnimation() {
+                if (hasPlayed) return;
+                hasPlayed = true;
+
+                const userTyped = document.getElementById("user-typed");
+                const userCursor = document.getElementById("user-cursor");
+                const thinking = document.getElementById("thinking");
+                const clarkResponse = document.getElementById("clark-response");
+                const cl1 = document.getElementById("clark-line1");
+                const cl2 = document.getElementById("clark-line2");
+                const cl3 = document.getElementById("clark-line3");
+                const bottomDivider = document.getElementById("bottom-divider");
+                const inputRow = document.getElementById("input-row");
+
+                typeText(userTyped, userMessage, 35, () => {
+                    userCursor.style.display = "none";
+                    setTimeout(() => {
+                        thinking.style.display = "block";
+                        setTimeout(() => {
+                            thinking.style.display = "none";
+                            clarkResponse.style.display = "block";
+                            revealText(cl1, clarkLine1, 18, () => {
+                                revealText(cl2, clarkLine2, 18, () => {
+                                    revealText(cl3, clarkLine3, 18, () => {
+                                        bottomDivider.style.display = "block";
+                                        inputRow.style.display = "block";
+                                    });
+                                });
+                            });
+                        }, 1500);
+                    }, 300);
+                });
+            }
+
+            const terminal = document.getElementById("demo-terminal");
+            const observer = new IntersectionObserver(
+                (entries) => {
+                    entries.forEach((entry) => {
+                        if (
+                            entry.isIntersecting &&
+                            entry.intersectionRatio > 0.3
+                        ) {
+                            runAnimation();
+                            observer.disconnect();
+                        }
+                    });
+                },
+                { threshold: 0.3 },
+            );
+            observer.observe(terminal);
+        </script>
+    </body>
+</html>
