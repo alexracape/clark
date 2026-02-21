@@ -9,11 +9,131 @@
  * and opens a separate WebSocket for snapshot/export broker messages.
  */
 
-import React, { useRef, useEffect, useCallback } from "react";
+import React, { useRef, useEffect, useCallback, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import { useSync } from "@tldraw/sync";
+import { DefaultColorThemePalette, useTldrawUser } from "@tldraw/editor";
 import { Tldraw, inlineBase64AssetStore, type Editor, type TLShape } from "tldraw";
 import "tldraw/tldraw.css";
+import "./clark-theme.css";
+
+/**
+ * Remap tldraw's shape color palette to warm, library-appropriate tones.
+ * DefaultColorThemePalette controls the colors available in the drawing toolbar
+ * (the swatches users pick when drawing shapes), distinct from the UI chrome colors.
+ * This runs once at module load time, affecting all tldraw instances globally.
+ */
+function applyClarkColorPalette() {
+  const light = DefaultColorThemePalette.lightMode;
+
+  // Background and solid base — parchment instead of pure white
+  light.background = "#faf6ee";
+  light.solid = "#fdf9f2";
+
+  // Black → Leather (deep warm brown, primary drawing color)
+  light.black.solid = "#1c1408";
+  light.black.fill = "#1c1408";
+  light.black.semi = "#e8dfcf";
+  light.black.pattern = "#3d3020";
+  light.black.frameHeadingStroke = "#7a6b52";
+  light.black.frameHeadingFill = "#ffffff";
+  light.black.frameStroke = "#7a6b52";
+  light.black.frameFill = "#ffffff";
+  light.black.frameText = "#1c1408";
+  light.black.noteFill = "#f2ecdf";
+  light.black.noteText = "#1c1408";
+  light.black.highlightSrgb = "#c9a84c";
+
+  // Green → Lamp Green (the brand primary)
+  light.green.solid = "#3d7a5f";
+  light.green.fill = "#3d7a5f";
+  light.green.semi = "#d3e9e0";
+  light.green.pattern = "#2e6049";
+  light.green.frameHeadingStroke = "#3d7a5f";
+  light.green.frameHeadingFill = "#ffffff";
+  light.green.frameStroke = "#3d7a5f";
+  light.green.frameFill = "#ffffff";
+  light.green.noteFill = "#c8e6d8";
+  light.green.highlightSrgb = "#81c784";
+
+  // Blue → Sky (calm, readable)
+  light.blue.solid = "#7eb8c9";
+  light.blue.fill = "#5a9fb3";
+  light.blue.semi = "#d6edf3";
+  light.blue.pattern = "#5a9fb3";
+  light.blue.frameHeadingStroke = "#7eb8c9";
+  light.blue.frameHeadingFill = "#ffffff";
+  light.blue.frameStroke = "#7eb8c9";
+  light.blue.frameFill = "#ffffff";
+  light.blue.noteFill = "#b8dde8";
+  light.blue.highlightSrgb = "#7eb8c9";
+
+  // Grey → Patina/Walnut (warm neutral)
+  light.grey.solid = "#7a6b52";
+  light.grey.fill = "#7a6b52";
+  light.grey.semi = "#ece6da";
+  light.grey.pattern = "#6b5e4f";
+  light.grey.frameHeadingStroke = "#a09178";
+  light.grey.frameHeadingFill = "#ffffff";
+  light.grey.frameStroke = "#a09178";
+  light.grey.frameFill = "#ffffff";
+  light.grey.noteFill = "#e0d8c8";
+  light.grey.highlightSrgb = "#c4b694";
+
+  // Light-blue → lighter Sky
+  light["light-blue"].solid = "#a8d4e0";
+  light["light-blue"].fill = "#7eb8c9";
+  light["light-blue"].semi = "#e5f2f6";
+  light["light-blue"].noteFill = "#cce8f0";
+
+  // Light-green → Sage
+  light["light-green"].solid = "#81c784";
+  light["light-green"].fill = "#66bb6a";
+  light["light-green"].semi = "#ddf0de";
+  light["light-green"].noteFill = "#c8e6c9";
+
+  // Red → muted terracotta
+  light.red.solid = "#c47a5a";
+  light.red.fill = "#c47a5a";
+  light.red.semi = "#f0ddd5";
+  light.red.noteFill = "#e8c8bc";
+
+  // Light-red → lighter terracotta
+  light["light-red"].solid = "#d4957a";
+  light["light-red"].fill = "#d4957a";
+  light["light-red"].semi = "#f5e5de";
+  light["light-red"].noteFill = "#f0d5c8";
+
+  // Yellow → Brass
+  light.yellow.solid = "#c9a84c";
+  light.yellow.fill = "#c9a84c";
+  light.yellow.semi = "#f2e9cc";
+  light.yellow.noteFill = "#eed9a0";
+
+  // Orange → warm amber
+  light.orange.solid = "#c4854a";
+  light.orange.fill = "#c4854a";
+  light.orange.semi = "#f2e0d0";
+  light.orange.noteFill = "#e8c9aa";
+
+  // Violet → muted mauve
+  light.violet.solid = "#8b6b8b";
+  light.violet.fill = "#8b6b8b";
+  light.violet.semi = "#e8dce8";
+  light.violet.noteFill = "#d8c4d8";
+
+  // Light-violet → lighter mauve
+  light["light-violet"].solid = "#a688a6";
+  light["light-violet"].fill = "#a688a6";
+  light["light-violet"].semi = "#f0e8f0";
+  light["light-violet"].noteFill = "#e4d4e4";
+
+  // White → cream
+  light.white.solid = "#fdf9f2";
+  light.white.fill = "#fdf9f2";
+  light.white.semi = "#faf6ee";
+  light.white.noteFill = "#faf6ee";
+}
 
 import type {
   SnapshotRequest,
@@ -26,6 +146,10 @@ import {
   intermediateBlankFrameIds,
   trimTrailingBlankFrames,
 } from "./frame-heuristics.ts";
+
+// Apply warm library palette to tldraw's shape color swatches.
+// Must run before any Tldraw component renders.
+applyClarkColorPalette();
 
 // A4 dimensions in points (matching pdf-export.ts)
 const A4_WIDTH = 595.28;
@@ -190,6 +314,10 @@ function CanvasApp() {
   const cleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const token = new URLSearchParams(window.location.search).get("token") ?? "";
 
+  // Force light mode for Clark's warm parchment theme
+  const prefs = useMemo(() => ({ id: "clark-canvas-user", colorScheme: "light" as const }), []);
+  const user = useTldrawUser({ userPreferences: prefs });
+
   // Build sync URI from current page host
   const syncUri = `ws://${window.location.host}/sync?token=${encodeURIComponent(token)}`;
 
@@ -318,6 +446,7 @@ function CanvasApp() {
     <div style={{ position: "fixed", inset: 0 }}>
       <Tldraw
         store={store}
+        user={user}
         onMount={handleMount}
         options={{ maxPages: 1 }}
       />

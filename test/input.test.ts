@@ -11,6 +11,8 @@ import {
   COMMANDS,
   BUILTIN_COMMANDS,
   getExportPathSuggestions,
+  isShiftEnterInput,
+  getMultilineCursorPosition,
 } from "../src/tui/input.tsx";
 import { CommandHistory } from "../src/tui/history.ts";
 
@@ -225,5 +227,46 @@ describe("getExportPathSuggestions", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("isShiftEnterInput", () => {
+  test("detects Ink key metadata for Shift+Enter", () => {
+    expect(isShiftEnterInput("", { return: true, shift: true })).toBe(true);
+  });
+
+  test("detects CSI modifyOtherKeys sequence with ESC prefix", () => {
+    expect(isShiftEnterInput("\u001b[27;2;13~", {})).toBe(true);
+  });
+
+  test("detects CSI-u sequence with ESC prefix", () => {
+    expect(isShiftEnterInput("\u001b[13;2u", {})).toBe(true);
+  });
+
+  test("detects parsed sequence without ESC prefix", () => {
+    expect(isShiftEnterInput("[27;2;13~", {})).toBe(true);
+  });
+
+  test("does not match regular Enter or normal text", () => {
+    expect(isShiftEnterInput("", { return: true, shift: false })).toBe(false);
+    expect(isShiftEnterInput("hello", {})).toBe(false);
+  });
+});
+
+describe("getMultilineCursorPosition", () => {
+  test("maps cursor after trailing newline to next empty line", () => {
+    expect(getMultilineCursorPosition("abc\n", 4)).toEqual({ line: 1, column: 0 });
+  });
+
+  test("maps cursor through multiline content", () => {
+    expect(getMultilineCursorPosition("abc\ndef", 0)).toEqual({ line: 0, column: 0 });
+    expect(getMultilineCursorPosition("abc\ndef", 2)).toEqual({ line: 0, column: 2 });
+    expect(getMultilineCursorPosition("abc\ndef", 4)).toEqual({ line: 1, column: 0 });
+    expect(getMultilineCursorPosition("abc\ndef", 7)).toEqual({ line: 1, column: 3 });
+  });
+
+  test("handles consecutive empty lines", () => {
+    expect(getMultilineCursorPosition("a\n\nb", 2)).toEqual({ line: 1, column: 0 });
+    expect(getMultilineCursorPosition("a\n\nb", 3)).toEqual({ line: 2, column: 0 });
   });
 });

@@ -23,7 +23,7 @@ const SPINNER_FRAMES = [".", "..", "..."];
 function statusColorHex(status: CanvasConnectionState): string {
   if (status === "connected") return hex.sage;
   if (status === "connecting") return hex.thinkingSpinner;
-  if (status === "failed") return "#C47A5A"; // Red from window dots
+  if (status === "failed") return hex.error;
   return hex.brass; // Yellow/brass for disconnected
 }
 

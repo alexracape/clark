@@ -13,7 +13,6 @@ Some future enhancements and things that need fixing, organized into parallel ex
   - web search tool
 
 - Add Ollama and Default library to the docs
-- Add workflow to publish the site
 
 - **Office hours + class notes user stories**
   - Write concrete user journeys (student, TA/instructor) for office hours and notes workflows.
@@ -38,6 +37,8 @@ Some future enhancements and things that need fixing, organized into parallel ex
 - **Canvas UI polish and theming pass**
   - Consolidate color/spacing tokens used by canvas-specific components.
   - Acceptance: cohesive visual style and no major contrast/accessibility regressions.
+  
+- Add lines to the pdf pages optionally
 
 - **QR Code for Canvas URL**
   - Add QR code functionality to streamline iPad joining

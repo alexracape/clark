@@ -11,7 +11,7 @@ import { Box, Text, useInput } from "ink";
 import { useLineEditor } from "./primitives/use-line-editor.ts";
 import { useSelectableList } from "./primitives/use-selectable-list.ts";
 import { validateCanvasName } from "../canvas/name.ts";
-import { theme } from "./theme.ts";
+import { theme, componentTheme, hex } from "./theme.ts";
 
 export interface CanvasPickerProps {
   existingCanvases: string[];
@@ -123,8 +123,8 @@ export function CanvasPicker({ existingCanvases, onSelect, onCancel }: CanvasPic
           <Box key={name} paddingLeft={2}>
             <Text>
               {i === list.selected
-                ? theme.hints.selected("> ")
-                : theme.hints.unselected("  ")}
+                ? componentTheme.hints.selected("> ")
+                : componentTheme.hints.unselected("  ")}
               {i === list.selected
                 ? theme.selectedText(name)
                 : theme.dim(name)}
@@ -153,7 +153,7 @@ export function CanvasPicker({ existingCanvases, onSelect, onCancel }: CanvasPic
       <Text> </Text>
       {error && (
         <Box paddingLeft={2}>
-          <Text color="#C47A5A">{error}</Text>
+          <Text color={hex.error}>{error}</Text>
         </Box>
       )}
       {error && <Text> </Text>}

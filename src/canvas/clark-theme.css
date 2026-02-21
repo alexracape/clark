@@ -1,0 +1,86 @@
+/*
+ * Clark "Library" theme for tldraw canvas.
+ * Must be imported AFTER tldraw/tldraw.css so these overrides take precedence.
+ * Source of truth: design/COLOR-PALETTE.md
+ *
+ * Uses .tl-container.tl-theme__light (two-class specificity = 0-2-0) to reliably
+ * override tldraw's .tl-theme__light (one-class specificity = 0-1-0).
+ */
+
+/* Force parchment background on the outermost container regardless of theme class.
+   font-family here sets the UI chrome (toolbar, menus, frame labels, etc.) since
+   all those elements use font-family: inherit. Shape text fonts are controlled
+   separately via tldraw's --tl-font-* variables and the font registry. */
+.tl-container {
+  background-color: #faf6ee;
+  font-family: 'IBM Plex Mono', 'Menlo', 'Consolas', monospace;
+}
+
+.tl-container.tl-theme__light,
+.tl-container.tl-theme__dark {
+  /* Canvas background — warm parchment */
+  --tl-color-background: #faf6ee;
+
+  /* Selection & interaction — lamp green instead of blue */
+  --tl-color-snap: #c47a5a;
+  --tl-color-selection-fill: hsla(150, 34%, 35%, 0.15);
+  --tl-color-selection-stroke: #3d7a5f;
+  --tl-color-selected: #3d7a5f;
+  --tl-color-selected-contrast: #faf6ee;
+  --tl-color-focus: #2e6049;
+  --tl-color-primary: #3d7a5f;
+  --tl-color-laser: #c47a5a;
+
+  /* Panels — warm off-white with subtle brown borders */
+  --tl-color-panel: #faf6ee;
+  --tl-color-panel-contrast: #e8dfcf;
+  --tl-color-panel-overlay: hsla(40, 38%, 95%, 0.90);
+  --tl-color-panel-transparent: hsla(40, 38%, 95%, 0);
+  --tl-color-divider: #d6cbaf;
+  --tl-color-tooltip: #1c1408;
+
+  /* Surface tints — warm cream tones instead of cool grays */
+  --tl-color-low: #f2ecdf;
+  --tl-color-low-border: #e8dfcf;
+  --tl-color-culled: #f2ecdf;
+  --tl-color-muted-none: hsla(35, 30%, 20%, 0%);
+  --tl-color-muted-0: hsla(35, 30%, 20%, 2%);
+  --tl-color-muted-1: hsla(35, 30%, 20%, 10%);
+  --tl-color-muted-2: hsla(35, 30%, 20%, 4.3%);
+  --tl-color-hint: hsla(35, 30%, 20%, 5.5%);
+  --tl-color-overlay: hsla(35, 30%, 10%, 20%);
+  --tl-color-brush-fill: hsla(35, 30%, 40%, 10%);
+  --tl-color-brush-stroke: hsla(35, 30%, 40%, 25%);
+  --tl-color-grid: #c4b694;
+
+  /* Text — warm dark brown instead of pure black */
+  --tl-color-text: #1c1408;
+  --tl-color-text-0: #2c2417;
+  --tl-color-text-1: #3d3020;
+  --tl-color-text-3: #7a6b52;
+  --tl-color-text-shadow: #faf6ee;
+  --tl-color-text-highlight: #c9a84c;
+  --tl-color-text-highlight-p3: color(display-p3 0.788 0.659 0.298);
+
+  /* Semantic — warm-shifted status colors */
+  --tl-color-success: #3d7a5f;
+  --tl-color-info: #7eb8c9;
+  --tl-color-warning: #c9a84c;
+  --tl-color-danger: #c47a5a;
+
+  /* Shadows — warm brown tint */
+  --tl-shadow-1: 0px 1px 2px hsla(35, 40%, 10%, 0.18), 0px 1px 3px hsla(35, 40%, 10%, 0.08);
+  --tl-shadow-2:
+    0px 1px 2px hsla(35, 40%, 10%, 0.12),
+    0px 2px 6px hsla(35, 40%, 10%, 0.08),
+    inset 0px 0px 0px 1px var(--tl-color-panel-contrast);
+  --tl-shadow-3:
+    0px 1px 2px hsla(35, 40%, 10%, 0.18),
+    0px 2px 6px hsla(35, 40%, 10%, 0.10),
+    inset 0px 0px 0px 1px var(--tl-color-panel-contrast);
+  --tl-shadow-4:
+    0px 0px 3px hsla(35, 40%, 10%, 0.14),
+    0px 5px 4px hsla(35, 40%, 10%, 0.12),
+    0px 2px 16px hsla(35, 40%, 10%, 0.06),
+    inset 0px 0px 0px 1px var(--tl-color-panel-contrast);
+}

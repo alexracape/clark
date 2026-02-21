@@ -108,7 +108,7 @@ function formatInline(text: string): string {
 
   // Inline code: `code`
   result = result.replace(/`([^`]+)`/g, (_, code) =>
-    chalk.hex(hex.brass).bgHex("#2E2416")(` ${code} `),
+    chalk.hex(hex.brass).bgHex(hex.codeBlockBg)(` ${code} `),
   );
 
   // Bold: **text**

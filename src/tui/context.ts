@@ -8,6 +8,7 @@
 import chalk from "chalk";
 import type { Conversation } from "../llm/messages.ts";
 import type { ToolDefinition } from "../mcp/tools.ts";
+import { hex } from "./theme.ts";
 
 /** Map model names to max context window tokens */
 function getMaxContext(model: string): number {
@@ -50,14 +51,14 @@ export function formatContextGrid(
   const TOTAL = COLS * ROWS;
 
   const categories: Category[] = [
-    { label: "System prompt", tokens: systemTokens, color: chalk.magenta, sym: "⛁" },
-    { label: "Tool definitions", tokens: toolDefTokens, color: chalk.cyan, sym: "⛁" },
-    { label: "User", tokens: ctx.userTokens, color: chalk.green, sym: "⛁" },
-    { label: "Assistant", tokens: ctx.assistantTokens, color: chalk.blue, sym: "⛁" },
-    { label: "Tool results", tokens: ctx.toolTokens, color: chalk.yellow, sym: "⛁" },
-    { label: "Thinking", tokens: ctx.thinkingTokens, color: chalk.gray, sym: "⛁" },
-    { label: "Skills", tokens: 0, color: chalk.white, sym: "⛁" },
-    { label: "Free space", tokens: free, color: chalk.gray, sym: "⛶" },
+    { label: "System prompt", tokens: systemTokens, color: chalk.hex(hex.lampGreen), sym: "⛁" },
+    { label: "Tool definitions", tokens: toolDefTokens, color: chalk.hex(hex.thinkingSpinner), sym: "⛁" },
+    { label: "User", tokens: ctx.userTokens, color: chalk.hex(hex.userLabel), sym: "⛁" },
+    { label: "Assistant", tokens: ctx.assistantTokens, color: chalk.hex(hex.assistantLabel), sym: "⛁" },
+    { label: "Tool results", tokens: ctx.toolTokens, color: chalk.hex(hex.brass), sym: "⛁" },
+    { label: "Thinking", tokens: ctx.thinkingTokens, color: chalk.hex(hex.dimText), sym: "⛁" },
+    { label: "Skills", tokens: 0, color: chalk.hex(hex.messageText), sym: "⛁" },
+    { label: "Free space", tokens: free, color: chalk.hex(hex.dimText), sym: "⛶" },
   ];
 
   // Allocate grid cells proportionally (min 1 for any non-zero category)
@@ -82,12 +83,12 @@ export function formatContextGrid(
 
   // Legend lines placed beside grid rows
   const legend: (string | null)[] = [
-    chalk.bold(model) + chalk.gray(` · ${fmtTokens(used)}/${fmtTokens(maxCtx)} tokens (${usedPct}%)`),
+    chalk.bold(model) + chalk.hex(hex.dimText)(` · ${fmtTokens(used)}/${fmtTokens(maxCtx)} tokens (${usedPct}%)`),
     null,
-    chalk.gray.italic("Estimated usage by category"),
+    chalk.hex(hex.dimText).italic("Estimated usage by category"),
     ...categories.map((cat) => {
       const pct = ((cat.tokens / maxCtx) * 100).toFixed(1);
-      return `${cat.color(cat.sym)} ${cat.label}: ${chalk.gray(`${fmtTokens(cat.tokens)} tokens (${pct}%)`)}`;
+      return `${cat.color(cat.sym)} ${cat.label}: ${chalk.hex(hex.dimText)(`${fmtTokens(cat.tokens)} tokens (${pct}%)`)}`;
     }),
   ];
 
@@ -100,7 +101,7 @@ export function formatContextGrid(
   }
 
   lines.push("");
-  lines.push(chalk.gray(`${ctx.messageCount} messages in conversation`));
+  lines.push(chalk.hex(hex.dimText)(`${ctx.messageCount} messages in conversation`));
 
   return lines.join("\n");
 }

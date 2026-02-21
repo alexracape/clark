@@ -39,9 +39,13 @@ export const Colors = {
 
   // Semantic colors (from palette)
   lampGreen: "#3D7A5F",        // Primary accent
+  deepFern: "#2E6049",         // Darker green for hover/emphasis
   sage: "#81C784",             // Success states
   brass: "#C9A84C",            // Special UI elements
   sky: "#7EB8C9",              // Cool blue
+  error: "#C47A5A",            // Muted red (window dot red)
+  warning: "#C4A85A",          // Muted yellow (window dot yellow)
+  codeBlockBg: "#2E2416",      // Dark background for inline code
 } as const;
 
 /**
@@ -76,6 +80,8 @@ export const theme = {
   success: (text: string) => chalk.hex(Colors.sage)(text),
   accent: (text: string) => chalk.hex(Colors.lampGreen)(text),
   highlight: (text: string) => chalk.hex(Colors.brass)(text),
+  error: (text: string) => chalk.hex(Colors.error)(text),
+  warning: (text: string) => chalk.hex(Colors.warning)(text),
 } as const;
 
 /**

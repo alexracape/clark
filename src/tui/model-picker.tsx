@@ -7,6 +7,7 @@ import { Box, Text, useInput } from "ink";
 import { resolveApiKey, saveConfig, setProviderApiKey, type ClarkConfig } from "../config.ts";
 import { useLineEditor } from "./primitives/use-line-editor.ts";
 import { useSelectableList } from "./primitives/use-selectable-list.ts";
+import { hex } from "./theme.ts";
 
 interface ModelEntry {
   provider: string;
@@ -217,23 +218,23 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
     return (
       <Box flexDirection="column" paddingX={1}>
         <Text bold>Enter your {entry.providerLabel} API key:</Text>
-        <Text color="gray" dimColor> </Text>
-        <Text color="gray" dimColor>Get one from {info.site}</Text>
-        <Text color="gray" dimColor>Saved to macOS Keychain (set {info.envVar} to override)</Text>
-        <Text color="gray" dimColor> </Text>
+        <Text color={hex.dimText}> </Text>
+        <Text color={hex.dimText}>Get one from {info.site}</Text>
+        <Text color={hex.dimText}>Saved to macOS Keychain (set {info.envVar} to override)</Text>
+        <Text color={hex.dimText}> </Text>
         <Box paddingLeft={2}>
-          <Text color="yellow">{before}</Text>
+          <Text color={hex.brass}>{before}</Text>
           <Text inverse>{cursorChar}</Text>
-          <Text color="yellow">{after}</Text>
+          <Text color={hex.brass}>{after}</Text>
         </Box>
         {error && (
           <>
-            <Text color="gray" dimColor> </Text>
-            <Text color="red">{error}</Text>
+            <Text color={hex.dimText}> </Text>
+            <Text color={hex.error}>{error}</Text>
           </>
         )}
-        <Text color="gray" dimColor> </Text>
-        <Text color="gray"><Text bold color="white">Enter</Text> to save <Text bold color="white">Esc</Text> to go back</Text>
+        <Text color={hex.dimText}> </Text>
+        <Text color={hex.dimText}><Text bold color={hex.messageText}>Enter</Text> to save <Text bold color={hex.messageText}>Esc</Text> to go back</Text>
       </Box>
     );
   }
@@ -255,14 +256,14 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
           <React.Fragment key={`${entry.provider}-${entry.model}`}>
             {isNewGroup && (
               <Box paddingLeft={2} marginTop={i === 0 ? 0 : 1}>
-                <Text bold color="gray">{entry.providerLabel}</Text>
-                {!available && <Text color="yellow" dimColor>{"  "}[setup required]</Text>}
+                <Text bold color={hex.baseText}>{entry.providerLabel}</Text>
+                {!available && <Text color={hex.brass}>{"  "}[setup required]</Text>}
               </Box>
             )}
             <Box paddingLeft={4}>
-              <Text color={isSelected ? "blue" : "gray"}>{isSelected ? "> " : "  "}</Text>
-              <Text bold={isSelected} color={isSelected ? "white" : "gray"} dimColor={!available && !isSelected}>{entry.label}</Text>
-              {isCurrent && <Text color="green" dimColor>{"  "}(current)</Text>}
+              <Text color={isSelected ? hex.sky : hex.dimText}>{isSelected ? "> " : "  "}</Text>
+              <Text bold={isSelected} color={isSelected ? hex.messageText : hex.dimText} dimColor={!available && !isSelected}>{entry.label}</Text>
+              {isCurrent && <Text color={hex.sage}>{"  "}(current)</Text>}
             </Box>
           </React.Fragment>
         );
@@ -271,28 +272,28 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
       {ollamaModels.length === 0 && (
         <Box flexDirection="column" marginTop={1} paddingLeft={2}>
           <Box>
-            <Text bold color="gray">Ollama (Local)</Text>
-            {ollamaStatus === "loading" && <Text color="gray" dimColor>{"  "}checking...</Text>}
-            {ollamaStatus === "not-running" && <Text color="red" dimColor>{"  "}[not running]</Text>}
-            {ollamaStatus === "no-models" && <Text color="yellow" dimColor>{"  "}[no models]</Text>}
+            <Text bold color={hex.baseText}>Ollama (Local)</Text>
+            {ollamaStatus === "loading" && <Text color={hex.dimText}>{"  "}checking...</Text>}
+            {ollamaStatus === "not-running" && <Text color={hex.error}>{"  "}[not running]</Text>}
+            {ollamaStatus === "no-models" && <Text color={hex.brass}>{"  "}[no models]</Text>}
           </Box>
           {ollamaStatus === "not-running" && (
             <Box flexDirection="column" paddingLeft={2}>
-              <Text color="gray" dimColor>Start the server:   <Text color="white">ollama serve</Text></Text>
-              <Text color="gray" dimColor>Install (macOS):    <Text color="white">brew install ollama</Text></Text>
+              <Text color={hex.dimText}>Start the server:   <Text color={hex.messageText}>ollama serve</Text></Text>
+              <Text color={hex.dimText}>Install (macOS):    <Text color={hex.messageText}>brew install ollama</Text></Text>
             </Box>
           )}
           {ollamaStatus === "no-models" && (
             <Box flexDirection="column" paddingLeft={2}>
-              <Text color="gray" dimColor>Download a model:   <Text color="white">ollama pull llama3.2</Text></Text>
-              <Text color="gray" dimColor>Browse models:      <Text color="white">ollama list</Text></Text>
+              <Text color={hex.dimText}>Download a model:   <Text color={hex.messageText}>ollama pull llama3.2</Text></Text>
+              <Text color={hex.dimText}>Browse models:      <Text color={hex.messageText}>ollama list</Text></Text>
             </Box>
           )}
         </Box>
       )}
 
       <Text> </Text>
-      <Text color="gray">{"  "}<Text color="gray">↑↓</Text> navigate <Text color="gray">enter</Text> select <Text color="gray">esc</Text> cancel</Text>
+      <Text color={hex.dimText}>{"  "}↑↓ navigate  enter select  esc cancel</Text>
     </Box>
   );
 }

@@ -33,6 +33,11 @@ export interface ExportPathSuggestion {
   description: string;
 }
 
+type InputKeyLike = {
+  return?: boolean;
+  shift?: boolean;
+};
+
 /** Built-in commands (always available) */
 export const BUILTIN_COMMANDS: CommandEntry[] = [
   { name: "help", description: "Show available commands" },
@@ -121,6 +126,38 @@ export function getExportPathSuggestions(
   } catch {
     return [];
   }
+}
+
+/**
+ * Some terminals encode Shift+Enter as a CSI escape sequence instead of setting key.shift.
+ * Handle both representations so multiline input works across terminal configs.
+ */
+export function isShiftEnterInput(input: string, key: InputKeyLike): boolean {
+  if (key.return && key.shift) return true;
+  const normalized = input.startsWith("\u001b") ? input.slice(1) : input;
+  return normalized === "[27;2;13~" || normalized === "[13;2u";
+}
+
+/**
+ * Resolve cursor line/column in a multiline string.
+ * Cursor positions at newline boundaries map to the next line (column 0).
+ */
+export function getMultilineCursorPosition(value: string, cursor: number): { line: number; column: number } {
+  const clampedCursor = Math.max(0, Math.min(cursor, value.length));
+  const lines = value.split("\n");
+  let lineStart = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const lineLength = lines[i].length;
+    const lineEnd = lineStart + lineLength;
+    if (clampedCursor <= lineEnd) {
+      return { line: i, column: clampedCursor - lineStart };
+    }
+    lineStart = lineEnd + 1; // skip "\n"
+  }
+
+  const lastLineIndex = Math.max(0, lines.length - 1);
+  return { line: lastLineIndex, column: lines[lastLineIndex]?.length ?? 0 };
 }
 
 export function Input({ onSubmit, disabled = false, history }: InputProps) {
@@ -239,14 +276,15 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
       return;
     }
 
+    // Shift+Enter: insert newline (multiline support)
+    if (isShiftEnterInput(input, key)) {
+      browsingHistoryRef.current = false;
+      setValue(val.slice(0, cur) + "\n" + val.slice(cur));
+      setCursor(cur + 1);
+      return;
+    }
+
     if (key.return) {
-      // Shift+Enter: insert newline (multiline support)
-      if (key.shift) {
-        browsingHistoryRef.current = false;
-        setValue(val.slice(0, cur) + "\n" + val.slice(cur));
-        setCursor(cur + 1);
-        return;
-      }
 
       // If hints are showing, submit the highlighted command
       if (showHints && hintMode === "commands" && !val.includes(" ")) {
@@ -352,22 +390,7 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
 
   // Split into lines for multiline rendering
   const lines = value.split("\n");
-  let currentLine = 0;
-  let charsBeforeCursor = 0;
-
-  // Find which line the cursor is on
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line) continue;
-    const lineLength = line.length + (i < lines.length - 1 ? 1 : 0); // +1 for \n
-    if (charsBeforeCursor + lineLength >= cursor) {
-      currentLine = i;
-      break;
-    }
-    charsBeforeCursor += lineLength;
-  }
-
-  const cursorColumn = cursor - charsBeforeCursor;
+  const { line: currentLine, column: cursorColumn } = getMultilineCursorPosition(value, cursor);
 
   return (
     <Box flexDirection="column">

@@ -8,6 +8,7 @@ import { loadConfig, saveConfig, setProviderApiKey, type ClarkConfig } from "../
 import { scaffoldLibrary } from "../library.ts";
 import { useLineEditor } from "./primitives/use-line-editor.ts";
 import { useSelectableList } from "./primitives/use-selectable-list.ts";
+import { hex } from "./theme.ts";
 
 type Step = "welcome" | "provider" | "api-key" | "done";
 
@@ -25,7 +26,7 @@ function StepIndicator({ current, total, label }: {
   total: number;
   label: string;
 }) {
-  return <Text color="blue" dimColor>[{current}/{total}] {label}</Text>;
+  return <Text color={hex.sky}>[{current}/{total}] {label}</Text>;
 }
 
 interface ProviderOption {
@@ -179,7 +180,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   if (step === "welcome") {
     return (
       <Box flexDirection="column" padding={1}>
-        <Text color="blue" bold>
+        <Text color={hex.sky} bold>
           {`
    _____ _            _
   / ____| |          | |
@@ -190,18 +191,18 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 `}
         </Text>
         <StepIndicator current={1} total={TOTAL_STEPS} label="Welcome" />
-        <Text color="gray" dimColor> </Text>
+        <Text color={hex.dimText}> </Text>
         <Text>Welcome to <Text bold>Clark</Text>, your Socratic tutoring assistant.</Text>
-        <Text color="gray" dimColor> </Text>
+        <Text color={hex.dimText}> </Text>
         <Text>Clark helps you work through problems by asking guiding questions,</Text>
         <Text>not giving answers. You can write on your iPad while Clark responds</Text>
         <Text>to your progress.</Text>
-        <Text color="gray" dimColor> </Text>
+        <Text color={hex.dimText}> </Text>
         <Text bold>What you'll need:</Text>
         <Text>  • An API key from an LLM provider (Anthropic, OpenAI, or Google)</Text>
         <Text>  • Optional: An iPad for handwritten work</Text>
-        <Text color="gray" dimColor> </Text>
-        <Text color="gray">Press <Text bold color="white">Enter</Text> to continue, <Text bold color="white">Ctrl+C</Text> to exit.</Text>
+        <Text color={hex.dimText}> </Text>
+        <Text color={hex.dimText}>Press <Text bold color={hex.messageText}>Enter</Text> to continue, <Text bold color={hex.messageText}>Ctrl+C</Text> to exit.</Text>
       </Box>
     );
   }
@@ -210,14 +211,14 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     return (
       <Box flexDirection="column" padding={1}>
         <StepIndicator current={2} total={TOTAL_STEPS} label="Choose Provider" />
-        <Text color="gray" dimColor> </Text>
-        <Text color="green">✓ Welcome</Text>
-        <Text color="gray" dimColor> </Text>
+        <Text color={hex.dimText}> </Text>
+        <Text color={hex.sage}>✓ Welcome</Text>
+        <Text color={hex.dimText}> </Text>
         <Text bold>Choose your LLM provider:</Text>
-        <Text color="gray" dimColor> </Text>
+        <Text color={hex.dimText}> </Text>
         {PROVIDERS.map((provider, i) => (
           <Box key={provider.id} paddingLeft={2}>
-            <Text color={i === providerList.selected ? "blue" : "gray"}>
+            <Text color={i === providerList.selected ? hex.sky : hex.dimText}>
               {i === providerList.selected ? "> " : "  "}
               <Text bold={i === providerList.selected}>{provider.name}</Text>
             </Text>
@@ -225,12 +226,12 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         ))}
         {error && (
           <>
-            <Text color="gray" dimColor> </Text>
-            <Text color="red">{error}</Text>
+            <Text color={hex.dimText}> </Text>
+            <Text color={hex.error}>{error}</Text>
           </>
         )}
-        <Text color="gray" dimColor> </Text>
-        <Text color="gray">Use <Text bold color="white">arrow keys</Text> to select, <Text bold color="white">Enter</Text> to confirm.</Text>
+        <Text color={hex.dimText}> </Text>
+        <Text color={hex.dimText}>Use <Text bold color={hex.messageText}>arrow keys</Text> to select, <Text bold color={hex.messageText}>Enter</Text> to confirm.</Text>
       </Box>
     );
   }
@@ -247,36 +248,36 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     return (
       <Box flexDirection="column" padding={1}>
         <StepIndicator current={3} total={TOTAL_STEPS} label="API Key Setup" />
-        <Text color="gray" dimColor> </Text>
-        <Text color="green">✓ Welcome</Text>
-        <Text color="green">✓ Provider selected: {provider.name}</Text>
-        <Text color="gray" dimColor> </Text>
+        <Text color={hex.dimText}> </Text>
+        <Text color={hex.sage}>✓ Welcome</Text>
+        <Text color={hex.sage}>✓ Provider selected: {provider.name}</Text>
+        <Text color={hex.dimText}> </Text>
         <Text bold>Enter your {provider.name} API key:</Text>
-        <Text color="gray" dimColor> </Text>
-        <Text color="gray" dimColor>
+        <Text color={hex.dimText}> </Text>
+        <Text color={hex.dimText}>
           You can get one from {provider.id === "anthropic" ? "console.anthropic.com" : provider.id === "gemini" ? "aistudio.google.com" : "platform.openai.com"}
         </Text>
-        <Text color="gray" dimColor>Saved to macOS Keychain (set {provider.envVar} to override)</Text>
-        <Text color="gray" dimColor> </Text>
+        <Text color={hex.dimText}>Saved to macOS Keychain (set {provider.envVar} to override)</Text>
+        <Text color={hex.dimText}> </Text>
         <Box paddingLeft={2}>
-          <Text color="yellow">{before}</Text>
+          <Text color={hex.brass}>{before}</Text>
           <Text inverse>{cursorChar}</Text>
-          <Text color="yellow">{after}</Text>
+          <Text color={hex.brass}>{after}</Text>
         </Box>
         {error && (
           <>
-            <Text color="gray" dimColor> </Text>
-            <Text color="red">{error}</Text>
+            <Text color={hex.dimText}> </Text>
+            <Text color={hex.error}>{error}</Text>
           </>
         )}
         {isSettingUp && (
           <>
-            <Text color="gray" dimColor> </Text>
-            <Text color="yellow">Setting up workspace...</Text>
+            <Text color={hex.dimText}> </Text>
+            <Text color={hex.brass}>Setting up workspace...</Text>
           </>
         )}
-        <Text color="gray" dimColor> </Text>
-        <Text color="gray"><Text bold color="white">Enter</Text> to save, <Text bold color="white">Esc</Text> to go back.</Text>
+        <Text color={hex.dimText}> </Text>
+        <Text color={hex.dimText}><Text bold color={hex.messageText}>Enter</Text> to save, <Text bold color={hex.messageText}>Esc</Text> to go back.</Text>
       </Box>
     );
   }
@@ -286,17 +287,17 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
   return (
     <Box flexDirection="column" padding={1}>
-      <Text color="green">✓ Setup complete!</Text>
-      <Text color="gray" dimColor> </Text>
+      <Text color={hex.sage}>✓ Setup complete!</Text>
+      <Text color={hex.dimText}> </Text>
       <Text>Provider: <Text bold>{selectedProvider.name}</Text></Text>
       <Text>Workspace: <Text bold>{workspaceDir}</Text></Text>
-      <Text color="gray" dimColor> </Text>
+      <Text color={hex.dimText}> </Text>
       <Text bold>Next steps:</Text>
-      <Text>  • Type <Text bold color="white">/help</Text> to see available commands</Text>
-      <Text>  • Type <Text bold color="white">/tutorial</Text> to learn the basics</Text>
-      <Text>  • Type <Text bold color="white">/canvas</Text> to start drawing</Text>
-      <Text color="gray" dimColor> </Text>
-      <Text color="yellow">Starting Clark...</Text>
+      <Text>  • Type <Text bold color={hex.messageText}>/help</Text> to see available commands</Text>
+      <Text>  • Type <Text bold color={hex.messageText}>/tutorial</Text> to learn the basics</Text>
+      <Text>  • Type <Text bold color={hex.messageText}>/canvas</Text> to start drawing</Text>
+      <Text color={hex.dimText}> </Text>
+      <Text color={hex.brass}>Starting Clark...</Text>
     </Box>
   );
 }
