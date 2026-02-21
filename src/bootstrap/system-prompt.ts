@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { loadClarkContext, clarkStructuresDirPath } from "../library.ts";
+import baseSystemPrompt from "../prompts/system.md" with { type: "text" };
 
 /**
  * Extract the first sentence of the ## Purpose section from a Structure file.
@@ -47,10 +48,7 @@ async function loadStructureSummary(workspaceDir: string): Promise<string> {
 }
 
 export async function loadEffectiveSystemPrompt(workspaceDir: string): Promise<string> {
-  const systemPromptPath = new URL("../prompts/system.md", import.meta.url).pathname;
-  const systemPrompt = await Bun.file(systemPromptPath).text();
-
-  const sections = [systemPrompt];
+  const sections = [baseSystemPrompt];
 
   const structures = await loadStructureSummary(workspaceDir);
   if (structures) {

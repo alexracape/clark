@@ -23,13 +23,14 @@ const { values } = parseArgs({
   options: {
     target: { type: "string", multiple: true },
     all: { type: "boolean", default: false },
+    version: { type: "string" },
   },
 });
 
 const packageJson = await Bun.file(
   join(import.meta.dir, "..", "package.json"),
 ).json();
-const version: string = packageJson.version;
+const version: string = values.version ?? packageJson.version;
 
 // Determine which targets to build
 let targets: TargetKey[];

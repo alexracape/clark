@@ -40,6 +40,7 @@ export async function parseCliArgs(argv = process.argv): Promise<CliArgs> {
       type: "boolean",
       describe: "Upgrade Clark to the latest version",
     })
+    .alias("upgrade", "update")
     .help()
     .parse();
 
