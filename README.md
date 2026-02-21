@@ -1,6 +1,6 @@
 # clark
 
-Socratic tutoring assistant. See [SPEC.md](SPEC.md) for full details.
+Socratic tutoring assistant. See [SPEC.md](docs/SPEC.md) for full details.
 
 ## Setup
 

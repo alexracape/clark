@@ -34,4 +34,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .DS_Store
 
 .cursor
-design
+
+# local workspace scaffold created by app startup/onboarding
+/Clark/

@@ -6,6 +6,7 @@ import React, { useState } from "react";
 import { Box, Text, useInput, useApp } from "ink";
 import { loadConfig, saveConfig, setProviderApiKey, type ClarkConfig } from "../config.ts";
 import { scaffoldLibrary } from "../library.ts";
+import { getWorkspaceDir } from "../workspace.ts";
 import { useLineEditor } from "./primitives/use-line-editor.ts";
 import { useSelectableList } from "./primitives/use-selectable-list.ts";
 import { hex } from "./theme.ts";
@@ -55,14 +56,14 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const { exit } = useApp();
 
   async function completeSetup(partialConfig: ClarkConfig): Promise<void> {
-    const cwd = process.cwd();
+    const workspaceDir = getWorkspaceDir();
     const currentConfig = await loadConfig();
-    await scaffoldLibrary(cwd);
+    await scaffoldLibrary(workspaceDir);
 
     const updatedConfig: ClarkConfig = {
       ...currentConfig,
       ...partialConfig,
-      pdfExportDir: currentConfig.pdfExportDir ?? cwd,
+      pdfExportDir: currentConfig.pdfExportDir ?? workspaceDir,
       hasCompletedOnboarding: true,
     };
 
@@ -283,7 +284,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   }
 
   const selectedProvider = PROVIDERS[providerList.selected]!;
-  const workspaceDir = process.cwd();
+  const workspaceDir = getWorkspaceDir();
 
   return (
     <Box flexDirection="column" padding={1}>

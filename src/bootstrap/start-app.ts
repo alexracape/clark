@@ -16,6 +16,7 @@ import { CanvasSessionManager } from "../app/canvas-session.ts";
 import { createSlashCommandHandler } from "../app/command-router.ts";
 import { VisionOCRProvider } from "../ocr/provider.ts";
 import { checkPopplerAvailable, getPopplerInstallInstructions } from "../ocr/pdf-renderer.ts";
+import { getWorkspaceDir } from "../workspace.ts";
 
 function getLanIP(): string {
   const nets = networkInterfaces();
@@ -30,7 +31,7 @@ function getLanIP(): string {
 }
 
 export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): Promise<void> {
-  const workspaceDir = process.cwd();
+  const workspaceDir = getWorkspaceDir();
   await scaffoldLibrary(workspaceDir);
 
   let exportDir = activeConfig.pdfExportDir ?? workspaceDir;

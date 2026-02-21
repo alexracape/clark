@@ -1,7 +1,7 @@
 /**
  * Clark TUI Theme
  *
- * Color palette based on design/DESIGN.md "The Library" theme.
+ * Color palette based on docs/design/DESIGN.md "The Library" theme.
  * Uses chalk.hex() for exact terminal color rendering.
  */
 

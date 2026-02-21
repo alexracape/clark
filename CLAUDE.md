@@ -14,9 +14,11 @@ alwaysApply: true
 - **Environment:** Bun loads `.env` automatically; do not use `dotenv`.
 
 ## Project Documentation & Planning
-- **Roadmap:** Consult `TODO.md` for pending tasks and future enhancements.
-- **Specification:** Refer to `SPEC.md` for the overall project architecture and logic.
-- **Context Management:** After completing a task, update `TODO.md` and `SPEC.md` if any key components have changed.
+- **Roadmap:** Consult `docs/TODO.md` for pending tasks and future enhancements.
+- **Specification:** Refer to `docs/SPEC.md` for the overall project architecture and logic.
+- **Design System:** See `docs/design/DESIGN.md` for brand identity, typography, and UI patterns. Color palette source of truth is `docs/design/COLOR-PALETTE.md`.
+- **Prompt Logic:** `docs/PROMPTS.md` contains an overview of how context is managed throughout a conversation. It includes tool definitions, system prompt, etc.
+- **Context Management:** After completing a task, update `docs/TODO.md`, `docs/SPEC.md`, and `docs/PROMPTS.md` if any key components have changed.
 
 ## External Dependencies Documentation
 The repo contains documentation for some dependencies as plain text.

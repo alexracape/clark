@@ -29,16 +29,15 @@ async function loadStructureSummary(workspaceDir: string): Promise<string> {
     const lines: string[] = [];
     for (const file of mdFiles) {
       const content = await Bun.file(join(structuresDir, file)).text();
-      const name = file.replace(/\.md$/i, "");
       const purpose = extractPurpose(content);
-      lines.push(`- **${name}**: ${purpose}`);
+      lines.push(`- **${file}**: ${purpose}`);
     }
 
     return [
       "## Structures",
       "",
       "The student's workspace contains Structure definitions in Clark/Structures/.",
-      "When they want to create a new structure, read the full definition file for instructions, then use create_file to make it.",
+      "When they want to create a new structure, read the full definition file for instructions.",
       "",
       ...lines,
     ].join("\n");
@@ -47,7 +46,9 @@ async function loadStructureSummary(workspaceDir: string): Promise<string> {
   }
 }
 
-export async function loadEffectiveSystemPrompt(workspaceDir: string): Promise<string> {
+export async function loadEffectiveSystemPrompt(
+  workspaceDir: string,
+): Promise<string> {
   const sections = [baseSystemPrompt];
 
   const structures = await loadStructureSummary(workspaceDir);

@@ -312,8 +312,6 @@ If a `CLARK.md` file exists in the workspace's `Clark/` directory, its contents 
 ```
 clark/
 ├── CLAUDE.md                  # Bun conventions for AI assistants
-├── SPEC.md                    # This file
-├── TODO.md                    # Roadmap and pending tasks
 ├── package.json
 ├── tsconfig.json
 ├── index.ts                   # Entry point — onboarding, canvas server, TUI
@@ -328,6 +326,10 @@ clark/
 │       └── release.yml        # Build + publish binaries on git tag push
 │
 ├── docs/
+│   ├── SPEC.md                # This file
+│   ├── TODO.md                # Roadmap and pending tasks
+│   ├── design/                # Brand identity, color palette, UI patterns
+│   ├── site/                  # Landing page and getting-started HTML
 │   └── dependencies/          # Vendored LLM-friendly docs for tldraw, MCP
 │
 ├── src/
@@ -460,6 +462,7 @@ clark --provider anthropic --model claude-sonnet-4-5-20250929
 | `--provider` | `anthropic` | LLM provider (`anthropic`, `openai`, `gemini`, `ollama`) |
 | `--model` | provider default | Specific model ID |
 | `--port` | `3000` | Port for tldraw canvas server |
+| `--upgrade` (alias: `--update`) | `false` | Self-update Clark to the latest GitHub release |
 | `--version` (or `-v`) | - | Print version and exit |
 
 **Config file (`~/.clark/config.json`):**
@@ -495,7 +498,7 @@ Clark is distributed as a standalone compiled binary via GitHub Releases.
 - Compiles `index.ts` into a single executable via `bun build --compile`
 - Inlines the version at compile time (`--define CLARK_VERSION`)
 - Generates SHA-256 checksums for each binary
-- Supports cross-compilation: `--target darwin-arm64`, `--target linux-x64`, `--all`
+- Supports cross-compilation: `--target darwin-arm64`, `--target darwin-x64`, `--target linux-arm64`, `--target linux-x64`, `--all`
 
 **Supported platforms:** macOS (arm64, x64), Linux (arm64, x64)
 
@@ -509,17 +512,3 @@ curl -fsSL https://raw.githubusercontent.com/alexracape/clark/main/install.sh | 
 ```
 
 The install script detects the user's platform, downloads the correct binary, verifies the SHA-256 checksum, and installs to `/usr/local/bin/clark` (or a custom `INSTALL_DIR`).
-
-## Non-Goals (v1)
-
-- **Session persistence / conversation history** — Sessions are ephemeral. Persistence is planned for a future version.
-- **Multi-session support** — One tutoring session at a time.
-- **Vector search / RAG** — Keyword search only in v1.
-- **Instructor dashboard or analytics** — Student-facing tool only.
-- **Mobile-native app** — iPad accesses tldraw via Safari.
-
-## Open Questions
-
-1. **tldraw canvas export fidelity** — Need to validate that `editor.toImage()` at `pixelRatio: 2` captures Apple Pencil strokes at sufficient resolution for vision API OCR. May need to experiment with scale factor.
-2. **PDF rendering for vision** — For PDFs with diagrams/equations, should we send page images to the vision API, or is text extraction sufficient? Likely need both paths depending on content type.
-3. **BlurryShape extraction cost** — Evaluate whether including structured shape data alongside PNG snapshots meaningfully improves LLM comprehension of handwritten content, or if vision alone is sufficient. If vision alone works well, skip the shape extraction for simplicity.

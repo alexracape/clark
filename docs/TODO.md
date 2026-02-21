@@ -3,8 +3,6 @@ Some future enhancements and things that need fixing, organized into parallel ex
 ## Backlog of future enhancements
 
 - Testing
-  - installing via curl
-  - updating with --update
   - tool calling and actual usability with good models
   - OCR and resource handling in general
   - web search tool
