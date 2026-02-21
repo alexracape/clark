@@ -3,12 +3,9 @@ Some future enhancements and things that need fixing, organized into parallel ex
 ## Backlog of future enhancements
 
 - Testing
-  - multiline input
   - installing via curl
   - updating with --update
-  - theme consistency
   - tool calling and actual usability with good models
-  - canvas theme
   - OCR and resource handling in general
   - web search tool
 
