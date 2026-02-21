@@ -13,6 +13,7 @@ Some future enhancements and things that need fixing, organized into parallel ex
   - web search tool
 
 - Add Ollama and Default library to the docs
+- Add workflow to publish the site
 
 - **Office hours + class notes user stories**
   - Write concrete user journeys (student, TA/instructor) for office hours and notes workflows.
