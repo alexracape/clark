@@ -8,10 +8,13 @@
 import chalk from "chalk";
 import type { Conversation } from "../llm/messages.ts";
 import type { ToolDefinition } from "../mcp/tools.ts";
+import { getModelContextWindow } from "../llm/catalog.ts";
 import { hex } from "./theme.ts";
 
 /** Map model names to max context window tokens */
 function getMaxContext(model: string): number {
+  const known = getModelContextWindow(model);
+  if (known) return known;
   if (model.includes("claude")) return 200_000;
   if (model.includes("gpt-4o")) return 128_000;
   if (model.includes("gemini")) return 1_048_576;

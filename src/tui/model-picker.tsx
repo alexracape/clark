@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
 import { resolveApiKey, saveConfig, setProviderApiKey, type ClarkConfig } from "../config.ts";
+import { getCloudModelEntries, getProviderCatalogEntry, isApiKeyProvider } from "../llm/catalog.ts";
 import { useLineEditor } from "./primitives/use-line-editor.ts";
 import { useSelectableList } from "./primitives/use-selectable-list.ts";
 import { hex } from "./theme.ts";
@@ -16,19 +17,7 @@ interface ModelEntry {
   label: string;
 }
 
-const CLOUD_MODELS: ModelEntry[] = [
-  { provider: "anthropic", providerLabel: "Anthropic (Claude)", model: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5" },
-  { provider: "anthropic", providerLabel: "Anthropic (Claude)", model: "claude-haiku-3-5-20241022", label: "Claude Haiku 3.5" },
-  { provider: "openai", providerLabel: "OpenAI", model: "gpt-4o", label: "GPT-4o" },
-  { provider: "openai", providerLabel: "OpenAI", model: "gpt-4o-mini", label: "GPT-4o Mini" },
-  { provider: "gemini", providerLabel: "Google (Gemini)", model: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-];
-
-const PROVIDER_INFO: Record<string, { envVar: string; site: string }> = {
-  anthropic: { envVar: "ANTHROPIC_API_KEY", site: "console.anthropic.com" },
-  openai: { envVar: "OPENAI_API_KEY", site: "platform.openai.com" },
-  gemini: { envVar: "GOOGLE_API_KEY", site: "aistudio.google.com" },
-};
+const CLOUD_MODELS: ModelEntry[] = getCloudModelEntries();
 
 export interface ModelPickerProps {
   currentProvider: string;
@@ -61,7 +50,7 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
         setOllamaStatus("running");
         setOllamaModels(models.map((m) => ({
           provider: "ollama",
-          providerLabel: "Ollama (Local)",
+          providerLabel: getProviderCatalogEntry("ollama")?.label ?? "Ollama (Local)",
           model: m.name,
           label: m.name,
         })));
@@ -159,11 +148,10 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
 
       const entry = allModels[list.selected];
       if (!entry) return;
-      const info = PROVIDER_INFO[entry.provider];
-      if (!info) return;
+      if (!isApiKeyProvider(entry.provider)) return;
 
       setError(null);
-      setProviderApiKey(entry.provider as "anthropic" | "openai" | "gemini", trimmed, config)
+      setProviderApiKey(entry.provider, trimmed, config)
         .then((nextConfig) => saveConfig(nextConfig))
         .then(() => {
           setAvailableProviders((prev) => ({ ...prev, [entry.provider]: true }));
@@ -205,7 +193,9 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
 
   if (step === "entering-key") {
     const entry = allModels[list.selected]!;
-    const info = PROVIDER_INFO[entry.provider]!;
+    if (!isApiKeyProvider(entry.provider)) return null;
+    const providerInfo = getProviderCatalogEntry(entry.provider);
+    if (!providerInfo?.envVar || !providerInfo.site) return null;
 
     const masked = apiKey.value.length > 12
       ? apiKey.value.slice(0, 8) + "*".repeat(apiKey.value.length - 12) + apiKey.value.slice(-4)
@@ -219,8 +209,8 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
       <Box flexDirection="column" paddingX={1}>
         <Text bold>Enter your {entry.providerLabel} API key:</Text>
         <Text color={hex.dimText}> </Text>
-        <Text color={hex.dimText}>Get one from {info.site}</Text>
-        <Text color={hex.dimText}>Saved to macOS Keychain (set {info.envVar} to override)</Text>
+        <Text color={hex.dimText}>Get one from {providerInfo.site}</Text>
+        <Text color={hex.dimText}>Saved to macOS Keychain (set {providerInfo.envVar} to override)</Text>
         <Text color={hex.dimText}> </Text>
         <Box paddingLeft={2}>
           <Text color={hex.brass}>{before}</Text>

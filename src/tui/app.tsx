@@ -25,6 +25,17 @@ import { detectFilePath, copyFileToResources } from "../app/ingest.ts";
 import type { CanvasConnectionStatus } from "../app/canvas-session.ts";
 import { theme } from "./theme.ts";
 
+type VisionMediaType = "image/png" | "image/jpeg" | "image/webp";
+
+function normalizeVisionMediaType(value: string | undefined): VisionMediaType | null {
+  if (!value) return null;
+  const lower = value.toLowerCase();
+  if (lower === "image/png") return "image/png";
+  if (lower === "image/jpeg" || lower === "image/jpg") return "image/jpeg";
+  if (lower === "image/webp") return "image/webp";
+  return null;
+}
+
 export interface AppProps {
   provider: LLMProvider;
   model: string;
@@ -211,9 +222,21 @@ export function App({
               .map((c) => c.text)
               .join("\n");
 
-            const imageBlocks = result.content.filter(
-              (c): c is { type: "image"; data: string; mediaType: "image/png" | "image/jpeg" | "image/webp" } => c.type === "image",
+            const rawImageBlocks = result.content.filter(
+              (c): c is { type: "image"; data: string; mimeType?: string; mediaType?: string } => c.type === "image",
             );
+            const imageBlocks = rawImageBlocks
+              .map((img) => ({
+                data: img.data,
+                mediaType: normalizeVisionMediaType(img.mediaType ?? img.mimeType),
+              }))
+              .filter((img): img is { data: string; mediaType: VisionMediaType } => img.mediaType !== null);
+            const droppedImageTypes = rawImageBlocks
+              .map((img) => img.mediaType ?? img.mimeType)
+              .filter((t): t is string => !!t && normalizeVisionMediaType(t) === null);
+            const resultTextWithWarnings = droppedImageTypes.length > 0
+              ? `${resultText}${resultText ? "\n\n" : ""}[Skipped ${droppedImageTypes.length} unsupported image tool result(s): ${[...new Set(droppedImageTypes)].join(", ")}]`
+              : resultText;
 
             if (imageBlocks.length > 0 && activeProvider.name === "anthropic") {
               // Anthropic supports images natively in tool results
@@ -223,7 +246,7 @@ export function App({
               );
             } else {
               // Text-only tool result for all providers
-              conversation.addToolResult(toolUse.id, resultText, result.isError);
+              conversation.addToolResult(toolUse.id, resultTextWithWarnings, result.isError);
 
               // Re-inject images as a follow-up user message for non-Anthropic providers
               if (imageBlocks.length > 0 && activeProvider.name !== "anthropic") {

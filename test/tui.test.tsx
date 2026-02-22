@@ -318,6 +318,64 @@ describe("App", () => {
     expect(provider.calls).toHaveLength(2);
   });
 
+  test("normalizes tool image mimeType before reinjecting for non-Anthropic providers", async () => {
+    const provider = new MockProvider([
+      {
+        toolCalls: [{ id: "tc1", name: "image_tool", input: {} }],
+        stopReason: "tool_use",
+      },
+      { text: "I can see the image." },
+    ]);
+    const conversation = new Conversation();
+    const broker = new CanvasBroker();
+    const tools = [
+      ...createTools({ getBroker: () => broker, vaultDir: TEST_VAULT, getSaveCanvas: () => null }),
+      {
+        name: "image_tool",
+        description: "Returns an image payload.",
+        inputSchema: { type: "object", properties: {} },
+        handler: async () => ({
+          content: [{ type: "image" as const, data: "aGVsbG8=", mimeType: "image/png" }],
+          isError: false,
+        }),
+      },
+    ];
+
+    const { stdin } = render(
+      <App
+        provider={provider}
+        model="mock-model"
+        config={{}}
+        conversation={conversation}
+        systemPrompt="You are a test tutor."
+        tools={tools}
+        isCanvasConnected={() => false}
+        onSlashCommand={async () => null}
+        onOpenCanvas={async () => ({ url: "http://localhost:3000" })}
+        listCanvases={async () => []}
+        workspaceDir={TEST_VAULT}
+      />,
+    );
+
+    await tick();
+    for (const ch of "show me image") stdin.write(ch);
+    await tick();
+    stdin.write("\r");
+    await tick(260);
+
+    expect(provider.calls).toHaveLength(2);
+    const secondCallMessages = provider.calls[1]!.messages;
+    const userImageMessage = secondCallMessages.find((m) =>
+      m.role === "user" && m.content.some((c) => c.type === "image")
+    );
+    expect(userImageMessage).toBeDefined();
+    const imagePart = userImageMessage!.content.find((c) => c.type === "image");
+    expect(imagePart).toBeDefined();
+    if (imagePart?.type === "image") {
+      expect(imagePart.mediaType).toBe("image/png");
+    }
+  });
+
   test("stops when max tool calls per turn is reached", async () => {
     const { appProps, provider } = createAppProps(
       [

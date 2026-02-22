@@ -15,8 +15,9 @@ import {
   type StreamChunk,
   registerProvider,
 } from "./provider.ts";
+import { getDefaultModelForProvider } from "./catalog.ts";
 
-const DEFAULT_MODEL = "gemini-2.5-flash";
+const DEFAULT_MODEL = getDefaultModelForProvider("gemini") ?? "gemini-2.5-flash";
 
 export class GeminiProvider implements LLMProvider {
   readonly name = "gemini";
@@ -27,7 +28,9 @@ export class GeminiProvider implements LLMProvider {
   private maxTokens: number | undefined;
 
   constructor(model?: string, apiKey?: string, maxTokens?: number) {
-    this.client = new GoogleGenAI({ apiKey: apiKey ?? process.env.GOOGLE_API_KEY });
+    this.client = new GoogleGenAI({
+      apiKey: apiKey ?? process.env.GOOGLE_API_KEY,
+    });
     this.model = model ?? process.env.CLARK_MODEL ?? DEFAULT_MODEL;
     this.maxTokens = maxTokens;
   }
@@ -75,7 +78,6 @@ export class GeminiProvider implements LLMProvider {
       if (!candidate?.content?.parts) continue;
 
       for (const part of candidate.content.parts) {
-        // Gemini 2.5 thinking parts
         if ((part as any).thought === true && part.text) {
           yield { type: "thinking_delta", text: part.text };
           continue;
@@ -196,4 +198,8 @@ export function messagesToGeminiContents(messages: Message[]): Content[] {
 }
 
 // Register this provider
-registerProvider("gemini", (model, options) => new GeminiProvider(model, options?.apiKey, options?.maxTokens));
+registerProvider(
+  "gemini",
+  (model, options) =>
+    new GeminiProvider(model, options?.apiKey, options?.maxTokens),
+);

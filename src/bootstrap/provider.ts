@@ -3,13 +3,8 @@ import { setProviderOptions } from "../llm/provider.ts";
 import type { LLMProvider } from "../llm/provider.ts";
 import type { ClarkConfig } from "../config.ts";
 import { resolveApiKey } from "../config.ts";
+import { getDefaultModelForProvider } from "../llm/catalog.ts";
 import type { CliArgs } from "./args.ts";
-
-const DEFAULT_MODELS: Record<string, string> = {
-  anthropic: "claude-sonnet-4-5-20250929",
-  openai: "gpt-4o",
-  gemini: "gemini-2.5-flash",
-};
 
 export interface ProviderResolution {
   providerName: string;
@@ -23,7 +18,7 @@ export async function resolveProvider(config: ClarkConfig, args: CliArgs): Promi
   let modelName = args.model
     ?? process.env.CLARK_MODEL
     ?? config.model
-    ?? DEFAULT_MODELS[providerName];
+    ?? getDefaultModelForProvider(providerName);
 
   let ollamaVision = false;
 
@@ -68,7 +63,10 @@ export async function resolveProvider(config: ClarkConfig, args: CliArgs): Promi
     }
   }
 
-  modelName ??= "claude-sonnet-4-5-20250929";
+  const resolvedModelName = modelName ?? getDefaultModelForProvider("anthropic");
+  if (!resolvedModelName) {
+    throw new Error("No default model configured for fallback provider \"anthropic\".");
+  }
   const apiKey = await resolveApiKey(providerName, config);
   if (providerName !== "ollama" && !apiKey) {
     throw new Error(`Missing API key for provider "${providerName}". Configure one in onboarding or /model.`);
@@ -81,7 +79,7 @@ export async function resolveProvider(config: ClarkConfig, args: CliArgs): Promi
 
   return {
     providerName,
-    modelName,
-    provider: createProvider(providerName, modelName),
+    modelName: resolvedModelName,
+    provider: createProvider(providerName, resolvedModelName),
   };
 }

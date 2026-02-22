@@ -1,6 +1,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { join } from "node:path";
+import { listProviderNames } from "../llm/catalog.ts";
 
 export interface CliArgs {
   provider?: string;
@@ -20,12 +21,13 @@ export const version: string =
         .catch(() => "0.1.0");
 
 export async function parseCliArgs(argv = process.argv): Promise<CliArgs> {
+  const providers = listProviderNames().join(", ");
   const parsed = await yargs(hideBin(argv))
     .version(version)
     .alias("v", "version")
     .option("provider", {
       type: "string",
-      describe: "LLM provider (anthropic, openai, gemini, or ollama)",
+      describe: `LLM provider (${providers})`,
     })
     .option("model", {
       type: "string",

@@ -10,8 +10,9 @@ import {
   type StreamChunk,
   registerProvider,
 } from "./provider.ts";
+import { getDefaultModelForProvider } from "./catalog.ts";
 
-const DEFAULT_MODEL = "claude-sonnet-4-5-20250929";
+const DEFAULT_MODEL = getDefaultModelForProvider("anthropic") ?? "claude-sonnet-4-5-20250929";
 const DEFAULT_MAX_TOKENS = 4096;
 const THINKING_BUDGET = 10000;
 

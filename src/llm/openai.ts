@@ -10,8 +10,9 @@ import {
   type StreamChunk,
   registerProvider,
 } from "./provider.ts";
+import { getDefaultModelForProvider } from "./catalog.ts";
 
-const DEFAULT_MODEL = "gpt-4o";
+const DEFAULT_MODEL = getDefaultModelForProvider("openai") ?? "gpt-4o";
 
 export class OpenAIProvider implements LLMProvider {
   readonly name = "openai";

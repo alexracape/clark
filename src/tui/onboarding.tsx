@@ -5,6 +5,7 @@
 import React, { useState } from "react";
 import { Box, Text, useInput, useApp } from "ink";
 import { loadConfig, saveConfig, setProviderApiKey, type ClarkConfig } from "../config.ts";
+import { isApiKeyProvider, PROVIDER_CATALOG } from "../llm/catalog.ts";
 import { scaffoldLibrary } from "../library.ts";
 import { getWorkspaceDir } from "../workspace.ts";
 import { useLineEditor } from "./primitives/use-line-editor.ts";
@@ -34,14 +35,15 @@ interface ProviderOption {
   id: string;
   name: string;
   envVar: string;
+  site?: string;
 }
 
-const PROVIDERS: ProviderOption[] = [
-  { id: "anthropic", name: "Anthropic (Claude)", envVar: "ANTHROPIC_API_KEY" },
-  { id: "openai", name: "OpenAI (GPT-4o)", envVar: "OPENAI_API_KEY" },
-  { id: "gemini", name: "Google (Gemini)", envVar: "GOOGLE_API_KEY" },
-  { id: "ollama", name: "Ollama (Local)", envVar: "" },
-];
+const PROVIDERS: ProviderOption[] = PROVIDER_CATALOG.map((provider) => ({
+  id: provider.id,
+  name: provider.label,
+  envVar: provider.envVar ?? "",
+  site: provider.site,
+}));
 
 export interface OnboardingProps {
   onComplete: (config: ClarkConfig) => void;
@@ -126,7 +128,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         setError(null);
         loadConfig()
           .then((current) => {
-            if (provider.id !== "anthropic" && provider.id !== "openai" && provider.id !== "gemini") {
+            if (!isApiKeyProvider(provider.id)) {
               throw new Error(`Unsupported provider: ${provider.id}`);
             }
             return setProviderApiKey(provider.id, trimmed, current);
@@ -256,7 +258,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         <Text bold>Enter your {provider.name} API key:</Text>
         <Text color={hex.dimText}> </Text>
         <Text color={hex.dimText}>
-          You can get one from {provider.id === "anthropic" ? "console.anthropic.com" : provider.id === "gemini" ? "aistudio.google.com" : "platform.openai.com"}
+          You can get one from {provider.site ?? "your provider dashboard"}
         </Text>
         <Text color={hex.dimText}>Saved to macOS Keychain (set {provider.envVar} to override)</Text>
         <Text color={hex.dimText}> </Text>
