@@ -47,6 +47,7 @@ export const BUILTIN_COMMANDS: CommandEntry[] = [
   { name: "model", description: "Switch model and provider" },
   { name: "context", description: "Show context window usage" },
   { name: "compact", description: "Summarize conversation to save context" },
+  { name: "feedback", description: "Send feedback to the developer" },
   { name: "clear", description: "Clear conversation history" },
   { name: "exit", description: "Exit Clark" },
   { name: "quit", description: "Exit Clark" },

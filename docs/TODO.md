@@ -25,9 +25,9 @@ Some future enhancements and things that need fixing, organized into parallel ex
   - Requires CI/CD with Linux/Windows runners or local test devices
   - Acceptance: cross-platform secret storage verified on all target platforms
   
-- **Add /feedback command**
-  - Allow users to submit feedback and report issues
-  - Figure out where to store this information
+- [x] **Add /feedback command**
+  - Allow users to submit feedback and report issues via Discord webhook
+  - Implemented with hardcoded webhook URL for zero-config user experience
 
 - **Canvas UI polish and theming pass**
   - Consolidate color/spacing tokens used by canvas-specific components.

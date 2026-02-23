@@ -206,9 +206,12 @@ describe("Chat", () => {
 
     const { lastFrame } = render(<Chat messages={messages} />);
     const frame = lastFrame()!;
+    const frameWithoutAnsi = frame.replace(/\u001b\[[0-9;]*m/g, "");
 
     expect(frame).toContain("arxiv.org (https://arxiv.org)");
-    expect(frame).not.toContain("38;2;");
+    // Broken ANSI leaks show up as orphaned truecolor fragments (missing ESC),
+    // e.g. "38;2;232;220;202m" or "[38;2;232;220;202m".
+    expect(frameWithoutAnsi).not.toMatch(/\[?38;2;\d+;\d+;\d+m/);
   });
 });
 

@@ -4,6 +4,10 @@ import type { Conversation } from "../llm/messages.ts";
 import type { LLMProvider } from "../llm/provider.ts";
 import type { CanvasSessionManager } from "./canvas-session.ts";
 import { expandPath } from "../library.ts";
+import { version } from "../bootstrap/args.ts";
+
+// Discord webhook for feedback collection
+const FEEDBACK_WEBHOOK_URL = "https://discordapp.com/api/webhooks/1475314609127817408/u66q9H6KXWjNx9vZRWfjrF8yuF1JYgu9ImOG9gf29BZBTTy6Y7AG5Y9UNdYu6nfbuhHa";
 
 export interface CommandRouterOptions {
   canvas: CanvasSessionManager;
@@ -80,6 +84,7 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
           "  /model             Switch model and provider",
           "  /context           Show context window usage",
           "  /compact           Summarize conversation to save context",
+          "  /feedback <msg>    Send feedback to the developer",
           "  /clear             Clear conversation history",
           "  /exit or /quit     Exit Clark",
           "  Ctrl+C             Exit",
@@ -167,6 +172,58 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
           return `Conversation compacted. ~${(before - after).toLocaleString()} tokens reclaimed.\n\nSummary preserved:\n${summary}`;
         } catch (err) {
           return `Compact failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+
+      case "feedback": {
+        const message = args.trim();
+        if (!message) {
+          return "Usage: /feedback <your message>\nExample: /feedback Canvas export is slow on M1 Macs";
+        }
+
+        try {
+          // Collect system context (helps with debugging)
+          const systemContext = {
+            clarkVersion: version,
+            platform: process.platform,
+            arch: process.arch,
+            bunVersion: Bun.version,
+            provider: provider.constructor.name,
+          };
+
+          // Format Discord message with embed for better readability
+          const payload = {
+            embeds: [{
+              title: "New Feedback",
+              description: message,
+              color: 0x5865F2, // Discord blurple
+              fields: [
+                { name: "Clark Version", value: systemContext.clarkVersion, inline: true },
+                { name: "Platform", value: `${systemContext.platform} (${systemContext.arch})`, inline: true },
+                { name: "Bun Version", value: systemContext.bunVersion, inline: true },
+                { name: "LLM Provider", value: systemContext.provider, inline: true },
+              ],
+              timestamp: new Date().toISOString(),
+            }],
+          };
+
+          // Send to Discord with 5-second timeout
+          const res = await fetch(FEEDBACK_WEBHOOK_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(5000),
+          });
+
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+
+          return "Feedback sent successfully. Thank you!";
+        } catch (err) {
+          // Graceful degradation - suggest alternative if webhook fails
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          return `Failed to send feedback: ${errorMsg}\n\nAlternative: Please report this at https://github.com/alexracape/clark/issues`;
         }
       }
 
