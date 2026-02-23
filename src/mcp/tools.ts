@@ -73,11 +73,11 @@ export interface ToolsConfig {
 }
 
 /**
- * Find a transcription file for a given source file (PDF or image).
+ * Find a transcript file for a given source file (PDF or image).
  * Checks common locations based on vault conventions.
- * Returns the relative path to the transcription if found, null otherwise.
+ * Returns the relative path to the transcript if found, null otherwise.
  */
-async function findTranscription(
+async function findTranscript(
   sourcePath: string,
   absoluteSourcePath: string,
   vaultDir: string,
@@ -91,11 +91,11 @@ async function findTranscription(
     return relative(vaultDir, sameDirPath);
   }
 
-  // Location 2: Clark/Transcriptions/ (default convention)
-  // e.g., any/path/lecture.pdf -> Clark/Transcriptions/lecture.md
-  const transcriptionsDirPath = join(vaultDir, "Clark", "Transcriptions", `${sourceBasename}.md`);
-  if (await Bun.file(transcriptionsDirPath).exists()) {
-    return relative(vaultDir, transcriptionsDirPath);
+  // Location 2: Clark/Transcripts/ (default convention)
+  // e.g., any/path/lecture.pdf -> Clark/Transcripts/lecture.md
+  const transcriptsDirPath = join(vaultDir, "Clark", "Transcripts", `${sourceBasename}.md`);
+  if (await Bun.file(transcriptsDirPath).exists()) {
+    return relative(vaultDir, transcriptsDirPath);
   }
 
   return null;
@@ -115,7 +115,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
     {
       name: "read_file",
       description:
-        "Read a file from the student's notes vault. Markdown files return text content with a list of resolved wikilinks. PDFs return extracted text (or a markdown transcription if available). Images return the image for visual analysis (or a markdown transcription if available). When a transcription exists for a PDF or image, it will be used automatically.",
+        "Read a file from the student's notes vault. Markdown files return text content with a list of resolved wikilinks. PDFs return extracted text (or a markdown transcript if available). Images return the image for visual analysis (or a markdown transcript if available). When a transcript exists for a PDF or image, it will be used automatically.",
       inputSchema: {
         type: "object",
         properties: {
@@ -147,24 +147,24 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         }
 
         try {
-          // Check for transcription if this is a PDF or image
+          // Check for transcript if this is a PDF or image
           if (isPDFFile(absolutePath) || isImageFile(absolutePath)) {
-            const transcriptionPath = await findTranscription(
+            const transcriptPath = await findTranscript(
               inputPath,
               absolutePath,
               vaultDir,
             );
-            if (transcriptionPath) {
-              const transcriptionAbsPath = join(vaultDir, transcriptionPath);
-              const text = await Bun.file(transcriptionAbsPath).text();
+            if (transcriptPath) {
+              const transcriptAbsPath = join(vaultDir, transcriptPath);
+              const text = await Bun.file(transcriptAbsPath).text();
               const links = extractWikilinks(text);
               const footer = await buildLinkFooter(links, vaultDir);
-              const note = `\n\n[Note: Read from transcription at ${transcriptionPath} (source: ${inputPath})]`;
+              const note = `\n\n[Note: Read from transcript at ${transcriptPath} (source: ${inputPath})]`;
               return {
                 content: [
                   {
                     type: "text",
-                    text: wrapFileContent(transcriptionPath, text + footer + note),
+                    text: wrapFileContent(transcriptPath, text + footer + note),
                   },
                 ],
                 isError: false,

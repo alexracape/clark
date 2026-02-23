@@ -414,34 +414,118 @@
                 <div class="step">
                     <div class="step-number">Step 1</div>
                     <h2>Install Clark</h2>
-                    <p>
-                        Run the install script to download Clark and add it to
-                        your path. It requires
-                        <a
-                            href="https://bun.sh"
-                            style="color: var(--lamp-green)"
-                            >Bun</a
-                        >
-                        as the runtime.
-                    </p>
+                    <p>Run the install script to download Clark</p>
                     <div class="code-block">
                         <span class="prompt">$ </span>curl -fsSL
                         https://raw.githubusercontent.com/alexracape/clark/main/install.sh
                         | bash
                     </div>
                     <p>
-                        Once installed, navigate to your project or course
-                        folder and start Clark:
+                        Clark works with both existing notes and new projects.
+                        Choose your approach:
+                    </p>
+
+                    <h3
+                        style="
+                            font-size: 20px;
+                            margin: 16px 0 8px;
+                            color: var(--lamp-green);
+                            font-weight: 600;
+                        "
+                    >
+                        Option 1: Use with existing notes
+                    </h3>
+                    <p>
+                        Navigate to your existing course or project folder and
+                        start Clark. Your markdown files will automatically
+                        become part of the conversation.
                     </p>
                     <div class="code-block">
-                        <span class="prompt">$ </span>cd ~/cs161<br />
+                        <span class="prompt">$ </span>cd
+                        ~/Documents/cs161-notes<br />
                         <span class="prompt">$ </span>clark
+                    </div>
+
+                    <h3
+                        style="
+                            font-size: 20px;
+                            margin: 24px 0 8px;
+                            color: var(--lamp-green);
+                            font-weight: 600;
+                        "
+                    >
+                        Option 2: Start a new workspace
+                    </h3>
+                    <p>
+                        Create a fresh directory for your notes and learning.
+                        Clark will automatically set up a folder structure to
+                        get you started.
+                    </p>
+                    <div class="code-block">
+                        <span class="prompt">$ </span>mkdir ~/Library<br />
+                        <span class="prompt">$ </span>cd ~/Library<br />
+                        <span class="prompt">$ </span>clark
+                    </div>
+
+                    <div class="tip">
+                        <strong>Tip:</strong> When you start Clark in an empty
+                        directory, it automatically creates folders for Notes/,
+                        Resources/, and Templates/, plus a Clark/ folder for
+                        canvas files and configuration.
                     </div>
                 </div>
 
-                <!-- Step 2: Set up a provider -->
+                <!-- Step 2: Understanding Your Workspace -->
                 <div class="step">
                     <div class="step-number">Step 2</div>
+                    <h2>Understanding Your Workspace</h2>
+                    <p>
+                        Clark organizes your work into a simple folder
+                        structure. If you start in an empty directory, Clark
+                        creates:
+                    </p>
+                    <pre
+                        class="code-block"
+                        style="
+                            font-family: monospace;
+                            line-height: 1.5;
+                            background: #1a1a1a;
+                            padding: 20px;
+                            border-radius: 8px;
+                            color: #d1d1d1;
+                            overflow-x: auto;
+                        "
+                    >
+                    <span style="color: var(--brass)">~/Library/</span>
+                    ├── <span style="color: var(--text-blue)">Notes/</span> <span class="comment" style="opacity: 0.6;"># Your markdown notes</span>
+                    ├── <span style="color: var(--text-blue)">Resources/</span>
+                    │   ├── <span style="color: var(--text-blue)">PDFs/</span> <span class="comment" style="opacity: 0.6;"># Course materials</span>
+                    │   ├── <span style="color: var(--text-blue)">Images/</span> <span class="comment" style="opacity: 0.6;"># Diagrams, screenshots</span>
+                    ├── <span style="color: var(--text-blue)">Templates/</span> <span class="comment" style="opacity: 0.6;"># Note templates</span>
+                    └── <span style="color: var(--text-blue)">Clark/</span>
+                        ├── <span style="color: var(--text-green)">CLARK.md</span> <span class="comment" style="opacity: 0.6;"># Custom instructions</span>
+                        ├── <span style="color: var(--text-blue)">Canvas/</span> <span class="comment" style="opacity: 0.6;"># tldraw files</span>
+                        └── <span style="color: var(--text-blue)">Transcripts/</span> <span class="comment" style="opacity: 0.6;"># OCR'd PDFs</span>
+                        └── <span style="color: var(--text-blue)">Structures/</span> <span class="comment" style="opacity: 0.6;"># Reusable templates</span>
+                    </pre>
+
+                    <p>
+                        <strong>If you already have notes</strong>, they stay
+                        exactly where they are. Clark just adds the
+                        <span class="code-inline">Clark/</span> folder for its
+                        configuration and canvas files.
+                    </p>
+
+                    <div class="tip">
+                        <strong>Tip:</strong> Clark automatically reads markdown
+                        files in your workspace. For best results, organize
+                        notes by linking them together with [[wikilinks]].
+                    </div>
+                </div>
+
+                <!-- Step 3 Set up a provider -->
+                <div class="step">
+                    <div class="step-number">Step 3</div>
                     <h2>Choose a Provider</h2>
                     <p>
                         On first launch, Clark will guide you through picking an
@@ -491,9 +575,9 @@
                     </div>
                 </div>
 
-                <!-- Step 3: Asking questions -->
+                <!-- Step 4: Asking questions -->
                 <div class="step">
-                    <div class="step-number">Step 3</div>
+                    <div class="step-number">Step 4</div>
                     <h2>Asking Questions</h2>
                     <p>
                         Type your question in the input field and press Enter.
@@ -515,17 +599,11 @@
                             >Good question! Have you ever seen a function</span
                         ><br />
                         <span
-                            style="
-                                color: var(--text-white);
-                                margin-left: 52px;
-                            "
+                            style="color: var(--text-white); margin-left: 52px"
                             >that calls itself? What do you think would</span
                         ><br />
                         <span
-                            style="
-                                color: var(--text-white);
-                                margin-left: 52px;
-                            "
+                            style="color: var(--text-white); margin-left: 52px"
                             >happen if it kept going forever?</span
                         >
                     </div>
@@ -536,22 +614,20 @@
                     </div>
                 </div>
 
-                <!-- Step 4: Slash commands -->
+                <!-- Step 5: Slash commands -->
                 <div class="step">
-                    <div class="step-number">Step 4</div>
+                    <div class="step-number">Step 5</div>
                     <h2>Slash Commands</h2>
                     <p>
-                        Clark supports a set of slash commands for quick actions.
-                        Type
+                        Clark supports a set of slash commands for quick
+                        actions. Type
                         <span class="code-inline">/</span> and press Tab to see
                         suggestions.
                     </p>
                     <ul class="command-list">
                         <li>
                             <span class="cmd">/help</span>
-                            <span class="desc"
-                                >See all available commands</span
-                            >
+                            <span class="desc">See all available commands</span>
                         </li>
                         <li>
                             <span class="cmd">/model</span>
@@ -567,9 +643,7 @@
                         </li>
                         <li>
                             <span class="cmd">/export</span>
-                            <span class="desc"
-                                >Save your canvas as a PDF</span
-                            >
+                            <span class="desc">Save your canvas as a PDF</span>
                         </li>
                         <li>
                             <span class="cmd">/context</span>
@@ -578,17 +652,21 @@
                             >
                         </li>
                         <li>
-                            <span class="cmd">/clear</span>
+                            <span class="cmd">/feedback</span>
                             <span class="desc"
-                                >Start a fresh conversation</span
+                                >Send feedback so we can improve</span
                             >
+                        </li>
+                        <li>
+                            <span class="cmd">/clear</span>
+                            <span class="desc">Start a fresh conversation</span>
                         </li>
                     </ul>
                 </div>
 
-                <!-- Step 5: Adding context -->
+                <!-- Step 6: Adding context -->
                 <div class="step">
-                    <div class="step-number">Step 5</div>
+                    <div class="step-number">Step 6</div>
                     <h2>Adding Context</h2>
                     <p>
                         You can share files with Clark by pasting paths directly
@@ -626,9 +704,9 @@
                     </div>
                 </div>
 
-                <!-- Step 6: Canvas -->
+                <!-- Step 7: Canvas -->
                 <div class="step">
-                    <div class="step-number">Step 6</div>
+                    <div class="step-number">Step 7</div>
                     <h2>Canvas and Handwriting</h2>
                     <p>
                         Clark includes a tldraw canvas that you can open on your
@@ -664,6 +742,127 @@
                     </div>
                 </div>
 
+                <!-- Advanced Tips -->
+                <div class="step">
+                    <div class="step-number">Advanced</div>
+                    <h2>Customization & Advanced Features</h2>
+                    <p>
+                        Once you're comfortable with the basics, explore these
+                        customization options:
+                    </p>
+
+                    <h3
+                        style="
+                            font-size: 20px;
+                            margin: 16px 0 8px;
+                            color: var(--lamp-green);
+                            font-weight: 600;
+                        "
+                    >
+                        Customize with CLARK.md
+                    </h3>
+                    <p>
+                        The <span class="code-inline">Clark/CLARK.md</span> file
+                        lets you add custom instructions specific to your
+                        workspace. Tell Clark about your course, learning goals,
+                        or preferred teaching style.
+                    </p>
+                    <div class="code-block">
+                        <span class="comment"># Clark/CLARK.md</span>
+
+                        I'm taking CS229 (Machine Learning) taught by Andrew Ng.
+                        Focus on intuition over equations. When I ask about
+                        algorithms, help me understand the "why" before the
+                        "how".
+                    </div>
+
+                    <h3
+                        style="
+                            font-size: 20px;
+                            margin: 24px 0 8px;
+                            color: var(--lamp-green);
+                            font-weight: 600;
+                        "
+                    >
+                        Create Structure Templates
+                    </h3>
+                    <p>
+                        Structure files in
+                        <span class="code-inline">Clark/Structures/</span>
+                        define reusable templates for common note types. Clark
+                        comes with templates for Papers, Classes, Problem Sets,
+                        and more.
+                    </p>
+                    <p>
+                        You can edit existing structures or create your own.
+                        Each structure file defines how Clark should help you
+                        create that type of note.
+                    </p>
+                    <div class="code-block">
+                        <span class="comment"
+                            ># Example: Ask Clark to create a new Paper
+                            structure</span
+                        >
+                        <span style="color: var(--text-green); font-weight: 500"
+                            >you</span
+                        >
+                        <span style="color: var(--text-white)"
+                            >Create a paper for "Attention Is All You
+                            Need"</span
+                        >
+
+                        <span style="color: var(--text-blue); font-weight: 500"
+                            >clark</span
+                        >
+                        <span style="color: var(--text-white)"
+                            >I'll create a Paper structure for that. What's the
+                            main idea you want to capture?</span
+                        >
+                    </div>
+
+                    <h3
+                        style="
+                            font-size: 20px;
+                            margin: 24px 0 8px;
+                            color: var(--lamp-green);
+                            font-weight: 600;
+                        "
+                    >
+                        Organize Your Notes
+                    </h3>
+                    <p>
+                        Clark reads all markdown files in your workspace
+                        automatically. For best results:
+                    </p>
+                    <ul class="uses-list">
+                        <li>
+                            Use subdirectories to organize notes by topic or
+                            week
+                        </li>
+                        <li>
+                            Use wikilinks
+                            <span class="code-inline">[[like this]]</span> to
+                            reference other notes
+                        </li>
+                        <li>
+                            Keep course materials in
+                            <span class="code-inline">Resources/PDFs/</span>
+                        </li>
+                        <li>
+                            Drop PDFs into the terminal to auto-transcribe them
+                        </li>
+                    </ul>
+
+                    <div class="tip">
+                        <strong>Tip:</strong> Type
+                        <span class="code-inline"
+                            >/feedback &lt;message&gt;</span
+                        >
+                        anytime to send suggestions or report issues. Your
+                        feedback helps us improve Clark.
+                    </div>
+                </div>
+
                 <!-- Done -->
                 <div class="step">
                     <div class="step-number">Ready to go</div>
@@ -681,6 +880,33 @@
                         <span class="code-inline">/tutorial</span> to replay the
                         interactive walkthrough inside the TUI.
                     </p>
+
+                    <p style="margin-top: 16px">
+                        <strong>Need more help?</strong>
+                    </p>
+                    <ul class="uses-list">
+                        <li>
+                            Check out the
+                            <a
+                                href="https://github.com/alexracape/clark"
+                                style="
+                                    color: var(--lamp-green);
+                                    text-decoration: none;
+                                "
+                                >GitHub repository</a
+                            >
+                            for detailed documentation
+                        </li>
+                        <li>
+                            Use <span class="code-inline">/feedback</span> to
+                            send suggestions or report issues
+                        </li>
+                        <li>
+                            Browse
+                            <span class="code-inline">Clark/Structures/</span>
+                            for examples of custom templates
+                        </li>
+                    </ul>
                 </div>
             </div>
         </main>

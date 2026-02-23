@@ -115,7 +115,7 @@ describe("scaffoldLibrary", () => {
     const clarkDirs = await readdir(join(libPath, "Clark"));
     expect(clarkDirs).toContain("Canvas");
     expect(clarkDirs).toContain("Structures");
-    expect(clarkDirs).toContain("Transcriptions");
+    expect(clarkDirs).toContain("Transcripts");
     expect(clarkDirs).toContain("CLARK.md");
   });
 
@@ -210,7 +210,7 @@ describe("scaffoldLibrary", () => {
     expect(content).toContain("MyNotes/");
     expect(content).toContain("Papers/");
     expect(content).not.toContain(".git");
-    expect(content).toContain("Clark/Transcriptions/");
+    expect(content).toContain("Clark/Transcripts/");
   });
 
   test("generates CLARK.md with default layout for empty workspace", async () => {
@@ -221,7 +221,7 @@ describe("scaffoldLibrary", () => {
     expect(content).toContain("Notes/");
     expect(content).toContain("Resources/");
     expect(content).toContain("Templates/");
-    expect(content).toContain("Clark/Transcriptions/");
+    expect(content).toContain("Clark/Transcripts/");
   });
 
   test("does not overwrite existing CLARK.md", async () => {

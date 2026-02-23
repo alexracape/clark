@@ -250,7 +250,7 @@ describe("MCP Tools", () => {
       expect(result.isError).toBe(true);
     });
 
-    test("auto-detects and uses transcription for PDF", async () => {
+    test("auto-detects and uses transcript for PDF", async () => {
       const tool = findTool("read_file");
       const result = await tool.handler({ path: "Resources/PDFs/lecture_1.pdf" });
       expect(result.isError).toBe(false);
@@ -258,7 +258,7 @@ describe("MCP Tools", () => {
       const text = result.content[0] as { type: "text"; text: string };
       expect(text.text).toContain("Lecture 1: Introduction to Machine Learning");
       expect(text.text).toContain("Supervised learning");
-      expect(text.text).toContain("[Note: Read from transcription at Clark/Transcriptions/lecture_1.md");
+      expect(text.text).toContain("[Note: Read from transcript at Clark/Transcripts/lecture_1.md");
       expect(text.text).toContain("(source: Resources/PDFs/lecture_1.pdf)]");
     });
   });

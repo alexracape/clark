@@ -7,7 +7,8 @@ import { expandPath } from "../library.ts";
 import { version } from "../bootstrap/args.ts";
 
 // Discord webhook for feedback collection
-const FEEDBACK_WEBHOOK_URL = "https://discordapp.com/api/webhooks/1475314609127817408/u66q9H6KXWjNx9vZRWfjrF8yuF1JYgu9ImOG9gf29BZBTTy6Y7AG5Y9UNdYu6nfbuhHa";
+const FEEDBACK_WEBHOOK_URL =
+  "https://discordapp.com/api/webhooks/1475314609127817408/u66q9H6KXWjNx9vZRWfjrF8yuF1JYgu9ImOG9gf29BZBTTy6Y7AG5Y9UNdYu6nfbuhHa";
 
 export interface CommandRouterOptions {
   canvas: CanvasSessionManager;
@@ -19,7 +20,14 @@ export interface CommandRouterOptions {
 }
 
 export function createSlashCommandHandler(options: CommandRouterOptions) {
-  const { canvas, getExportDir, setExportDir, persistExportDir, conversation, provider } = options;
+  const {
+    canvas,
+    getExportDir,
+    setExportDir,
+    persistExportDir,
+    conversation,
+    provider,
+  } = options;
 
   async function pathIsDirectory(path: string): Promise<boolean> {
     try {
@@ -30,7 +38,10 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
     }
   }
 
-  async function resolveExportTarget(args: string, canvasName: string): Promise<{ outputPath: string; nextExportDir: string | null }> {
+  async function resolveExportTarget(
+    args: string,
+    canvasName: string,
+  ): Promise<{ outputPath: string; nextExportDir: string | null }> {
     const trimmed = args.trim();
     if (!trimmed) {
       const exportDir = getExportDir();
@@ -72,7 +83,10 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
     };
   }
 
-  return async function handleSlashCommand(name: string, args: string): Promise<string | null> {
+  return async function handleSlashCommand(
+    name: string,
+    args: string,
+  ): Promise<string | null> {
     switch (name) {
       case "help": {
         const lines = [
@@ -84,7 +98,7 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
           "  /model             Switch model and provider",
           "  /context           Show context window usage",
           "  /compact           Summarize conversation to save context",
-          "  /feedback <msg>    Send feedback to the developer",
+          "  /feedback <msg>    Send feedback on what we can improve",
           "  /clear             Clear conversation history",
           "  /exit or /quit     Exit Clark",
           "  Ctrl+C             Exit",
@@ -110,7 +124,10 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
 
         try {
           const { exportPDFToFile } = await import("../canvas/pdf-export.ts");
-          const { outputPath, nextExportDir } = await resolveExportTarget(args, active.name);
+          const { outputPath, nextExportDir } = await resolveExportTarget(
+            args,
+            active.name,
+          );
           const { pages } = await canvas.exportPages();
           await exportPDFToFile(pages, outputPath);
           let persistenceWarning = "";
@@ -127,7 +144,10 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
 
           return `PDF exported to: ${outputPath}${persistenceWarning}`;
         } catch (err) {
-          if (err instanceof Error && err.message === "No iPad client connected") {
+          if (
+            err instanceof Error &&
+            err.message === "No iPad client connected"
+          ) {
             return "Export failed: no canvas client is currently connected.\nOpen the canvas URL in a browser (e.g. on your iPad) and keep it connected while running /export.";
           }
           return `Export failed: ${err instanceof Error ? err.message : String(err)}`;
@@ -153,13 +173,25 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
           const msgs = conversation.getMessages();
           const textParts = msgs
             .flatMap((m) => m.content)
-            .filter((c): c is { type: "text"; text: string } => c.type === "text")
+            .filter(
+              (c): c is { type: "text"; text: string } => c.type === "text",
+            )
             .map((c) => c.text);
           const transcript = textParts.join("\n---\n").slice(0, 8000);
 
           let summary = "";
           for await (const chunk of provider.chat(
-            [{ role: "user", content: [{ type: "text", text: `Summarize this tutoring conversation in 2-3 concise paragraphs. Focus on the topics discussed, key concepts, and where the student left off:\n\n${transcript}` }] }],
+            [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: `Summarize this tutoring conversation in 2-3 concise paragraphs. Focus on the topics discussed, key concepts, and where the student left off:\n\n${transcript}`,
+                  },
+                ],
+              },
+            ],
             [],
             "You are a helpful assistant that summarizes conversations concisely.",
           )) {
@@ -193,18 +225,36 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
 
           // Format Discord message with embed for better readability
           const payload = {
-            embeds: [{
-              title: "New Feedback",
-              description: message,
-              color: 0x5865F2, // Discord blurple
-              fields: [
-                { name: "Clark Version", value: systemContext.clarkVersion, inline: true },
-                { name: "Platform", value: `${systemContext.platform} (${systemContext.arch})`, inline: true },
-                { name: "Bun Version", value: systemContext.bunVersion, inline: true },
-                { name: "LLM Provider", value: systemContext.provider, inline: true },
-              ],
-              timestamp: new Date().toISOString(),
-            }],
+            embeds: [
+              {
+                title: "New Feedback",
+                description: message,
+                color: 0x5865f2, // Discord blurple
+                fields: [
+                  {
+                    name: "Clark Version",
+                    value: systemContext.clarkVersion,
+                    inline: true,
+                  },
+                  {
+                    name: "Platform",
+                    value: `${systemContext.platform} (${systemContext.arch})`,
+                    inline: true,
+                  },
+                  {
+                    name: "Bun Version",
+                    value: systemContext.bunVersion,
+                    inline: true,
+                  },
+                  {
+                    name: "LLM Provider",
+                    value: systemContext.provider,
+                    inline: true,
+                  },
+                ],
+                timestamp: new Date().toISOString(),
+              },
+            ],
           };
 
           // Send to Discord with 5-second timeout

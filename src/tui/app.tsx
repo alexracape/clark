@@ -343,7 +343,7 @@ export function App({
           `I've added a file to my vault: ${result.fileName} (${result.fileSize}, saved to ${result.destPath}). ` +
           `Please check what type of file it is and process it appropriately — ` +
           `use read_file to inspect it, and if it's a scanned PDF with little extractable text, ` +
-          `use transcribe_pdf to OCR it. Save any transcriptions where they make sense based on my vault structure.`,
+          `use transcribe_pdf to OCR it. Save any transcripts where they make sense based on my vault structure.`,
         );
         await runConversationTurn();
       } catch (err) {

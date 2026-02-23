@@ -41,13 +41,16 @@ type InputKeyLike = {
 /** Built-in commands (always available) */
 export const BUILTIN_COMMANDS: CommandEntry[] = [
   { name: "help", description: "Show available commands" },
-  { name: "tutorial", description: "Interactive tutorial for first-time users" },
+  {
+    name: "tutorial",
+    description: "Interactive tutorial for first-time users",
+  },
   { name: "canvas", description: "Open or show active canvas" },
   { name: "export", description: "Export canvas as A4 PDF" },
   { name: "model", description: "Switch model and provider" },
   { name: "context", description: "Show context window usage" },
   { name: "compact", description: "Summarize conversation to save context" },
-  { name: "feedback", description: "Send feedback to the developer" },
+  { name: "feedback", description: "Send feedback on what we can improve" },
   { name: "clear", description: "Clear conversation history" },
   { name: "exit", description: "Exit Clark" },
   { name: "quit", description: "Exit Clark" },
@@ -143,7 +146,10 @@ export function isShiftEnterInput(input: string, key: InputKeyLike): boolean {
  * Resolve cursor line/column in a multiline string.
  * Cursor positions at newline boundaries map to the next line (column 0).
  */
-export function getMultilineCursorPosition(value: string, cursor: number): { line: number; column: number } {
+export function getMultilineCursorPosition(
+  value: string,
+  cursor: number,
+): { line: number; column: number } {
   const clampedCursor = Math.max(0, Math.min(cursor, value.length));
   const lines = value.split("\n");
   let lineStart = 0;
@@ -195,7 +201,10 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
     return COMMANDS.filter((c) => c.name.startsWith(partial));
   }, [value]);
 
-  const exportPathSuggestions = useMemo(() => getExportPathSuggestions(value), [value]);
+  const exportPathSuggestions = useMemo(
+    () => getExportPathSuggestions(value),
+    [value],
+  );
 
   const hintMode = useMemo<"commands" | "path" | null>(() => {
     if (matchingCommands.length > 0) return "commands";
@@ -203,7 +212,8 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
     return null;
   }, [matchingCommands, exportPathSuggestions]);
 
-  const showHints = hintMode !== null && !disabled && !browsingHistoryRef.current;
+  const showHints =
+    hintMode !== null && !disabled && !browsingHistoryRef.current;
   const hintItems = useMemo(() => {
     if (hintMode === "commands") {
       return matchingCommands.map((cmd) => ({
@@ -286,7 +296,6 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
     }
 
     if (key.return) {
-
       // If hints are showing, submit the highlighted command
       if (showHints && hintMode === "commands" && !val.includes(" ")) {
         const selected = matchingCommands[hintIndex];
@@ -391,7 +400,8 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
 
   // Split into lines for multiline rendering
   const lines = value.split("\n");
-  const { line: currentLine, column: cursorColumn } = getMultilineCursorPosition(value, cursor);
+  const { line: currentLine, column: cursorColumn } =
+    getMultilineCursorPosition(value, cursor);
 
   return (
     <Box flexDirection="column">
@@ -410,7 +420,8 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
           ))}
           <Box>
             <Text>
-              {theme.dim("  tab")} complete  {theme.dim("↑↓")} navigate  {theme.dim("esc")} dismiss
+              {theme.dim("  tab")} complete {theme.dim("↑↓")} navigate{" "}
+              {theme.dim("esc")} dismiss
             </Text>
           </Box>
         </Box>
@@ -428,7 +439,8 @@ export function Input({ onSubmit, disabled = false, history }: InputProps) {
         <Box flexDirection="column" paddingX={1}>
           {lines.map((line, i) => {
             const isCurrentLine = i === currentLine;
-            const linePrefix = i === 0 ? componentTheme.input.prompt("> ") : "  ";
+            const linePrefix =
+              i === 0 ? componentTheme.input.prompt("> ") : "  ";
 
             if (isCurrentLine) {
               const lineBefore = line.slice(0, cursorColumn);

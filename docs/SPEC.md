@@ -1,5 +1,7 @@
 # Clark — Socratic Tutoring Assistant
 
+**Documentation:** [alex.racape.com/clark](https://alex.racape.com/clark)
+
 ## Overview
 
 Clark is a terminal-based Socratic tutoring assistant that helps students work through homework and problem sets. Instead of giving answers, Clark asks guiding questions — like a good TA would. Its key differentiator is seamless support for **handwritten work**: students write on an iPad via a shared tldraw canvas while Clark reads and responds to their progress from the TUI on their Mac.
@@ -80,11 +82,13 @@ This is the simplest approach and always works during active tutoring sessions (
 
 **Slash commands (built-in):**
 - `/help` — Show available commands
+- `/tutorial` — Interactive tutorial for first-time users
 - `/canvas` — Open or show active canvas (shows canvas picker if none open)
 - `/export [path]` — Export canvas pages as A4 PDF (default: `<pdfExportDir>/<canvasName>.pdf`, fallback `./<canvasName>.pdf`). Supports tab-completion for directory paths.
 - `/model` — Switch model and provider (shows interactive picker with API key entry for unconfigured providers)
 - `/context` — Show context window usage breakdown (10x10 color-coded grid with per-category token estimates)
 - `/compact` — Summarize conversation to reclaim context tokens
+- `/feedback <message>` — Send feedback to the developer via Discord webhook (includes system context: Clark version, platform, Bun version, LLM provider)
 - `/clear` — Clear conversation history
 - `/exit` or `/quit` — Exit Clark (same as Ctrl+C)
 
@@ -98,8 +102,8 @@ This is the simplest approach and always works during active tutoring sessions (
 - When the student drags a file into the terminal or pastes a file path, the TUI detects it as a path (via `detectFilePath()`) before checking for slash commands
 - The file is copied to the appropriate `Resources/` subfolder (PDFs → `Resources/PDFs/`, images → `Resources/Images/`)
 - A message is injected into the conversation telling the model about the new file
-- The model then drives processing using MCP tools: `read_file` to inspect content, `transcribe_pdf` to OCR scanned PDFs, `create_file` to save transcriptions
-- The model decides where to place transcriptions based on vault structure and CLARK.md conventions
+- The model then drives processing using MCP tools: `read_file` to inspect content, `transcribe_pdf` to OCR scanned PDFs, `create_file` to save transcripts
+- The model decides where to place transcripts based on vault structure and CLARK.md conventions
 - For scanned/handwritten PDFs, `transcribe_pdf` renders pages to images via poppler (`pdftoppm`) and OCRs each page using a pluggable vision API
 
 ### 2. Workspace System
@@ -113,7 +117,7 @@ Clark assumes the current working directory is the student's workspace root.
 ├── Resources/
 │   ├── Images/             # Images, diagrams
 │   ├── PDFs/               # PDF documents
-│   └── Transcriptions/     # Markdown transcriptions of resources
+│   └── Transcripts/     # Markdown transcripts of resources
 └── Templates/
     └── Paper Template.md
 
@@ -231,7 +235,8 @@ The tldraw Agent SDK defines a pattern for giving AI models rich context about c
 | `read_canvas` | Capture a PNG snapshot of a canvas page from the iPad client (via WebSocket) | readOnly |
 | `export_pdf` | Export canvas pages as A4 PDF via `pdf-lib` | write |
 | `save_canvas` | Persist current canvas state to disk | write, idempotent |
-| `transcribe_pdf` | OCR scanned/handwritten PDFs: renders pages via poppler, transcribes via vision API, saves markdown | write |
+| `transcribe_pdf` | OCR scanned/handwritten PDFs: renders pages via poppler, transcribes via vision API, saves markdown transcript | write |
+| `web_search` | Search the web for current information and recent data | readOnly |
 
 **Tool implementation:**
 All file tools are vault-scoped — paths are resolved relative to the vault root, and path traversal outside the vault is rejected. The MCP server holds references to:
@@ -489,6 +494,17 @@ interface ClarkConfig {
 - **Linux**: libsecret (via `secret-tool` CLI)
 - **Windows**: Credential Manager (via `cmdkey` CLI)
 - **Fallback**: Environment variables only (when native backend unavailable)
+
+## Feedback System
+
+Clark includes a built-in feedback mechanism via the `/feedback` command. When users submit feedback:
+
+1. A Discord webhook receives the message with context (Clark version, platform, architecture, Bun version, LLM provider)
+2. The webhook URL is hardcoded in the application for zero-configuration user experience
+3. No user data or conversation content is transmitted - only the explicit feedback message and system metadata
+4. Network failures gracefully degrade with a suggestion to use GitHub Issues as a fallback
+
+This approach provides immediate user feedback collection without requiring external services, authentication, or configuration. The webhook URL can be regenerated if needed without code changes by updating the constant in `src/app/command-router.ts`.
 
 ## Distribution
 

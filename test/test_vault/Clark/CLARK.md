@@ -12,7 +12,7 @@ Clark reads this file at startup and uses it to personalize responses.
 - `Templates/` — Reusable note templates
 - `Clark/Canvas/` — tldraw canvas files (.tldr)
 - `Clark/Structures/` — Structure definitions that guide how Clark creates files
-- `Clark/Transcriptions/` — Markdown transcriptions of PDFs and images
+- `Clark/Transcripts/` — Markdown transcripts of PDFs and images
 
 ## Tags
 
@@ -25,14 +25,14 @@ Clark reads this file at startup and uses it to personalize responses.
 ## File Processing Conventions
 
 When processing PDFs and images:
-- Save transcriptions to `Clark/Transcriptions/<source-name>.md`
+- Save transcripts to `Clark/Transcripts/<source-name>.md`
 - Include YAML frontmatter with source path, timestamp, and page range
 - For scanned/handwritten PDFs, use OCR via `transcribe_pdf`
 - For text-based PDFs, extract text directly via `read_file`
 
-**Auto-detection**: When you call `read_file` on a PDF or image, Clark automatically checks for a markdown transcription and uses it if available. Transcriptions are found by checking:
+**Auto-detection**: When you call `read_file` on a PDF or image, Clark automatically checks for a markdown transcript and uses it if available. Transcripts are found by checking:
 1. Same directory with .md extension (e.g., `Resources/PDFs/lecture.pdf` → `Resources/PDFs/lecture.md`)
-2. Clark transcriptions directory (e.g., any PDF/image → `Clark/Transcriptions/<filename>.md`)
+2. Clark transcripts directory (e.g., any PDF/image → `Clark/Transcripts/<filename>.md`)
 
 ## Linking Conventions
 

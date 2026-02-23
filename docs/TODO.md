@@ -2,16 +2,12 @@ Some future enhancements and things that need fixing, organized into parallel ex
 
 ## Backlog of future enhancements
 
-- Testing
-  - OCR and resource handling in general
-  - web search tool
-
-- Move Transcriptions to Clark directory
 - Add Ollama and Default library to the docs
   - Poppler as well
 - Tavily option for websearch?
   - Seems like a good fit, but don't want users to worry about another setup step
 - Track number of downloads / website metrics
+- Add lines to the pdf pages optionally
 
 - **Office hours + class notes user stories**
   - Write concrete user journeys (student, TA/instructor) for office hours and notes workflows.
@@ -24,16 +20,6 @@ Some future enhancements and things that need fixing, organized into parallel ex
   - Test get/set/delete operations and fallback behavior
   - Requires CI/CD with Linux/Windows runners or local test devices
   - Acceptance: cross-platform secret storage verified on all target platforms
-  
-- [x] **Add /feedback command**
-  - Allow users to submit feedback and report issues via Discord webhook
-  - Implemented with hardcoded webhook URL for zero-config user experience
-
-- **Canvas UI polish and theming pass**
-  - Consolidate color/spacing tokens used by canvas-specific components.
-  - Acceptance: cohesive visual style and no major contrast/accessibility regressions.
-  
-- Add lines to the pdf pages optionally
 
 - **QR Code for Canvas URL**
   - Add QR code functionality to streamline iPad joining

@@ -1,27 +1,59 @@
-# clark
+# Clark
 
-Socratic tutoring assistant. See [SPEC.md](docs/SPEC.md) for full details.
+**Clark is a Socratic tutoring assistant for students.** Instead of giving direct answers, Clark asks guiding questions to help you think through problems - like a good TA would. It seamlessly integrates with handwritten work: write on your iPad while Clark reads and responds from your Mac's terminal.
 
-## Setup
+**Documentation:** [alex.racape.com/clark](https://alex.racape.com/clark)
 
+## Features
+
+- **Socratic teaching** - Guides you with questions instead of giving answers
+- **Handwritten work support** - Draw on iPad via tldraw canvas, Clark reads your work
+- **Local & private** - All data stays on your machine, no cloud storage
+- **Multi-LLM support** - Works with Claude, GPT-4, Gemini, or local Ollama models
+- **Workspace integration** - Manages notes, resources, and structures in your workspace
+- **PDF OCR** - Automatically transcribes scanned PDFs and handwritten documents
+- **MCP tools** - Extensible tool system for file operations and canvas interaction
+
+## Installation
+
+**Quick install (macOS/Linux):**
 ```bash
-bun install
+curl -fsSL https://raw.githubusercontent.com/alexracape/clark/main/install.sh | bash
 ```
 
-curl -fsSL https://raw.githubusercontent.com/alexracape/clark/main/install.sh | bash
+**From source:**
+```bash
+git clone https://github.com/alexracape/clark
+cd clark
+bun install
+bun run start
+```
 
-## Run
+## Quick Start
 
 ```bash
-# Start the full app (TUI + canvas server)
-bun run start
-
-# Start in a specific workspace
+# Start Clark in your workspace
 cd ~/Notes/CS229
-bun run start
+clark
 
-# Dev mode with hot reload
+# First run: onboarding will prompt for LLM provider and API key
+# Then start asking questions or open a canvas with /canvas
+```
+
+## Development
+
+```bash
+# Install dependencies
+bun install
+
+# Run in dev mode with hot reload
 bun run dev
+
+# Run tests
+bun test
+
+# Build binaries
+bun run build
 ```
 
 ## Tests
@@ -67,24 +99,39 @@ Useful flags:
 
 The script prints per-run metrics (`render`, `ocr`, `total`) plus summary stats and average pages/sec.
 
+## Slash Commands
+
+Clark supports several built-in commands:
+
+- `/help` - Show available commands
+- `/tutorial` - Interactive tutorial for first-time users
+- `/canvas` - Open or switch canvas
+- `/export [path]` - Export canvas as A4 PDF
+- `/model` - Switch LLM model and provider
+- `/context` - Show context window usage
+- `/compact` - Summarize conversation to save context
+- `/feedback <message>` - Send feedback so we can improve
+- `/clear` - Clear conversation history
+- `/exit` or `/quit` - Exit Clark
+
 ## LLM Providers
 
 Clark supports multiple LLM providers. Set via `--provider` flag or during onboarding.
 
-### Anthropic (Claude) — default
+### Anthropic (Claude) - default
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-bun run start -- --provider anthropic
+clark --provider anthropic
 ```
 
-Default model: `claude-sonnet-4-5-20250929`. Override with `--model` or `CLARK_MODEL`.
+Default model: `claude-sonnet-4-5-20250929`.
 
 ### OpenAI
 
 ```bash
 export OPENAI_API_KEY=sk-...
-bun run start -- --provider openai
+clark --provider openai
 ```
 
 Default model: `gpt-4o`.
@@ -93,42 +140,40 @@ Default model: `gpt-4o`.
 
 ```bash
 export GOOGLE_API_KEY=AI...
-bun run start -- --provider gemini
+clark --provider gemini
 ```
 
 Default model: `gemini-2.0-flash`. Get an API key at [aistudio.google.com](https://aistudio.google.com).
 
 ### Ollama (Local)
 
-Run models locally with [Ollama](https://ollama.com) — no API key needed.
+Run models locally with [Ollama](https://ollama.com) - no API key needed.
 
 ```bash
-# Install Ollama (macOS)
+# Install Ollama
 brew install ollama
 
-# Start the Ollama server
+# Start Ollama server
 ollama serve
 
 # Pull a model
 ollama pull llama3.2
 
-# Start Clark with Ollama
-bun run start -- --provider ollama
+# Start Clark
+clark --provider ollama
 ```
 
-Default model: `llama3.2`. Override with `--model`:
+Default model: `llama3.2`. Clark checks RAM availability before loading models.
 
-```bash
-bun run start -- --provider ollama --model llava
-```
+## Architecture
 
-Clark checks that the model fits in system RAM before starting. If the model uses more than 80% of RAM, you'll see a warning. If it exceeds total RAM, Clark will exit with an error.
+Clark consists of three main components:
 
-Configure a custom Ollama host via `OLLAMA_HOST`:
+1. **TUI (Terminal UI)** - Ink-based chat interface on your Mac
+2. **Canvas Server** - tldraw WebSocket server for iPad drawing
+3. **MCP Server** - Tool system for file operations and canvas interaction
 
-```bash
-OLLAMA_HOST=http://192.168.1.100:11434 bun run start -- --provider ollama
-```
+See [SPEC.md](docs/SPEC.md) for detailed architecture documentation.
 
 ## MCP Server
 
@@ -186,15 +231,27 @@ bunx @modelcontextprotocol/inspector --cli bun src/mcp/standalone.ts test/test_v
   --method tools/call --tool-name list_files
 ```
 
-### Available tools
+### Available Tools
 
-| Tool | Description | Annotations |
-|------|-------------|-------------|
-| `read_file` | Read a file from the vault (markdown with wikilink resolution, PDF text extraction, images as base64) | readOnly |
-| `search_notes` | Keyword search across markdown/text files, ranked by match density | readOnly |
-| `list_files` | List vault directory contents with optional extension filter | readOnly |
-| `create_file` | Create a new file in the vault (fails if exists) | write |
-| `edit_file` | Find-and-replace editing in vault files | write, destructive |
-| `read_canvas` | Capture a PNG snapshot from the iPad canvas | readOnly |
-| `export_pdf` | Export canvas pages as A4 PDF | write |
-| `save_canvas` | Persist canvas state to disk | write, idempotent |
+| Tool | Description |
+|------|-------------|
+| `read_file` | Read markdown, PDF, or image files with wikilink resolution |
+| `search_notes` | Keyword search across vault files |
+| `list_files` | List vault contents with filtering |
+| `create_file` | Create new files in the vault |
+| `edit_file` | Find-and-replace editing |
+| `read_canvas` | Capture PNG snapshot from iPad canvas |
+| `export_pdf` | Export canvas as A4 PDF |
+| `save_canvas` | Persist canvas state |
+| `transcribe_pdf` | OCR scanned/handwritten PDFs into markdown transcripts |
+| `web_search` | Search the web for current information |
+
+## Feedback & Support
+
+- **Send feedback:** Use `/feedback <message>` from within Clark
+- **Report issues:** [GitHub Issues](https://github.com/alexracape/clark/issues)
+- **Documentation:** [alex.racape.com/clark](https://alex.racape.com/clark)
+
+## Project Structure
+
+See [SPEC.md](docs/SPEC.md) for complete technical specification.
