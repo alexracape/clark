@@ -37,6 +37,36 @@ bun test test/mcp.test.ts
 bun test test/mcp-integration.test.ts
 ```
 
+## PDF OCR Benchmarking
+
+Use the standalone benchmark CLI to exercise the production PDF transcription pipeline (render + OCR) and measure timings.
+
+```bash
+# Deterministic local benchmark (no API calls)
+bun run bench:pdf-ocr -- \
+  --input test/test_vault/Resources/PDFs/lecture_1.pdf \
+  --ocr-mode mock \
+  --runs 5 \
+  --warmup-runs 1
+
+# Full benchmark with real vision OCR
+bun run bench:pdf-ocr -- \
+  --input test/test_vault/Resources/PDFs/lecture_1.pdf \
+  --provider anthropic \
+  --model claude-sonnet-4-6 \
+  --runs 3 \
+  --output test/tmp/transcription.md
+```
+
+Useful flags:
+
+- `--page-range 1-3` to benchmark a subset of pages
+- `--render-concurrency 4` to pin render workers
+- `--dpi 150` to match Vision LLM defaults
+- `--quiet` to hide per-page progress logs
+
+The script prints per-run metrics (`render`, `ocr`, `total`) plus summary stats and average pages/sec.
+
 ## LLM Providers
 
 Clark supports multiple LLM providers. Set via `--provider` flag or during onboarding.

@@ -115,6 +115,7 @@ describe("scaffoldLibrary", () => {
     const clarkDirs = await readdir(join(libPath, "Clark"));
     expect(clarkDirs).toContain("Canvas");
     expect(clarkDirs).toContain("Structures");
+    expect(clarkDirs).toContain("Transcriptions");
     expect(clarkDirs).toContain("CLARK.md");
   });
 
@@ -135,7 +136,6 @@ describe("scaffoldLibrary", () => {
     const resourceDirs = await readdir(join(libPath, "Resources"));
     expect(resourceDirs).toContain("Images");
     expect(resourceDirs).toContain("PDFs");
-    expect(resourceDirs).toContain("Transcriptions");
     expect(resourceDirs).not.toContain("Canvas");
   });
 
@@ -196,6 +196,32 @@ describe("scaffoldLibrary", () => {
     expect(dirs).not.toContain("Notes");
     expect(dirs).not.toContain("Resources");
     expect(dirs).not.toContain("Templates");
+  });
+
+  test("generates CLARK.md with actual directories for existing workspace", async () => {
+    const libPath = join(tmpDir, "existing");
+    await mkdir(join(libPath, "MyNotes"), { recursive: true });
+    await mkdir(join(libPath, "Papers"), { recursive: true });
+    await mkdir(join(libPath, ".git"), { recursive: true }); // Should be filtered out
+    await Bun.write(join(libPath, "MyNotes", "test.md"), "# Test");
+    await scaffoldLibrary(libPath);
+
+    const content = await Bun.file(join(libPath, "Clark", "CLARK.md")).text();
+    expect(content).toContain("MyNotes/");
+    expect(content).toContain("Papers/");
+    expect(content).not.toContain(".git");
+    expect(content).toContain("Clark/Transcriptions/");
+  });
+
+  test("generates CLARK.md with default layout for empty workspace", async () => {
+    const libPath = join(tmpDir, "empty");
+    await scaffoldLibrary(libPath);
+
+    const content = await Bun.file(join(libPath, "Clark", "CLARK.md")).text();
+    expect(content).toContain("Notes/");
+    expect(content).toContain("Resources/");
+    expect(content).toContain("Templates/");
+    expect(content).toContain("Clark/Transcriptions/");
   });
 
   test("does not overwrite existing CLARK.md", async () => {

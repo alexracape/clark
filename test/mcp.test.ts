@@ -249,6 +249,18 @@ describe("MCP Tools", () => {
       const result = await tool.handler({ path: "nonexistent.md" });
       expect(result.isError).toBe(true);
     });
+
+    test("auto-detects and uses transcription for PDF", async () => {
+      const tool = findTool("read_file");
+      const result = await tool.handler({ path: "Resources/PDFs/lecture_1.pdf" });
+      expect(result.isError).toBe(false);
+
+      const text = result.content[0] as { type: "text"; text: string };
+      expect(text.text).toContain("Lecture 1: Introduction to Machine Learning");
+      expect(text.text).toContain("Supervised learning");
+      expect(text.text).toContain("[Note: Read from transcription at Clark/Transcriptions/lecture_1.md");
+      expect(text.text).toContain("(source: Resources/PDFs/lecture_1.pdf)]");
+    });
   });
 
   describe("search_notes", () => {
@@ -551,6 +563,12 @@ describe("MCP Tools", () => {
   });
 
   describe("websearch", () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
     test("returns error for empty query", async () => {
       const tool = findTool("websearch");
       const result = await tool.handler({ query: "" });
@@ -596,5 +614,53 @@ describe("MCP Tools", () => {
       }
       // If CAPTCHA or error, test passes (can't verify max_results)
     }, 15000);
+
+    test("falls back to lite endpoint when html endpoint fails", async () => {
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("html.duckduckgo.com")) {
+          return new Response("blocked", { status: 403 });
+        }
+        return new Response(
+          `<html><body>
+            <tr>
+              <td><a class="result-link" href="https://example.com/lite">Example Lite</a></td>
+              <td class="result-snippet">Lite endpoint snippet</td>
+            </tr>
+          </body></html>`,
+          { status: 200, headers: { "Content-Type": "text/html" } },
+        );
+      }) as typeof fetch;
+
+      const tool = findTool("websearch");
+      const result = await tool.handler({ query: "example query" });
+      expect(result.isError).toBe(false);
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Example Lite");
+      expect(text).toContain("https://example.com/lite");
+    });
+
+    test("parses duckduckgo redirect links without throwing on malformed encodings", async () => {
+      globalThis.fetch = (async () => {
+        return new Response(
+          `<html><body>
+            <div class="result">
+              <a class="result__a" href="https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fbad%ZZ">Example Redirect</a>
+              <a class="result__snippet">Snippet text</a>
+            </div>
+          </body></html>`,
+          { status: 200, headers: { "Content-Type": "text/html" } },
+        );
+      }) as typeof fetch;
+
+      const tool = findTool("websearch");
+      const result = await tool.handler({ query: "redirect parse" });
+      expect(result.isError).toBe(false);
+
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("Example Redirect");
+      expect(text).toContain("https://example.com/bad%ZZ");
+    });
   });
 });

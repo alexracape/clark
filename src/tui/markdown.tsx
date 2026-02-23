@@ -13,7 +13,6 @@
 
 import React from "react";
 import { Box, Text } from "ink";
-import chalk from "chalk";
 import { hex } from "./theme.ts";
 
 export interface MarkdownProps {
@@ -106,28 +105,13 @@ function parseMarkdown(text: string): ParsedLine[] {
 function formatInline(text: string): string {
   let result = text;
 
-  // Inline code: `code`
-  result = result.replace(/`([^`]+)`/g, (_, code) =>
-    chalk.hex(hex.brass).bgHex(hex.codeBlockBg)(` ${code} `),
-  );
-
-  // Bold: **text**
-  result = result.replace(/\*\*([^*]+)\*\*/g, (_, bold) =>
-    chalk.hex(hex.messageText).bold(bold),
-  );
-
-  // Italic: *text* or _text_ (but not if it's part of **)
-  result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, (_, italic) =>
-    chalk.hex(hex.messageText).italic(italic),
-  );
-  result = result.replace(/_([^_]+)_/g, (_, italic) =>
-    chalk.hex(hex.messageText).italic(italic),
-  );
-
-  // Links: [text](url) - show as "text (url)"
-  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) =>
-    `${chalk.hex(hex.sky).underline(text)} ${chalk.hex(hex.dimText).dim(`(${url})`)}`,
-  );
+  // Normalize simple markdown markup to plain text.
+  // Keep this ANSI-free so Ink controls styling and wrapping safely.
+  result = result.replace(/`([^`]+)`/g, "$1");
+  result = result.replace(/\*\*([^*]+)\*\*/g, "$1");
+  result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "$1");
+  result = result.replace(/_([^_]+)_/g, "$1");
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)");
 
   return result;
 }
@@ -141,22 +125,26 @@ function renderLine(line: ParsedLine, index: number): React.ReactElement {
   switch (line.type) {
     case "heading": {
       const level = line.level;
-      const prefix = chalk.hex(hex.lampGreen).bold("#".repeat(level));
-      const content = chalk.hex(hex.messageText).bold(formatInline(line.content));
+      const prefix = "#".repeat(level);
+      const content = formatInline(line.content);
       return (
         <Box key={key} marginY={level === 1 ? 1 : 0}>
-          <Text>{prefix} {content}</Text>
+          <Text color={hex.lampGreen} bold>{prefix}</Text>
+          <Text> </Text>
+          <Text color={hex.messageText} bold wrap="wrap">{content}</Text>
         </Box>
       );
     }
 
     case "list": {
       const indent = " ".repeat(line.indent + 2);
-      const bullet = chalk.hex(hex.lampGreen)("•");
       const content = formatInline(line.content);
       return (
         <Box key={key}>
-          <Text>{indent}{bullet} {content}</Text>
+          <Text>{indent}</Text>
+          <Text color={hex.lampGreen}>•</Text>
+          <Text> </Text>
+          <Text color={hex.messageText} wrap="wrap">{content}</Text>
         </Box>
       );
     }
@@ -166,7 +154,7 @@ function renderLine(line: ParsedLine, index: number): React.ReactElement {
       return (
         <Box key={key} flexDirection="column" marginY={1} paddingLeft={2} borderStyle="single" borderColor={hex.divider}>
           {codeLines.map((codeLine, i) => (
-            <Text key={i}>{chalk.hex(hex.brass)(codeLine)}</Text>
+            <Text key={i} color={hex.brass} wrap="wrap">{codeLine}</Text>
           ))}
         </Box>
       );
@@ -179,7 +167,7 @@ function renderLine(line: ParsedLine, index: number): React.ReactElement {
       const content = formatInline(line.content);
       return (
         <Box key={key}>
-          <Text>{content}</Text>
+          <Text color={hex.messageText} wrap="wrap">{content}</Text>
         </Box>
       );
     }
@@ -199,6 +187,6 @@ export function Markdown({ children }: MarkdownProps) {
     );
   } catch (error) {
     // Fallback: render as plain text if markdown parsing fails
-    return <Text>{chalk.hex(hex.messageText)(children)}</Text>;
+    return <Text color={hex.messageText} wrap="wrap">{children}</Text>;
   }
 }

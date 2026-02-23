@@ -9,7 +9,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { Markdown } from "./markdown.tsx";
-import { theme } from "./theme.ts";
+import { hex, theme } from "./theme.ts";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -61,6 +61,19 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   );
 }
 
+function MultilineDimText({ content }: { content: string }) {
+  const lines = content.split("\n");
+  return (
+    <Box flexDirection="column">
+      {lines.map((line, i) => (
+        <Text key={i} color={hex.dimText} wrap="wrap">
+          {line === "" ? " " : line}
+        </Text>
+      ))}
+    </Box>
+  );
+}
+
 export function Chat({ messages, streamingText, streamingThinking }: ChatProps) {
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1}>
@@ -72,7 +85,7 @@ export function Chat({ messages, streamingText, streamingThinking }: ChatProps) 
         <Box flexDirection="column" marginBottom={1}>
           <Text>{theme.thinking("thinking ")}</Text>
           <Box marginLeft={2}>
-            <Text wrap="wrap">{theme.dim(streamingThinking)}</Text>
+            <MultilineDimText content={streamingThinking} />
           </Box>
         </Box>
       )}

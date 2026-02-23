@@ -3,11 +3,15 @@ Some future enhancements and things that need fixing, organized into parallel ex
 ## Backlog of future enhancements
 
 - Testing
-  - tool calling and actual usability with good models
   - OCR and resource handling in general
   - web search tool
 
+- Move Transcriptions to Clark directory
 - Add Ollama and Default library to the docs
+  - Poppler as well
+- Tavily option for websearch?
+  - Seems like a good fit, but don't want users to worry about another setup step
+- Track number of downloads / website metrics
 
 - **Office hours + class notes user stories**
   - Write concrete user journeys (student, TA/instructor) for office hours and notes workflows.
@@ -21,10 +25,6 @@ Some future enhancements and things that need fixing, organized into parallel ex
   - Requires CI/CD with Linux/Windows runners or local test devices
   - Acceptance: cross-platform secret storage verified on all target platforms
   
-- **Test web search tool Captcha issue**
-  - Ensure this doesn't happen regularly and fix accordingly
-  - Evaluate usefulness of the results and frequency of use
-
 - **Add /feedback command**
   - Allow users to submit feedback and report issues
   - Figure out where to store this information

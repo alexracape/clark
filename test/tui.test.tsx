@@ -183,6 +183,33 @@ describe("Chat", () => {
     const clarkCount = (frame.match(/clark/g) ?? []).length;
     expect(clarkCount).toBe(0);
   });
+
+  test("renders multiline streaming thinking content", () => {
+    const { lastFrame } = render(
+      <Chat messages={[]} streamingThinking={"line one\nline two"} />,
+    );
+
+    const frame = lastFrame()!;
+    expect(frame).toContain("thinking");
+    expect(frame).toContain("line one");
+    expect(frame).toContain("line two");
+  });
+
+  test("does not leak ANSI fragments in assistant markdown output", () => {
+    const messages: ChatMessage[] = [
+      {
+        role: "assistant",
+        content: "[arxiv.org](https://arxiv.org) - Search cs.LG",
+        timestamp: new Date(),
+      },
+    ];
+
+    const { lastFrame } = render(<Chat messages={messages} />);
+    const frame = lastFrame()!;
+
+    expect(frame).toContain("arxiv.org (https://arxiv.org)");
+    expect(frame).not.toContain("38;2;");
+  });
 });
 
 describe("App", () => {

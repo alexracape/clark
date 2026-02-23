@@ -14,53 +14,14 @@ import { constants } from "node:fs";
 export const CLARK_DIR_NAME = "Clark";
 export const CLARK_CANVAS_DIR_NAME = "Canvas";
 export const CLARK_STRUCTURES_DIR_NAME = "Structures";
+export const CLARK_TRANSCRIPTIONS_DIR_NAME = "Transcriptions";
 export const CLARK_CONTEXT_FILE_NAME = "CLARK.md";
-
-const DEFAULT_CLARK_MD = `# CLARK.md
-
-Add context about your courses, preferences, and workflow here.
-Clark reads this file at startup and uses it to personalize responses.
-
-## Workspace Layout
-
-- \`Notes/\` — Markdown notes, one file per topic
-- \`Resources/\` — Raw documents (not markdown)
-  - \`Resources/Images/\` — Screenshots, diagrams, photos
-  - \`Resources/PDFs/\` — PDF documents
-  - \`Resources/Transcriptions/\` — Markdown transcriptions of resources
-- \`Templates/\` — Reusable note templates
-- \`Clark/Canvas/\` — tldraw canvas files (.tldr)
-- \`Clark/Structures/\` — Structure definitions that guide how Clark creates files
-
-## Tags
-
-- \`#class\` — A course or class
-- \`#problem_set\` — A homework assignment or problem set
-- \`#paper\` — An academic paper
-- \`#quote\` — A quote
-- \`#idea\` — An atomic idea or concept
-
-## File Processing Conventions
-
-When processing files added to Resources/:
-- Save transcriptions to \`Resources/Transcriptions/<source-name>.md\`
-- Include YAML frontmatter with source path, timestamp, and page range
-- For scanned/handwritten PDFs, use OCR via \`transcribe_pdf\`
-- For text-based PDFs, extract text directly via \`read_file\`
-
-## Linking Conventions
-
-- Use \`[[wikilinks]]\` to connect related notes
-- Use \`![[embeds]]\` to embed images or other files inline
-- When creating new files, link them to relevant classes or topics
-`;
 
 const DEFAULT_ROOT_DIRS = [
   "Notes",
   "Resources",
   "Resources/Images",
   "Resources/PDFs",
-  "Resources/Transcriptions",
   "Templates",
 ] as const;
 
@@ -83,6 +44,10 @@ export function clarkCanvasDirPath(workspaceDir: string): string {
 
 export function clarkStructuresDirPath(workspaceDir: string): string {
   return join(clarkDirPath(workspaceDir), CLARK_STRUCTURES_DIR_NAME);
+}
+
+export function clarkTranscriptionsDirPath(workspaceDir: string): string {
+  return join(clarkDirPath(workspaceDir), CLARK_TRANSCRIPTIONS_DIR_NAME);
 }
 
 export function clarkContextFilePath(workspaceDir: string): string {
@@ -138,7 +103,7 @@ export async function scaffoldLibrary(path: string): Promise<void> {
   const entriesBefore = await readdir(expanded);
   const startedEmpty = entriesBefore.length === 0;
 
-  await ensureClarkCore(expanded);
+  await ensureClarkCore(expanded, startedEmpty);
 
   if (startedEmpty) {
     for (const relDir of DEFAULT_ROOT_DIRS) {
@@ -159,23 +124,131 @@ export async function loadClarkContext(path: string): Promise<string> {
   return (await file.text()).trim();
 }
 
-async function ensureClarkCore(path: string): Promise<void> {
+/**
+ * Filter out system/hidden directories from a list of entries.
+ */
+function filterSystemDirs(entries: string[]): string[] {
+  const systemDirs = new Set([
+    ".git",
+    ".obsidian",
+    "node_modules",
+    ".DS_Store",
+    ".vscode",
+    ".idea",
+    "Clark", // Don't list Clark in the workspace layout
+  ]);
+
+  return entries.filter(entry => {
+    // Skip hidden dirs (starting with .)
+    if (entry.startsWith(".")) return false;
+    // Skip known system dirs
+    if (systemDirs.has(entry)) return false;
+    return true;
+  });
+}
+
+/**
+ * Generate the Workspace Layout section based on vault state.
+ */
+async function generateWorkspaceLayout(path: string, startedEmpty: boolean): Promise<string> {
+  if (startedEmpty) {
+    // Use default layout for new vaults
+    return `- \`Notes/\` — Markdown notes, one file per topic
+- \`Resources/\` — Raw documents (not markdown)
+  - \`Resources/Images/\` — Screenshots, diagrams, photos
+  - \`Resources/PDFs/\` — PDF documents
+- \`Templates/\` — Reusable note templates
+- \`Clark/Canvas/\` — tldraw canvas files (.tldr)
+- \`Clark/Structures/\` — Structure definitions that guide how Clark creates files
+- \`Clark/Transcriptions/\` — Markdown transcriptions of PDFs and images`;
+  } else {
+    // Scan and list actual top-level directories
+    const entries = await readdir(path, { withFileTypes: true });
+    const dirs = entries
+      .filter(entry => entry.isDirectory())
+      .map(entry => entry.name);
+
+    const userDirs = filterSystemDirs(dirs);
+
+    if (userDirs.length === 0) {
+      return `- \`Clark/Canvas/\` — tldraw canvas files (.tldr)
+- \`Clark/Structures/\` — Structure definitions that guide how Clark creates files
+- \`Clark/Transcriptions/\` — Markdown transcriptions of PDFs and images`;
+    }
+
+    const userDirList = userDirs.map(dir => `- \`${dir}/\` — (your directory)`).join("\n");
+    return `${userDirList}
+- \`Clark/Canvas/\` — tldraw canvas files (.tldr)
+- \`Clark/Structures/\` — Structure definitions that guide how Clark creates files
+- \`Clark/Transcriptions/\` — Markdown transcriptions of PDFs and images`;
+  }
+}
+
+/**
+ * Generate CLARK.md content based on vault state.
+ */
+async function generateClarkMd(path: string, startedEmpty: boolean): Promise<string> {
+  const workspaceLayout = await generateWorkspaceLayout(path, startedEmpty);
+
+  return `# CLARK.md
+
+Add context about your courses, preferences, and workflow here.
+Clark reads this file at startup and uses it to personalize responses.
+
+## Workspace Layout
+
+${workspaceLayout}
+
+## Tags
+
+- \`#class\` — A course or class
+- \`#problem_set\` — A homework assignment or problem set
+- \`#paper\` — An academic paper
+- \`#quote\` — A quote
+- \`#idea\` — An atomic idea or concept
+
+## File Processing Conventions
+
+When processing PDFs and images:
+- Save transcriptions to \`Clark/Transcriptions/<source-name>.md\`
+- Include YAML frontmatter with source path, timestamp, and page range
+- For scanned/handwritten PDFs, use OCR via \`transcribe_pdf\`
+- For text-based PDFs, extract text directly via \`read_file\`
+
+**Auto-detection**: When you call \`read_file\` on a PDF or image, Clark automatically checks for a markdown transcription and uses it if available. Transcriptions are found by checking:
+1. Same directory with .md extension (e.g., \`Resources/PDFs/lecture.pdf\` → \`Resources/PDFs/lecture.md\`)
+2. Clark transcriptions directory (e.g., any PDF/image → \`Clark/Transcriptions/<filename>.md\`)
+
+## Linking Conventions
+
+- Use \`[[wikilinks]]\` to connect related notes
+- Use \`![[embeds]]\` to embed images or other files inline
+- When creating new files, link them to relevant classes or topics
+`;
+}
+
+async function ensureClarkCore(path: string, startedEmpty: boolean): Promise<void> {
   const dirs = [
     clarkDirPath(path),
     clarkCanvasDirPath(path),
     clarkStructuresDirPath(path),
+    clarkTranscriptionsDirPath(path),
   ];
   for (const dir of dirs) {
     await mkdir(dir, { recursive: true });
   }
 
-  await writeIfMissing(clarkContextFilePath(path), DEFAULT_CLARK_MD);
+  const clarkMd = await generateClarkMd(path, startedEmpty);
+  await writeIfMissing(clarkContextFilePath(path), clarkMd);
   for (const [relPath, content] of Object.entries(CLARK_STRUCTURE_TEMPLATES)) {
     await writeIfMissing(join(path, relPath), content);
   }
 }
 
-async function writeIfMissing(filePath: string, content: string): Promise<void> {
+async function writeIfMissing(
+  filePath: string,
+  content: string,
+): Promise<void> {
   const file = Bun.file(filePath);
   if (await file.exists()) return;
   await Bun.write(filePath, content);
@@ -255,9 +328,17 @@ Filename: "Do or do not there is no try"
   "Clark/Structures/Resource.md": `## Purpose
 These are raw documents that are not in markdown format. They could be images, PDFs, slides, etc.
 ## Generation
-When processing a new resource, you should add it into the appropriate folder in the Resources directory. There are directories right now for "Images", "PDFs", and "Transcriptions".
+When processing a new resource, you can organize it however makes sense for the workspace (e.g., in a Resources/ directory, or alongside related notes).
 
-When a resource is added, you should create a markdown transcription and put that in the "Transcriptions" folder. This transcript should be in markdown format while preserving headers and bullet points for the structure of the document. Images or diagrams should be tagged with a markdown link. Math should be formatted in LaTeX.
+When a resource is added, you should create a markdown transcription. Save it to either:
+- \`Clark/Transcriptions/<filename>.md\` (recommended default)
+- Same directory as the source file with .md extension
+
+The transcription should be in markdown format while preserving headers and bullet points for the structure of the document. Images or diagrams should be tagged with a markdown link. Math should be formatted in LaTeX.
+
+If reading the plain resource yields a significant amount of text, use that to create the markdown. Otherwise you can use the provided transcription tool (\`transcribe_pdf\`).
+
+**Important**: When you call \`read_file\` on a PDF or image that has a transcription, the transcription will be used automatically. You don't need to manually read the transcription file.
 
 If relevant, add this resource to a \`Class\`, \`Problem Set\` or \`Paper\`. `,
 };

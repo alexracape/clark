@@ -8,6 +8,7 @@
     "dev": "bun --hot index.ts",
     "start": "bun index.ts",
     "test": "CLARK_WORKSPACE_DIR=./test/test_vault bun test",
+    "bench:pdf-ocr": "bun scripts/benchmark-pdf-transcription.ts",
     "mcp": "bun src/mcp/standalone.ts",
     "inspect": "bunx @modelcontextprotocol/inspector bun src/mcp/standalone.ts",
     "build": "bun scripts/build.ts"

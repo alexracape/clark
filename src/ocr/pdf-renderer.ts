@@ -5,16 +5,16 @@
  * Requires poppler-utils to be installed on the system.
  */
 
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { cpus } from "node:os";
 import { getPDFInfo } from "../mcp/pdf.ts";
 
 export interface RenderOptions {
-  /** DPI for rendering (default: 300) */
+  /** DPI for rendering (default: 150) */
   dpi?: number;
   /** Page range to render. Omit to render all pages. */
   pageRange?: { start: number; end: number };
+  /** Max parallel render workers. Defaults to cpus().length - 1 (minimum 1). */
+  maxConcurrency?: number;
 }
 
 export interface RenderedPage {
@@ -61,47 +61,60 @@ export function getPopplerInstallInstructions(): string {
  *
  * @param pdfPath - Absolute path to the PDF file
  * @param options - Rendering options (DPI, page range)
- * @param onProgress - Optional callback for progress updates (pageNumber, totalPages)
+ * @param onProgress - Optional callback for progress updates (pageNumber, completed, totalPages)
  * @returns Array of rendered page images
  */
 export async function renderPDFPages(
   pdfPath: string,
   options: RenderOptions = {},
-  onProgress?: (page: number, total: number) => void,
+  onProgress?: (pageNumber: number, completed: number, total: number) => void,
 ): Promise<RenderedPage[]> {
   const available = await checkPopplerAvailable();
   if (!available) {
     throw new Error(
       "pdftoppm (poppler) is not installed. PDF OCR requires poppler to render pages.\n" +
-      getPopplerInstallInstructions(),
+        getPopplerInstallInstructions(),
     );
   }
 
-  const dpi = options.dpi ?? 300;
+  const dpi = options.dpi ?? 150;
 
   // Get page count to determine range
   const info = await getPDFInfo(pdfPath);
   const totalPages = info.pages;
   const start = options.pageRange?.start ?? 1;
   const end = Math.min(options.pageRange?.end ?? totalPages, totalPages);
+  const totalToRender = end - start + 1;
 
   if (start > totalPages) {
-    throw new Error(`Start page ${start} exceeds PDF page count (${totalPages}).`);
+    throw new Error(
+      `Start page ${start} exceeds PDF page count (${totalPages}).`,
+    );
   }
+  const defaultConcurrency = Math.max(1, cpus().length - 1);
+  const requestedConcurrency = options.maxConcurrency ?? defaultConcurrency;
+  const maxWorkers = Math.max(1, Math.floor(requestedConcurrency));
+  const workers = Math.min(maxWorkers, totalToRender);
+  const pageNumbers = Array.from(
+    { length: totalToRender },
+    (_, idx) => start + idx,
+  );
 
-  // Create temp directory for rendered images
-  const tempDir = join(tmpdir(), `clark-pdf-render-${Date.now()}`);
-  await mkdir(tempDir, { recursive: true });
+  const renderedByPage = new Map<number, RenderedPage>();
+  let nextPageIdx = 0;
+  let completed = 0;
 
-  try {
-    // Build pdftoppm command
+  const renderSinglePage = async (pageNumber: number): Promise<ArrayBuffer> => {
     const args = [
       "-png",
-      "-r", String(dpi),
-      "-f", String(start),
-      "-l", String(end),
+      "-singlefile",
+      "-r",
+      String(dpi),
+      "-f",
+      String(pageNumber),
+      "-l",
+      String(pageNumber),
       pdfPath,
-      join(tempDir, "page"),
     ];
 
     const proc = Bun.spawn(["pdftoppm", ...args], {
@@ -109,33 +122,46 @@ export async function renderPDFPages(
       stderr: "pipe",
     });
 
-    const exitCode = await proc.exited;
+    const [exitCode, imageBuffer, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).arrayBuffer(),
+      new Response(proc.stderr).text(),
+    ]);
+
     if (exitCode !== 0) {
-      const stderr = await new Response(proc.stderr).text();
-      throw new Error(`pdftoppm failed (exit ${exitCode}): ${stderr.trim()}`);
+      throw new Error(
+        `pdftoppm failed for page ${pageNumber} (exit ${exitCode}): ${stderr.trim()}`,
+      );
     }
+    if (imageBuffer.byteLength === 0) {
+      throw new Error(`pdftoppm returned empty output for page ${pageNumber}.`);
+    }
+    return imageBuffer;
+  };
 
-    // Read rendered images from temp directory
-    const files = await readdir(tempDir);
-    const pngFiles = files.filter((f) => f.endsWith(".png")).sort();
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const idx = nextPageIdx++;
+      if (idx >= pageNumbers.length) return;
 
-    const pages: RenderedPage[] = [];
-    for (let i = 0; i < pngFiles.length; i++) {
-      const pageNumber = start + i;
-      onProgress?.(pageNumber, end - start + 1);
-
-      const imagePath = join(tempDir, pngFiles[i]!);
-      const imageBuffer = await Bun.file(imagePath).arrayBuffer();
-      pages.push({
+      const pageNumber = pageNumbers[idx]!;
+      const imageBuffer = await renderSinglePage(pageNumber);
+      renderedByPage.set(pageNumber, {
         pageNumber,
         imageBuffer,
         mimeType: "image/png",
       });
+      completed += 1;
+      onProgress?.(pageNumber, completed, totalToRender);
     }
+  };
 
-    return pages;
-  } finally {
-    // Clean up temp directory
-    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
-  }
+  await Promise.all(Array.from({ length: workers }, () => worker()));
+  return pageNumbers.map((pageNumber) => {
+    const rendered = renderedByPage.get(pageNumber);
+    if (!rendered) {
+      throw new Error(`Missing rendered output for page ${pageNumber}.`);
+    }
+    return rendered;
+  });
 }
