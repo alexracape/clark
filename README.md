@@ -1,6 +1,6 @@
 # Clark
 
-**Clark is a Socratic tutoring assistant for students.** Instead of giving direct answers, Clark asks guiding questions to help you think through problems - like a good TA would. It seamlessly integrates with handwritten work: write on your iPad while Clark reads and responds from your Mac's terminal.
+**Clark is a Socratic tutoring assistant for students.** Instead of giving direct answers, Clark asks guiding questions to help you think through problems - like a good TA would. It seamlessly integrates with handwritten work: write on your iPad while Clark reads and responds from your terminal.
 
 **Documentation:** [alex.racape.com/clark](https://alex.racape.com/clark)
 
@@ -118,7 +118,7 @@ Clark supports several built-in commands:
 
 Clark supports multiple LLM providers. Set via `--provider` flag or during onboarding.
 
-### Anthropic (Claude) - default
+### Anthropic (Claude)
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...

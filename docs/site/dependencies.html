@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Dependencies Setup — Clark</title>
+        <meta
+            name="description"
+            content="Set up system dependencies, local models, and note-taking tools for Clark."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            *,
+            *::before,
+            *::after {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+
+            :root {
+                --lamp-green: #3d7a5f;
+                --deep-fern: #2e6049;
+                --leather: #1c1408;
+                --walnut: #6b5e4f;
+                --parchment: #faf6ee;
+                --patina: #7a6b52;
+                --brass: #c9a84c;
+                --chrome: #251c0f;
+                --text-base: #b8a88a;
+                --text-white: #e8dcca;
+                --text-dim: #5c4e38;
+                --text-green: #6dbf8b;
+                --text-blue: #7eb8c9;
+                --divider: #3d3020;
+            }
+
+            html {
+                scroll-behavior: smooth;
+            }
+
+            body {
+                font-family: Georgia, "Times New Roman", serif;
+                background: var(--parchment);
+                color: #2c2417;
+                min-height: 100vh;
+                -webkit-font-smoothing: antialiased;
+            }
+
+            /* ===== NAVBAR ===== */
+            .navbar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 100;
+                background: rgba(250, 246, 238, 0.92);
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
+                border-bottom: 1px solid #d6cbaf;
+                padding: 0 48px;
+            }
+
+            .navbar-inner {
+                max-width: 1100px;
+                margin: 0 auto;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                height: 56px;
+            }
+
+            .navbar-logo {
+                font-family: Georgia, "Times New Roman", serif;
+                font-size: 22px;
+                font-weight: 700;
+                color: var(--leather);
+                text-decoration: none;
+                letter-spacing: -0.02em;
+            }
+
+            .navbar-links {
+                display: flex;
+                gap: 28px;
+                align-items: center;
+            }
+
+            .navbar-links a {
+                font-family: "DM Mono", monospace;
+                font-size: 13px;
+                font-weight: 500;
+                color: var(--patina);
+                text-decoration: none;
+                transition: color 0.2s;
+            }
+
+            .navbar-links a:hover {
+                color: var(--lamp-green);
+            }
+
+            .navbar-links a.active {
+                color: var(--lamp-green);
+            }
+
+            /* ===== LAYOUT ===== */
+            .container {
+                max-width: 780px;
+                margin: 0 auto;
+                padding: 0 48px;
+            }
+
+            /* ===== HEADER ===== */
+            .page-header {
+                padding: 120px 0 48px;
+                border-bottom: 1px solid #d6cbaf;
+            }
+
+            .page-header h1 {
+                font-family: Georgia, "Times New Roman", serif;
+                font-size: 48px;
+                font-weight: 700;
+                color: var(--leather);
+                letter-spacing: -0.02em;
+                margin-bottom: 12px;
+            }
+
+            .page-header p {
+                font-size: 19px;
+                line-height: 1.7;
+                color: var(--patina);
+                max-width: 520px;
+            }
+
+            /* ===== CONTENT ===== */
+            .guide {
+                padding: 48px 0 80px;
+            }
+
+            .section {
+                padding: 40px 0;
+                border-bottom: 1px solid #e8e0d0;
+            }
+
+            .section:last-child {
+                border-bottom: none;
+            }
+
+            .section-label {
+                font-family: "DM Mono", monospace;
+                font-size: 12px;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: var(--lamp-green);
+                font-weight: 500;
+                margin-bottom: 12px;
+            }
+
+            .section h2 {
+                font-family: Georgia, "Times New Roman", serif;
+                font-size: 28px;
+                font-weight: 700;
+                color: var(--leather);
+                margin-bottom: 16px;
+                letter-spacing: -0.01em;
+            }
+
+            .section h3 {
+                font-size: 20px;
+                margin: 24px 0 12px;
+                color: var(--lamp-green);
+                font-weight: 600;
+            }
+
+            .section h3:first-of-type {
+                margin-top: 16px;
+            }
+
+            .section p {
+                font-size: 17px;
+                line-height: 1.75;
+                color: var(--walnut);
+                margin-bottom: 16px;
+            }
+
+            .section p:last-child {
+                margin-bottom: 0;
+            }
+
+            /* Code blocks */
+            .code-block {
+                background: var(--leather);
+                border-radius: 8px;
+                padding: 16px 20px;
+                margin: 16px 0;
+                font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+                font-size: 13px;
+                line-height: 1.7;
+                color: var(--text-white);
+                overflow-x: auto;
+            }
+
+            .code-block .prompt {
+                color: var(--text-green);
+                user-select: none;
+            }
+
+            .code-block .comment {
+                color: var(--text-dim);
+            }
+
+            .code-inline {
+                background: #f0eadc;
+                padding: 2px 8px;
+                border-radius: 4px;
+                font-family: "IBM Plex Mono", "Menlo", monospace;
+                font-size: 14px;
+                color: var(--lamp-green);
+            }
+
+            /* Tip blocks */
+            .tip {
+                background: #f2ecdf;
+                border-left: 3px solid var(--lamp-green);
+                border-radius: 0 8px 8px 0;
+                padding: 16px 20px;
+                margin: 20px 0;
+                font-size: 15px;
+                line-height: 1.7;
+                color: var(--text-dim);
+            }
+
+            .tip strong {
+                color: var(--lamp-green);
+                font-weight: 600;
+            }
+
+            /* Note blocks */
+            .note {
+                background: #fef9ed;
+                border-left: 3px solid var(--brass);
+                border-radius: 0 8px 8px 0;
+                padding: 16px 20px;
+                margin: 20px 0;
+                font-size: 15px;
+                line-height: 1.7;
+                color: var(--walnut);
+            }
+
+            .note strong {
+                color: var(--brass);
+                font-weight: 600;
+            }
+
+            /* Steps list */
+            .steps-list {
+                list-style: none;
+                margin: 16px 0;
+                counter-reset: steps;
+            }
+
+            .steps-list li {
+                counter-increment: steps;
+                padding: 6px 0 6px 0;
+                font-size: 16px;
+                line-height: 1.7;
+                color: var(--walnut);
+                display: flex;
+                gap: 12px;
+            }
+
+            .steps-list li::before {
+                content: counter(steps) ".";
+                font-family: "DM Mono", monospace;
+                font-size: 14px;
+                color: var(--lamp-green);
+                font-weight: 500;
+                min-width: 24px;
+            }
+
+            /* Uses list */
+            .uses-list {
+                list-style: none;
+                margin: 12px 0;
+            }
+
+            .uses-list li {
+                padding: 4px 0;
+                font-size: 16px;
+                line-height: 1.7;
+                color: var(--walnut);
+            }
+
+            .uses-list li::before {
+                content: "\2022  ";
+                color: var(--lamp-green);
+            }
+
+            /* ===== FOOTER ===== */
+            footer {
+                border-top: 1px solid #d6cbaf;
+                padding: 40px 0;
+            }
+
+            .footer-inner {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 16px;
+            }
+
+            .footer-left {
+                font-family: "DM Mono", monospace;
+                font-size: 13px;
+                color: var(--patina);
+            }
+
+            .footer-left a {
+                color: var(--lamp-green);
+                text-decoration: none;
+            }
+
+            .footer-left a:hover {
+                text-decoration: underline;
+            }
+
+            /* Links in content */
+            .section a {
+                color: var(--lamp-green);
+                text-decoration: none;
+            }
+
+            .section a:hover {
+                text-decoration: underline;
+            }
+
+            /* ===== RESPONSIVE ===== */
+            @media (max-width: 768px) {
+                .navbar {
+                    padding: 0 24px;
+                }
+                .container {
+                    padding: 0 24px;
+                }
+                .page-header {
+                    padding: 100px 0 36px;
+                }
+                .page-header h1 {
+                    font-size: 36px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <!-- ===== NAVBAR ===== -->
+        <nav class="navbar">
+            <div class="navbar-inner">
+                <a href="index.html" class="navbar-logo">Clark</a>
+                <div class="navbar-links">
+                    <a href="getting-started.html">Getting Started</a>
+                    <a
+                        href="https://github.com/alexracape/clark"
+                        target="_blank"
+                        rel="noopener"
+                        >GitHub</a
+                    >
+                </div>
+            </div>
+        </nav>
+
+        <!-- ===== HEADER ===== -->
+        <header class="page-header">
+            <div class="container">
+                <h1>Dependencies Setup</h1>
+                <p>
+                    Optional dependencies and tools to enhance your Clark
+                    experience.
+                </p>
+            </div>
+        </header>
+
+        <!-- ===== GUIDE ===== -->
+        <main class="guide">
+            <div class="container">
+                <!-- System Dependencies -->
+                <div class="section">
+                    <div class="section-label">System Requirements</div>
+                    <h2>PDF Processing with Poppler</h2>
+                    <p>
+                        Clark can process PDF files and convert them to images
+                        for visual understanding. This feature requires
+                        <strong>Poppler</strong>, a PDF rendering library that
+                        includes the <span class="code-inline">pdftoppm</span>
+                        utility.
+                    </p>
+
+                    <h3>Installing Poppler</h3>
+                    <p>Installation varies by operating system:</p>
+
+                    <div style="margin-top: 20px">
+                        <h4
+                            style="
+                                font-family: &quot;DM Mono&quot;, monospace;
+                                font-size: 14px;
+                                color: var(--lamp-green);
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                            "
+                        >
+                            macOS (Homebrew)
+                        </h4>
+                        <div class="code-block">
+                            <span class="prompt">$ </span>brew install poppler
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 20px">
+                        <h4
+                            style="
+                                font-family: &quot;DM Mono&quot;, monospace;
+                                font-size: 14px;
+                                color: var(--lamp-green);
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                            "
+                        >
+                            Ubuntu/Debian
+                        </h4>
+                        <div class="code-block">
+                            <span class="prompt">$ </span>sudo apt-get install
+                            poppler-utils
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 20px">
+                        <h4
+                            style="
+                                font-family: &quot;DM Mono&quot;, monospace;
+                                font-size: 14px;
+                                color: var(--lamp-green);
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                            "
+                        >
+                            Fedora/RHEL
+                        </h4>
+                        <div class="code-block">
+                            <span class="prompt">$ </span>sudo dnf install
+                            poppler-utils
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 20px">
+                        <h4
+                            style="
+                                font-family: &quot;DM Mono&quot;, monospace;
+                                font-size: 14px;
+                                color: var(--lamp-green);
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                            "
+                        >
+                            Windows
+                        </h4>
+                        <p style="margin-top: 8px">
+                            Download the latest release from the
+                            <a
+                                href="https://github.com/oschwartz10612/poppler-windows/releases/"
+                                target="_blank"
+                                rel="noopener"
+                                >Poppler for Windows repository</a
+                            >, extract it, and add the
+                            <span class="code-inline">bin/</span> folder to your
+                            system PATH.
+                        </p>
+                    </div>
+
+                    <h3>Verify Installation</h3>
+                    <p>
+                        After installation, verify that pdftoppm is available:
+                    </p>
+                    <div class="code-block">
+                        <span class="prompt">$ </span>pdftoppm -v
+                    </div>
+                    <p>
+                        You should see version information. If the command is
+                        not found, ensure Poppler's
+                        <span class="code-inline">bin</span> directory is in
+                        your PATH.
+                    </p>
+
+                    <div class="note">
+                        <strong>Note:</strong> If Poppler is not installed,
+                        Clark will still extract text from PDFs but won't be
+                        able to perform visual analysis of diagrams, equations,
+                        or images within the PDF.
+                    </div>
+                </div>
+
+                <!-- Local Models with Ollama -->
+                <div class="section">
+                    <div class="section-label">Local AI Models</div>
+                    <h2>Running Models Locally with Ollama</h2>
+                    <p>
+                        <a
+                            href="https://ollama.ai"
+                            target="_blank"
+                            rel="noopener"
+                            >Ollama</a
+                        >
+                        lets you run large language models locally on your
+                        machine without requiring an API key or internet
+                        connection. This is perfect for:
+                    </p>
+                    <ul class="uses-list">
+                        <li>
+                            Working offline or with intermittent connectivity
+                        </li>
+                        <li>Keeping your data completely private</li>
+                        <li>Avoiding API costs for frequent usage</li>
+                        <li>Experimenting with different open-source models</li>
+                    </ul>
+
+                    <h3>Installing Ollama</h3>
+                    <ol class="steps-list">
+                        <li>
+                            Visit
+                            <a
+                                href="https://ollama.ai"
+                                target="_blank"
+                                rel="noopener"
+                                >ollama.ai</a
+                            >
+                            and download the installer for your platform
+                        </li>
+                        <li>
+                            Run the installer and follow the setup instructions
+                        </li>
+                        <li>Open a terminal and verify the installation:</li>
+                        <div class="code-block" style="margin-top: 8px">
+                            <span class="prompt">$ </span>ollama --version
+                        </div>
+                    </ol>
+
+                    <h3>Downloading Models</h3>
+                    <p>
+                        Once Ollama is installed, you need to download a model.
+                        Popular options include:
+                    </p>
+
+                    <div style="margin-top: 16px">
+                        <h4
+                            style="
+                                font-family: &quot;DM Mono&quot;, monospace;
+                                font-size: 14px;
+                                color: var(--lamp-green);
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                            "
+                        >
+                            Llama 3.3 (Recommended for most users)
+                        </h4>
+                        <div class="code-block">
+                            <span class="prompt">$ </span>ollama pull llama3.3
+                        </div>
+                        <p style="margin-top: 8px">
+                            Good balance of quality and speed. Works well for
+                            most teaching scenarios.
+                        </p>
+                    </div>
+
+                    <div style="margin-top: 20px">
+                        <h4
+                            style="
+                                font-family: &quot;DM Mono&quot;, monospace;
+                                font-size: 14px;
+                                color: var(--lamp-green);
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                            "
+                        >
+                            Qwen 2.5 (Best for technical subjects)
+                        </h4>
+                        <div class="code-block">
+                            <span class="prompt">$ </span>ollama pull qwen2.5
+                        </div>
+                        <p style="margin-top: 8px">
+                            Excellent for programming, math, and STEM topics.
+                        </p>
+                    </div>
+
+                    <div style="margin-top: 20px">
+                        <h4
+                            style="
+                                font-family: &quot;DM Mono&quot;, monospace;
+                                font-size: 14px;
+                                color: var(--lamp-green);
+                                margin-bottom: 8px;
+                                font-weight: 600;
+                            "
+                        >
+                            Gemma 2 (Lightweight option)
+                        </h4>
+                        <div class="code-block">
+                            <span class="prompt">$ </span>ollama pull gemma2
+                        </div>
+                        <p style="margin-top: 8px">
+                            Faster responses on lower-end hardware. Great for
+                            quick questions.
+                        </p>
+                    </div>
+
+                    <h3>Using Ollama with Clark</h3>
+                    <ol class="steps-list">
+                        <li>
+                            Make sure Ollama is running (it starts automatically
+                            on most systems)
+                        </li>
+                        <li>
+                            Start Clark and use the
+                            <span class="code-inline">/model</span> command
+                        </li>
+                        <li>
+                            Select "Ollama" as your provider and choose your
+                            downloaded model
+                        </li>
+                    </ol>
+
+                    <div class="tip">
+                        <strong>Tip:</strong> You can run multiple models and
+                        switch between them. Use
+                        <span class="code-inline">/model</span> anytime to
+                        change which model Clark uses.
+                    </div>
+
+                    <div class="note">
+                        <strong>Performance Note:</strong> Local models require
+                        significant RAM and CPU/GPU resources. For the best
+                        experience, ensure your machine has at least 8GB of RAM
+                        and consider models sized appropriately for your
+                        hardware (e.g., 7B or 13B parameter models for most
+                        laptops).
+                    </div>
+                </div>
+
+                <!-- Obsidian Integration -->
+                <div class="section">
+                    <div class="section-label">Note Management</div>
+                    <h2>Working with Obsidian</h2>
+                    <p>
+                        <a
+                            href="https://obsidian.md"
+                            target="_blank"
+                            rel="noopener"
+                            >Obsidian</a
+                        >
+                        is a powerful markdown editor that works perfectly with
+                        Clark's note structure. Since Clark stores everything as
+                        plain markdown files, you can use Obsidian to:
+                    </p>
+                    <ul class="uses-list">
+                        <li>
+                            View and edit your notes with a rich markdown
+                            preview
+                        </li>
+                        <li>
+                            Visualize connections between notes with the graph
+                            view
+                        </li>
+                        <li>
+                            Use plugins for advanced features like daily notes,
+                            templates, and spaced repetition
+                        </li>
+                        <li>
+                            Search across all your notes with powerful query
+                            syntax
+                        </li>
+                        <li>Work offline with full sync across devices</li>
+                    </ul>
+
+                    <h3>Setting Up Obsidian with Clark</h3>
+                    <ol class="steps-list">
+                        <li>
+                            Download and install Obsidian from
+                            <a
+                                href="https://obsidian.md"
+                                target="_blank"
+                                rel="noopener"
+                                >obsidian.md</a
+                            >
+                        </li>
+                        <li>Open Obsidian and select "Open folder as vault"</li>
+                        <li>
+                            Navigate to your Clark workspace directory (e.g.,
+                            <span class="code-inline">~/Library</span>)
+                        </li>
+                        <li>
+                            Obsidian will now show all your markdown notes,
+                            wikilinks, and folder structure
+                        </li>
+                    </ol>
+
+                    <h3>Recommended Workflow</h3>
+                    <p>
+                        Many users find it helpful to use both Clark and
+                        Obsidian together:
+                    </p>
+                    <ul class="uses-list">
+                        <li>
+                            Use <strong>Clark</strong> for interactive learning,
+                            asking questions, and working through problems
+                        </li>
+                        <li>
+                            Use <strong>Obsidian</strong> for reviewing notes,
+                            organizing content, and seeing the big picture
+                        </li>
+                        <li>
+                            Edit templates and structures in Obsidian's rich
+                            editor
+                        </li>
+                        <li>
+                            Use Obsidian's graph view to discover connections
+                            you didn't realize existed
+                        </li>
+                    </ul>
+
+                    <div class="tip">
+                        <strong>Tip:</strong> In Obsidian settings, enable
+                        "Automatically update internal links" and "Use
+                        [[Wikilinks]]" to ensure your links work seamlessly
+                        between Clark and Obsidian.
+                    </div>
+
+                    <h3>Useful Obsidian Plugins</h3>
+                    <p>
+                        Consider installing these community plugins to enhance
+                        your note-taking:
+                    </p>
+                    <ul class="uses-list">
+                        <li>
+                            <strong>Templater</strong> — Advanced template
+                            functionality
+                        </li>
+                        <li>
+                            <strong>Dataview</strong> — Query and display notes
+                            like a database
+                        </li>
+                        <li>
+                            <strong>Calendar</strong> — Navigate daily notes
+                            with a calendar view
+                        </li>
+                        <li>
+                            <strong>Excalidraw</strong> — Sketch diagrams
+                            directly in your notes
+                        </li>
+                    </ul>
+
+                    <div class="note">
+                        <strong>Note:</strong> Obsidian is completely optional.
+                        Clark works perfectly fine on its own — Obsidian just
+                        provides a different way to interact with the same
+                        markdown files.
+                    </div>
+                </div>
+
+                <!-- Back to Getting Started -->
+                <div class="section">
+                    <div class="section-label">Next Steps</div>
+                    <h2>You're All Set</h2>
+                    <p>
+                        These dependencies are all optional. Clark will work
+                        great with just the basic installation — these tools
+                        simply enhance specific features.
+                    </p>
+                    <p style="margin-top: 16px">
+                        <a href="getting-started.html"
+                            >← Back to Getting Started</a
+                        >
+                    </p>
+                </div>
+            </div>
+        </main>
+
+        <!-- ===== FOOTER ===== -->
+        <footer>
+            <div class="container" style="max-width: 1100px">
+                <div class="footer-inner">
+                    <div class="footer-left">
+                        <a href="https://github.com/alexracape/clark"
+                            >github.com/alexracape/clark</a
+                        >
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </body>
+</html>

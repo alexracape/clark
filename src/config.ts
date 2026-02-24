@@ -11,7 +11,14 @@ import { mkdir } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-const execFileAsync = promisify(execFile);
+type ExecFileAsyncResult = { stdout: string; stderr: string };
+type ExecFileAsyncFn = (
+  file: string,
+  args: readonly string[],
+  options?: { input?: string },
+) => Promise<ExecFileAsyncResult>;
+
+const execFileAsync = promisify(execFile) as unknown as ExecFileAsyncFn;
 
 const DEFAULT_CONFIG_DIR = join(homedir(), ".clark");
 const DEFAULT_CONFIG_PATH = join(DEFAULT_CONFIG_DIR, "config.json");
@@ -49,7 +56,7 @@ export interface ClarkConfig {
   };
 }
 
-interface SecretStore {
+export interface SecretStore {
   readonly backend: "macos-keychain" | "linux-libsecret" | "windows-credential" | "fallback";
   isSupported(): boolean;
   get(provider: ProviderName): Promise<string | undefined>;
@@ -57,8 +64,9 @@ interface SecretStore {
   delete(provider: ProviderName): Promise<void>;
 }
 
-class MacOSKeychainSecretStore implements SecretStore {
+export class MacOSKeychainSecretStore implements SecretStore {
   readonly backend = "macos-keychain" as const;
+  constructor(private readonly exec: ExecFileAsyncFn = execFileAsync) {}
 
   isSupported(): boolean {
     return platform() === "darwin";
@@ -66,7 +74,7 @@ class MacOSKeychainSecretStore implements SecretStore {
 
   async get(provider: ProviderName): Promise<string | undefined> {
     try {
-      const { stdout } = await execFileAsync("security", [
+      const { stdout } = await this.exec("security", [
         "find-generic-password",
         "-s",
         KEYCHAIN_SERVICE,
@@ -82,7 +90,7 @@ class MacOSKeychainSecretStore implements SecretStore {
   }
 
   async set(provider: ProviderName, value: string): Promise<void> {
-    await execFileAsync("security", [
+    await this.exec("security", [
       "add-generic-password",
       "-U",
       "-s",
@@ -96,7 +104,7 @@ class MacOSKeychainSecretStore implements SecretStore {
 
   async delete(provider: ProviderName): Promise<void> {
     try {
-      await execFileAsync("security", [
+      await this.exec("security", [
         "delete-generic-password",
         "-s",
         KEYCHAIN_SERVICE,
@@ -109,8 +117,9 @@ class MacOSKeychainSecretStore implements SecretStore {
   }
 }
 
-class LinuxLibsecretStore implements SecretStore {
+export class LinuxLibsecretStore implements SecretStore {
   readonly backend = "linux-libsecret" as const;
+  constructor(private readonly exec: ExecFileAsyncFn = execFileAsync) {}
 
   isSupported(): boolean {
     return platform() === "linux";
@@ -118,7 +127,7 @@ class LinuxLibsecretStore implements SecretStore {
 
   async get(provider: ProviderName): Promise<string | undefined> {
     try {
-      const { stdout } = await execFileAsync("secret-tool", [
+      const { stdout } = await this.exec("secret-tool", [
         "lookup",
         "service",
         KEYCHAIN_SERVICE,
@@ -133,7 +142,7 @@ class LinuxLibsecretStore implements SecretStore {
   }
 
   async set(provider: ProviderName, value: string): Promise<void> {
-    await execFileAsync("secret-tool", [
+    await this.exec("secret-tool", [
       "store",
       "--label",
       `Clark API key for ${provider}`,
@@ -148,7 +157,7 @@ class LinuxLibsecretStore implements SecretStore {
 
   async delete(provider: ProviderName): Promise<void> {
     try {
-      await execFileAsync("secret-tool", [
+      await this.exec("secret-tool", [
         "clear",
         "service",
         KEYCHAIN_SERVICE,
@@ -161,8 +170,9 @@ class LinuxLibsecretStore implements SecretStore {
   }
 }
 
-class WindowsCredentialStore implements SecretStore {
+export class WindowsCredentialStore implements SecretStore {
   readonly backend = "windows-credential" as const;
+  constructor(private readonly exec: ExecFileAsyncFn = execFileAsync) {}
 
   isSupported(): boolean {
     return platform() === "win32";
@@ -176,7 +186,7 @@ class WindowsCredentialStore implements SecretStore {
     try {
       const target = this.getTargetName(provider);
       // cmdkey /list doesn't show passwords, need to use PowerShell
-      const { stdout } = await execFileAsync("powershell", [
+      const { stdout } = await this.exec("powershell", [
         "-NoProfile",
         "-Command",
         `$cred = (cmdkey /list | Select-String '${target}'); if ($cred) { (New-Object System.Net.NetworkCredential('', (Get-StoredCredential -Target '${target}').Password)).Password }`,
@@ -191,7 +201,7 @@ class WindowsCredentialStore implements SecretStore {
   async set(provider: ProviderName, value: string): Promise<void> {
     const target = this.getTargetName(provider);
     // cmdkey /generic requires username, using provider name as username
-    await execFileAsync("cmdkey", [
+    await this.exec("cmdkey", [
       "/generic:" + target,
       "/user:" + provider,
       "/pass:" + value,
@@ -201,7 +211,7 @@ class WindowsCredentialStore implements SecretStore {
   async delete(provider: ProviderName): Promise<void> {
     try {
       const target = this.getTargetName(provider);
-      await execFileAsync("cmdkey", [
+      await this.exec("cmdkey", [
         "/delete:" + target,
       ]);
     } catch {
@@ -210,7 +220,7 @@ class WindowsCredentialStore implements SecretStore {
   }
 }
 
-class FallbackSecretStore implements SecretStore {
+export class FallbackSecretStore implements SecretStore {
   readonly backend = "fallback" as const;
 
   isSupported(): boolean {
@@ -230,12 +240,13 @@ class FallbackSecretStore implements SecretStore {
   }
 }
 
-function getSecretStore(config?: ClarkConfig): SecretStore {
+export function createSecretStore(
+  config?: ClarkConfig,
+  currentPlatform: NodeJS.Platform = platform(),
+): SecretStore {
   const preferred = config?.secretStoreBackend;
 
   // Try platform-specific backend first based on OS
-  const currentPlatform = platform();
-
   if (currentPlatform === "darwin") {
     const macos = new MacOSKeychainSecretStore();
     if (preferred === undefined || preferred === "macos-keychain") {
@@ -288,7 +299,7 @@ export async function saveConfig(config: ClarkConfig, path = DEFAULT_CONFIG_PATH
 
 async function resolveSecretStoreKey(provider: ProviderName, config: ClarkConfig): Promise<string | undefined> {
   if (!config.secretStoreBackend) return undefined;
-  const store = getSecretStore(config);
+  const store = createSecretStore(config);
   if (!store.isSupported()) return undefined;
   return store.get(provider);
 }
@@ -299,7 +310,7 @@ export async function setProviderApiKey(provider: ProviderName, apiKey: string, 
     throw new Error("API key cannot be empty.");
   }
 
-  const store = getSecretStore(config);
+  const store = createSecretStore(config);
   await store.set(provider, trimmed);
 
   return {
