@@ -2,38 +2,22 @@ Some future enhancements and things that need fixing, organized into parallel ex
 
 ## Backlog of future enhancements
 
-- Add Ollama to the docs
-  - Poppler as well
 - Tavily option for websearch?
   - Seems like a good fit, but don't want users to worry about another setup step
 - Add lines to the pdf pages optionally
+- Fix windows tests (3)
+- Fix install command missing folder
 
 - **Office hours + class notes user stories**
   - Write concrete user journeys (student, TA/instructor) for office hours and notes workflows.
   - Identify required features vs nice-to-have add-ons.
   - Acceptance: prioritized stories that can feed implementation tickets.
 
-- **Test Linux/Windows secret store backends**
-  - Add integration tests for LinuxLibsecretStore and WindowsCredentialStore
-  - Mock platform-specific CLI commands (`secret-tool`, `cmdkey`, PowerShell)
-  - Test get/set/delete operations and fallback behavior
-  - Requires CI/CD with Linux/Windows runners or local test devices
-  - Acceptance: cross-platform secret storage verified on all target platforms
-
-- **QR Code for Canvas URL**
-  - Add QR code functionality to streamline iPad joining
-
 - **Session persistence (save/resume conversations)**
   - Persist active conversation metadata, transcript state, and relevant tool context.
   - Provide explicit resume behavior on restart (auto-resume or selection prompt).
   - Handle corrupted state file with recover/ignore option.
   - Acceptance: users can resume prior work without manual reconstruction.
-
-- **Lightweight markdown editor exploration (tiptap candidate)**
-  - Evaluate if embedding a markdown editor improves note-taking/workflow inside product.
-  - Compare footprint, integration complexity, and keyboard accessibility.
-  - Provide recommendation with build-vs-buy tradeoffs.
-  - Acceptance: documented decision and next action (adopt/defer/reject).
 
 - **tldraw licensing review for production**
   - Verify licensing terms for intended distribution/commercial use.
@@ -42,8 +26,7 @@ Some future enhancements and things that need fixing, organized into parallel ex
 
 - **Work out kinks in resource upload**
   - If file is drag and dropped first, it is read as a /command
-  - Need to add better default prompting to guide tool use and scaffold processing
-  - Verify that the poppler methods are working well
+  - Can't drag in resources outside of library
 
 - **Consider using CLI tools instead of MCP**
   - Would the model do just as well with some bash commands instead of file tools?
@@ -56,9 +39,10 @@ Some future enhancements and things that need fixing, organized into parallel ex
 
 - Tauri app
 - Add components like
-  - QR Code
   - Canvas and Markdown Previews
   - Resource Drag and Drop
+  - QR Code for Canvas Sessions
+  - Minimize user configurations?
 
 ## Telemetry & Feedback Infrastructure
 

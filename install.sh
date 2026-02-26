@@ -13,6 +13,11 @@ set -euo pipefail
 REPO="alexracape/clark"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
+# Expand leading "~/" in INSTALL_DIR if provided.
+case "$INSTALL_DIR" in
+  "~/"*) INSTALL_DIR="${HOME}/${INSTALL_DIR#~/}" ;;
+esac
+
 # Detect platform
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -74,6 +79,16 @@ fi
 
 # Install
 chmod +x "${TMPDIR}/${BINARY_NAME}"
+
+# Ensure install directory exists first.
+if [ ! -d "$INSTALL_DIR" ]; then
+  if mkdir -p "$INSTALL_DIR" 2>/dev/null; then
+    :
+  else
+    echo "Creating ${INSTALL_DIR} (requires sudo)..."
+    sudo mkdir -p "$INSTALL_DIR"
+  fi
+fi
 
 if [ -w "$INSTALL_DIR" ]; then
   mv "${TMPDIR}/${BINARY_NAME}" "${INSTALL_DIR}/clark"

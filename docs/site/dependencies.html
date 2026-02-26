@@ -550,70 +550,9 @@
                     <h3>Downloading Models</h3>
                     <p>
                         Once Ollama is installed, you need to download a model.
-                        Popular options include:
+                        Just make sure that the model supports tool use and
+                        image input.
                     </p>
-
-                    <div style="margin-top: 16px">
-                        <h4
-                            style="
-                                font-family: &quot;DM Mono&quot;, monospace;
-                                font-size: 14px;
-                                color: var(--lamp-green);
-                                margin-bottom: 8px;
-                                font-weight: 600;
-                            "
-                        >
-                            Llama 3.3 (Recommended for most users)
-                        </h4>
-                        <div class="code-block">
-                            <span class="prompt">$ </span>ollama pull llama3.3
-                        </div>
-                        <p style="margin-top: 8px">
-                            Good balance of quality and speed. Works well for
-                            most teaching scenarios.
-                        </p>
-                    </div>
-
-                    <div style="margin-top: 20px">
-                        <h4
-                            style="
-                                font-family: &quot;DM Mono&quot;, monospace;
-                                font-size: 14px;
-                                color: var(--lamp-green);
-                                margin-bottom: 8px;
-                                font-weight: 600;
-                            "
-                        >
-                            Qwen 2.5 (Best for technical subjects)
-                        </h4>
-                        <div class="code-block">
-                            <span class="prompt">$ </span>ollama pull qwen2.5
-                        </div>
-                        <p style="margin-top: 8px">
-                            Excellent for programming, math, and STEM topics.
-                        </p>
-                    </div>
-
-                    <div style="margin-top: 20px">
-                        <h4
-                            style="
-                                font-family: &quot;DM Mono&quot;, monospace;
-                                font-size: 14px;
-                                color: var(--lamp-green);
-                                margin-bottom: 8px;
-                                font-weight: 600;
-                            "
-                        >
-                            Gemma 2 (Lightweight option)
-                        </h4>
-                        <div class="code-block">
-                            <span class="prompt">$ </span>ollama pull gemma2
-                        </div>
-                        <p style="margin-top: 8px">
-                            Faster responses on lower-end hardware. Great for
-                            quick questions.
-                        </p>
-                    </div>
 
                     <h3>Using Ollama with Clark</h3>
                     <ol class="steps-list">
@@ -643,8 +582,7 @@
                         significant RAM and CPU/GPU resources. For the best
                         experience, ensure your machine has at least 8GB of RAM
                         and consider models sized appropriately for your
-                        hardware (e.g., 7B or 13B parameter models for most
-                        laptops).
+                        hardware.
                     </div>
                 </div>
 
@@ -735,31 +673,6 @@
                         [[Wikilinks]]" to ensure your links work seamlessly
                         between Clark and Obsidian.
                     </div>
-
-                    <h3>Useful Obsidian Plugins</h3>
-                    <p>
-                        Consider installing these community plugins to enhance
-                        your note-taking:
-                    </p>
-                    <ul class="uses-list">
-                        <li>
-                            <strong>Templater</strong> — Advanced template
-                            functionality
-                        </li>
-                        <li>
-                            <strong>Dataview</strong> — Query and display notes
-                            like a database
-                        </li>
-                        <li>
-                            <strong>Calendar</strong> — Navigate daily notes
-                            with a calendar view
-                        </li>
-                        <li>
-                            <strong>Excalidraw</strong> — Sketch diagrams
-                            directly in your notes
-                        </li>
-                    </ul>
-
                     <div class="note">
                         <strong>Note:</strong> Obsidian is completely optional.
                         Clark works perfectly fine on its own — Obsidian just
