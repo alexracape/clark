@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { compareVersions } from "../src/bootstrap/upgrade.ts";
+import { compareVersions } from "../cli/bootstrap/upgrade.ts";
 
 describe("compareVersions", () => {
   test("equal versions return 0", () => {

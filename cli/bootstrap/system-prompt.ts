@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { loadClarkContext, clarkStructuresDirPath } from "../library.ts";
-import baseSystemPrompt from "../prompts/system.md" with { type: "text" };
+import { loadClarkContext, clarkStructuresDirPath } from "../../core/library.ts";
+import baseSystemPrompt from "../../core/prompts/system.md" with { type: "text" };
 
 /**
  * Extract the first sentence of the ## Purpose section from a Structure file.

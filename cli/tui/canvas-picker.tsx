@@ -10,7 +10,7 @@ import React, { useMemo } from "react";
 import { Box, Text, useInput } from "ink";
 import { useLineEditor } from "./primitives/use-line-editor.ts";
 import { useSelectableList } from "./primitives/use-selectable-list.ts";
-import { validateCanvasName } from "../canvas/name.ts";
+import { validateCanvasName } from "../../core/canvas/name.ts";
 import { theme, componentTheme, hex } from "./theme.ts";
 
 export interface CanvasPickerProps {

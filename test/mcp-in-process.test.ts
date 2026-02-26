@@ -9,8 +9,8 @@
 
 import { test, expect, describe } from "bun:test";
 import { resolve } from "node:path";
-import { createTools, type ToolDefinition } from "../src/mcp/tools.ts";
-import { CanvasBroker } from "../src/canvas/server.ts";
+import { createTools, type ToolDefinition } from "../core/mcp/tools.ts";
+import { CanvasBroker } from "../core/canvas/server.ts";
 
 const TEST_VAULT = resolve(import.meta.dir, "test_vault");
 

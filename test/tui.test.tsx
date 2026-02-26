@@ -9,14 +9,14 @@ import React from "react";
 import { resolve } from "node:path";
 import { test, expect, describe, afterEach } from "bun:test";
 import { render, cleanup } from "ink-testing-library";
-import { App } from "../src/tui/app.tsx";
-import { StatusBar } from "../src/tui/status.tsx";
-import { Chat, type ChatMessage } from "../src/tui/chat.tsx";
-import { MockProvider } from "../src/llm/mock.ts";
-import { Conversation } from "../src/llm/messages.ts";
-import { createTools } from "../src/mcp/tools.ts";
-import { CanvasBroker } from "../src/canvas/server.ts";
-import type { ClarkConfig } from "../src/config.ts";
+import { App } from "../cli/tui/app.tsx";
+import { StatusBar } from "../cli/tui/status.tsx";
+import { Chat, type ChatMessage } from "../cli/tui/chat.tsx";
+import { MockProvider } from "../core/llm/mock.ts";
+import { Conversation } from "../core/llm/messages.ts";
+import { createTools } from "../core/mcp/tools.ts";
+import { CanvasBroker } from "../core/canvas/server.ts";
+import type { ClarkConfig } from "../core/config.ts";
 
 const TEST_VAULT = resolve(import.meta.dir, "test_vault");
 

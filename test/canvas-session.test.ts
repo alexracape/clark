@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CanvasSessionManager } from "../src/app/canvas-session.ts";
+import { CanvasSessionManager } from "../core/app/canvas-session.ts";
 
 describe("CanvasSessionManager", () => {
   test("close rejects in-flight export deterministically", async () => {

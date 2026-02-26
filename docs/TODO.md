@@ -47,7 +47,7 @@ Some future enhancements and things that need fixing, organized into parallel ex
 ## Telemetry & Feedback Infrastructure
 
 **Current State:**
-- Discord webhook URL is hardcoded in `src/app/command-router.ts` (line 10-11)
+- Discord webhook URL is hardcoded in `core/app/command-router.ts` (line 10-11)
 - Security concern: public webhook can be spammed, requires rotation if abused
 - Zero-config UX requirement: users should not need to configure anything
 - Currently acceptable for beta/early development phase
@@ -60,7 +60,7 @@ A single Cloudflare Worker can handle both feedback forwarding AND analytics/tel
 - Add client-side rate limiting to `/feedback` command
 - Prevents single user from spamming (doesn't prevent multiple users)
 - Example: 60-second cooldown between feedback submissions
-- Location: `src/app/command-router.ts` feedback case handler
+- Location: `core/app/command-router.ts` feedback case handler
 
 **Phase 2: Backend Proxy (Before Public Launch)**
 
@@ -114,7 +114,7 @@ Cloudflare Worker
 
 **Clark-side Changes:**
 1. Replace hardcoded Discord webhook URL with Worker endpoint
-2. Add telemetry client module (`src/telemetry/client.ts`)
+2. Add telemetry client module (`core/telemetry/client.ts`)
 3. Emit events for: install (first run), heartbeat (daily), commands, errors
 4. Respect `CLARK_TELEMETRY=false` environment variable
 5. Add startup notice on first run: "Anonymous usage data helps improve Clark. Opt-out: CLARK_TELEMETRY=false"

@@ -1,7 +1,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import { join } from "node:path";
-import { listProviderNames } from "../llm/catalog.ts";
+import { listProviderNames } from "../../core/llm/catalog.ts";
+import { version } from "../../core/version.ts";
 
 export interface CliArgs {
   provider?: string;
@@ -10,15 +10,7 @@ export interface CliArgs {
   upgrade?: boolean;
 }
 
-// Read version — inlined at compile time via --define, with runtime fallback
-declare const CLARK_VERSION: string | undefined;
-export const version: string =
-  typeof CLARK_VERSION !== "undefined"
-    ? CLARK_VERSION
-    : await Bun.file(join(import.meta.dir, "..", "..", "package.json"))
-        .json()
-        .then((p: { version?: string }) => p.version ?? "0.1.0")
-        .catch(() => "0.1.0");
+export { version };
 
 export async function parseCliArgs(argv = process.argv): Promise<CliArgs> {
   const providers = listProviderNames().join(", ");

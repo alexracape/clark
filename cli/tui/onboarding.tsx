@@ -4,10 +4,10 @@
 
 import React, { useState } from "react";
 import { Box, Text, useInput, useApp } from "ink";
-import { loadConfig, saveConfig, setProviderApiKey, type ClarkConfig } from "../config.ts";
-import { isApiKeyProvider, PROVIDER_CATALOG } from "../llm/catalog.ts";
-import { scaffoldLibrary } from "../library.ts";
-import { getWorkspaceDir } from "../workspace.ts";
+import { loadConfig, saveConfig, setProviderApiKey, type ClarkConfig } from "../../core/config.ts";
+import { isApiKeyProvider, PROVIDER_CATALOG } from "../../core/llm/catalog.ts";
+import { scaffoldLibrary } from "../../core/library.ts";
+import { getWorkspaceDir } from "../../core/workspace.ts";
 import { useLineEditor } from "./primitives/use-line-editor.ts";
 import { useSelectableList } from "./primitives/use-selectable-list.ts";
 import { hex } from "./theme.ts";

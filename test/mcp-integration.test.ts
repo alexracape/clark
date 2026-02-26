@@ -13,7 +13,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const TEST_VAULT = resolve(import.meta.dir, "test_vault");
-const SERVER_PATH = resolve(import.meta.dir, "../src/mcp/standalone.ts");
+const SERVER_PATH = resolve(import.meta.dir, "../core/mcp/standalone.ts");
 
 let client: Client;
 let transport: StdioClientTransport;

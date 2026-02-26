@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { normalizeCanvasName, validateCanvasName } from "../src/canvas/name.ts";
+import { normalizeCanvasName, validateCanvasName } from "../core/canvas/name.ts";
 
 describe("canvas name validation", () => {
   test("normalizes whitespace", () => {

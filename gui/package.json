@@ -1,0 +1,10 @@
+{
+  "name": "clark-gui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot dev-server.ts",
+    "build": "bun build.ts"
+  }
+}

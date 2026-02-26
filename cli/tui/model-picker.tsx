@@ -4,8 +4,8 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
-import { resolveApiKey, saveConfig, setProviderApiKey, type ClarkConfig } from "../config.ts";
-import { getCloudModelEntries, getProviderCatalogEntry, isApiKeyProvider } from "../llm/catalog.ts";
+import { resolveApiKey, saveConfig, setProviderApiKey, type ClarkConfig } from "../../core/config.ts";
+import { getCloudModelEntries, getProviderCatalogEntry, isApiKeyProvider } from "../../core/llm/catalog.ts";
 import { useLineEditor } from "./primitives/use-line-editor.ts";
 import { useSelectableList } from "./primitives/use-selectable-list.ts";
 import { hex } from "./theme.ts";
@@ -40,7 +40,7 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
   const [ollamaModels, setOllamaModels] = useState<ModelEntry[]>([]);
 
   useEffect(() => {
-    import("../llm/ollama.ts")
+    import("../../core/llm/ollama.ts")
       .then(({ listLocalModels }) => listLocalModels())
       .then((models) => {
         if (models.length === 0) {

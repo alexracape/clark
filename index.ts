@@ -7,16 +7,16 @@
 
 import React from "react";
 import { render } from "ink";
-import { Onboarding } from "./src/tui/onboarding.tsx";
+import { Onboarding } from "./cli/tui/onboarding.tsx";
 import {
   applyConfigToEnv,
   loadConfig,
   needsOnboarding,
   type ClarkConfig,
-} from "./src/config.ts";
-import { parseCliArgs, version } from "./src/bootstrap/args.ts";
-import { startClarkApp } from "./src/bootstrap/start-app.ts";
-import { runUpgrade } from "./src/bootstrap/upgrade.ts";
+} from "./core/config.ts";
+import { parseCliArgs, version } from "./cli/bootstrap/args.ts";
+import { startClarkApp } from "./cli/bootstrap/start-app.ts";
+import { runUpgrade } from "./cli/bootstrap/upgrade.ts";
 
 const args = await parseCliArgs();
 

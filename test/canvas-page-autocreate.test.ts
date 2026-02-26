@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { shouldCheckTrailingEmptyFrameAfterCreate } from "../src/canvas/page-autocreate.ts";
+import { shouldCheckTrailingEmptyFrameAfterCreate } from "../core/canvas/page-autocreate.ts";
 
 describe("shouldCheckTrailingEmptyFrameAfterCreate", () => {
   test("returns true for local user-created non-frame shapes", () => {

@@ -4,7 +4,7 @@ import type { Conversation } from "../llm/messages.ts";
 import type { LLMProvider } from "../llm/provider.ts";
 import type { CanvasSessionManager } from "./canvas-session.ts";
 import { expandPath } from "../library.ts";
-import { version } from "../bootstrap/args.ts";
+import { version } from "../version.ts";
 
 // Discord webhook for feedback collection
 const FEEDBACK_WEBHOOK_URL =

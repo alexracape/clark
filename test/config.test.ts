@@ -15,7 +15,7 @@ import {
   loadConfig,
   saveConfig,
   type ClarkConfig,
-} from "../src/config.ts";
+} from "../core/config.ts";
 
 describe("needsOnboarding", () => {
   const savedEnv: Record<string, string | undefined> = {};

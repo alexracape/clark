@@ -7,11 +7,11 @@
 
 import { test, expect, describe } from "bun:test";
 import { resolve } from "node:path";
-import { MockProvider, type MockResponse } from "../src/llm/mock.ts";
-import { Conversation } from "../src/llm/messages.ts";
-import { createTools, type ToolDefinition } from "../src/mcp/tools.ts";
-import { CanvasBroker } from "../src/canvas/server.ts";
-import type { StreamChunk, MessageContent } from "../src/llm/provider.ts";
+import { MockProvider, type MockResponse } from "../core/llm/mock.ts";
+import { Conversation } from "../core/llm/messages.ts";
+import { createTools, type ToolDefinition } from "../core/mcp/tools.ts";
+import { CanvasBroker } from "../core/canvas/server.ts";
+import type { StreamChunk, MessageContent } from "../core/llm/provider.ts";
 
 /**
  * Run a single conversation turn (mirrors the logic in app.tsx).

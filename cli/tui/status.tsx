@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
-import type { CanvasConnectionState } from "../app/canvas-session.ts";
+import type { CanvasConnectionState } from "../../core/app/canvas-session.ts";
 import { theme, componentTheme, hex } from "./theme.ts";
 import chalk from "chalk";
 

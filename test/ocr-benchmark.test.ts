@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { runBenchmark, summarizeBenchmark } from "../src/ocr/benchmark.ts";
+import { runBenchmark, summarizeBenchmark } from "../core/ocr/benchmark.ts";
 
 describe("ocr benchmark utilities", () => {
   test("summarizeBenchmark computes aggregate metrics", () => {

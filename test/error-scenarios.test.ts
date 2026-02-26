@@ -10,10 +10,10 @@ import { resolve } from "node:path";
 import { mkdtemp, rm, writeFile, chmod, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig } from "../src/config.ts";
-import { createTools } from "../src/mcp/tools.ts";
-import { CanvasBroker } from "../src/canvas/server.ts";
-import { MockProvider } from "../src/llm/mock.ts";
+import { loadConfig } from "../core/config.ts";
+import { createTools } from "../core/mcp/tools.ts";
+import { CanvasBroker } from "../core/canvas/server.ts";
+import { MockProvider } from "../core/llm/mock.ts";
 
 const TEST_VAULT = resolve(import.meta.dir, "test_vault");
 

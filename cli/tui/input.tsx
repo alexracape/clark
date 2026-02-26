@@ -8,7 +8,7 @@ import { Box, Text, useInput, useApp } from "ink";
 import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CommandHistory } from "./history.ts";
-import { expandPath } from "../library.ts";
+import { expandPath } from "../../core/library.ts";
 import { theme, componentTheme } from "./theme.ts";
 
 export interface InputProps {

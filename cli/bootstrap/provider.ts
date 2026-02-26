@@ -1,9 +1,9 @@
-import { createProvider } from "../llm/index.ts";
-import { setProviderOptions } from "../llm/provider.ts";
-import type { LLMProvider } from "../llm/provider.ts";
-import type { ClarkConfig } from "../config.ts";
-import { resolveApiKey } from "../config.ts";
-import { getDefaultModelForProvider } from "../llm/catalog.ts";
+import { createProvider } from "../../core/llm/index.ts";
+import { setProviderOptions } from "../../core/llm/provider.ts";
+import type { LLMProvider } from "../../core/llm/provider.ts";
+import type { ClarkConfig } from "../../core/config.ts";
+import { resolveApiKey } from "../../core/config.ts";
+import { getDefaultModelForProvider } from "../../core/llm/catalog.ts";
 import type { CliArgs } from "./args.ts";
 
 export interface ProviderResolution {
@@ -23,7 +23,7 @@ export async function resolveProvider(config: ClarkConfig, args: CliArgs): Promi
   let ollamaVision = false;
 
   if (providerName === "ollama") {
-    const { listLocalModels, checkModelFits } = await import("../llm/ollama.ts");
+    const { listLocalModels, checkModelFits } = await import("../../core/llm/ollama.ts");
 
     if (!modelName) {
       try {

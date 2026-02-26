@@ -3,7 +3,7 @@ import {
   LinuxLibsecretStore,
   WindowsCredentialStore,
   createSecretStore,
-} from "../src/config.ts";
+} from "../core/config.ts";
 
 type ExecCall = {
   file: string;

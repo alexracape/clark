@@ -6,9 +6,9 @@
  */
 
 import chalk from "chalk";
-import type { Conversation } from "../llm/messages.ts";
-import type { ToolDefinition } from "../mcp/tools.ts";
-import { getModelContextWindow } from "../llm/catalog.ts";
+import type { Conversation } from "../../core/llm/messages.ts";
+import type { ToolDefinition } from "../../core/mcp/tools.ts";
+import { getModelContextWindow } from "../../core/llm/catalog.ts";
 import { hex } from "./theme.ts";
 
 /** Map model names to max context window tokens */

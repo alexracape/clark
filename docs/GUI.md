@@ -82,53 +82,7 @@ Proposed (GUI):
 
 ---
 
-## Technology Selection
-
-### Tauri vs Alternatives
-
-**Comparison Matrix:**
-
-| Framework | Bundle | Memory | Backend | Maturity | Verdict |
-|-----------|--------|--------|---------|----------|---------|
-| **Tauri v2** | 3-10MB | 30-40MB | Rust | ⭐⭐⭐⭐ (stable Dec 2024) | ✅ **Selected** |
-| Electron | 52-120MB | 200-300MB | Node.js | ⭐⭐⭐⭐⭐ (very mature) | ❌ Too bloated |
-| Wails v2 | 5-15MB | 40-60MB | Go | ⭐⭐⭐ (released 2024) | ⚠️ Less mature |
-| Neutralino | 2-5MB | 20-30MB | Any | ⭐⭐ (experimental) | ❌ Too risky |
-
-**Why Tauri:**
-- ✅ **Small bundles** - Uses OS WebView instead of bundling Chromium
-- ✅ **Low memory** - Rust is more efficient than Node.js
-- ✅ **Security** - Sandboxed frontend, controlled IPC to backend
-- ✅ **Bun sidecar support** - Can wrap existing backend for MVP
-- ✅ **Active development** - 35% growth in 2024, 17.7k Discord members
-- ✅ **Auto-updater built-in** - Critical for distribution
-- ✅ **Rust learning opportunity** - Team has basic Rust familiarity
-
-**Why NOT Electron:**
-- ❌ 120MB installers too large for students (bandwidth/storage concerns)
-- ❌ 200-300MB RAM usage wasteful on student laptops
-- ❌ Slower startup times (1.5s vs 0.4s)
-- Project goals (small, fast, local-first) align with Tauri
-
-**Why NOT Wails:**
-- Less mature than Tauri (smaller community)
-- Go backend - no advantage over Rust for this project
-- Would still need to run Bun as subprocess for tldraw
-- Only consider if team strongly prefers Go
-
-### Frontend Framework: React
-
-**Decision:** Use **React** (not Svelte, Vue, Solid, or vanilla JS)
-
-**Rationale:**
-1. **tldraw requires React** - It's a React library; wrapping in other frameworks adds complexity
-2. **Existing knowledge** - Team already uses React (Ink TUI)
-3. **Ecosystem** - More Tauri + React examples and documentation
-4. **Bundle size negligible** - React (140KB) vs Svelte (50KB) is <2% of total bundle in Tauri
-
-**Build Tool:** Vite (Tauri's recommended setup, also works with Bun)
-
-### Backend Strategy: Phased Migration
+## Backend Strategy: Phased Migration
 
 **Challenge:** Balance speed-to-market vs optimal architecture.
 
@@ -143,11 +97,6 @@ Proposed (GUI):
 - Migrate LLM, MCP, file I/O to Rust
 - Keep tldraw sync in Bun (TypeScript-only library)
 - Bundle: ~10MB, Memory: ~90MB
-
-**Phase 3 (Long-term):** Evaluate tldraw sync rewrite
-- If canvas usage is high → keep Bun mini-server
-- If performance critical → rewrite sync protocol in Rust
-- If usage low → consider static canvas only
 
 See [Phased Implementation Plan](#phased-implementation-plan) for details.
 
@@ -252,12 +201,6 @@ See [Phased Implementation Plan](#phased-implementation-plan) for details.
 └─────────────────────────────────────────────────┘
 ```
 
-**Memory Breakdown:**
-- Rust backend: ~40MB
-- Minimal Bun (tldraw only): ~50MB
-- React frontend (in WebView): ~30MB
-- **Total: ~120MB** (vs ~250MB Phase 1, ~300MB Electron)
-
 **Why Keep Bun for tldraw:**
 - `@tldraw/sync-core` is TypeScript-only (no Rust equivalent)
 - Rewriting sync protocol = 2-4 weeks of work + ongoing maintenance
@@ -289,7 +232,7 @@ clark/
 
 ```
 clark/
-├── src-core/                    # Shared business logic (UI-agnostic)
+├── core/                       # Shared business logic (UI-agnostic)
 │   ├── llm/                    # LLM providers (anthropic, openai, gemini, ollama)
 │   ├── mcp/                    # MCP server + tool implementations
 │   ├── canvas/                 # tldraw room management, broker
@@ -297,7 +240,7 @@ clark/
 │   ├── config.ts               # Configuration persistence
 │   └── types.ts                # Shared TypeScript types
 │
-├── src-cli/                     # CLI-specific (Terminal UI)
+├── cli/                        # CLI-specific (Terminal UI)
 │   ├── tui/                    # Ink components (moved from src/tui)
 │   │   ├── app.tsx
 │   │   ├── chat.tsx
@@ -307,7 +250,7 @@ clark/
 │   ├── bootstrap/              # CLI startup (moved from src/bootstrap)
 │   └── index.ts                # CLI entry point
 │
-├── src-gui/                     # GUI frontend (React web)
+├── gui/                        # GUI frontend (React web)
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── Chat.tsx        # Chat interface (message list + input)
@@ -322,7 +265,7 @@ clark/
 │   ├── vite.config.ts
 │   └── package.json            # GUI-specific frontend deps
 │
-├── src-tauri/                   # Tauri Rust backend
+├── tauri/                      # Tauri Rust backend
 │   ├── src/
 │   │   ├── main.rs             # Tauri app setup
 │   │   ├── sidecar.rs          # Bun sidecar spawning/management
@@ -344,10 +287,10 @@ clark/
 ```
 
 **Key Changes:**
-1. **`src/` → `src-core/`** - All UI-agnostic business logic
-2. **`src-cli/`** - Terminal UI moved here (keep CLI for power users)
-3. **`src-gui/`** - New React frontend
-4. **`src-tauri/`** - Rust backend (standard Tauri structure)
+1. **`src/` → `core/`** - All UI-agnostic business logic
+2. **`cli/`** - Terminal UI moved here (keep CLI for power users)
+3. **`gui/`** - New React frontend
+4. **`tauri/`** - Rust backend (standard Tauri structure)
 
 **Why This Structure:**
 - ✅ **Clear separation** - Core logic vs UI implementation
@@ -419,14 +362,13 @@ clark/
 **Acceptance:**
 - Tauri window opens
 - Bun process starts automatically
-- Can call `http://localhost:3456/health` from frontend
 
 ---
 
 #### Week 2: Build GUI Frontend
 
 **Tasks:**
-1. Refactor `src/` → `src-core/` (move UI-agnostic code)
+1. Refactor `src/` → `core/` (move UI-agnostic code)
 2. Create React components in `src-gui/`:
    - `Chat.tsx` - Message list + input
    - `Canvas.tsx` - Embed tldraw with `useSync`
@@ -665,185 +607,9 @@ bun build canvas-sync.ts --compile --outfile binaries/canvas-sync
 
 ---
 
-### Phase 3: Long-Term Optimization (6+ months)
-
-**Decision Point:** Evaluate tldraw usage and performance impact.
-
-#### Option A: Keep Bun Mini-Server (Recommended)
-
-**If:**
-- Canvas is heavily used (>50% of sessions)
-- 50MB overhead is acceptable
-- Team wants to focus on features, not infrastructure
-
-**Action:** No change - Phase 2 architecture is final.
-
----
-
-#### Option B: Rewrite tldraw Sync in Rust
-
-**If:**
-- Canvas usage is high AND performance is critical
-- Team has time for 2-4 weeks of infrastructure work
-- Want pure Rust app (no Node/Bun dependency)
-
-**Approach:**
-1. Study `@tldraw/sync-core` source code
-2. Implement sync protocol in Rust (WebSocket + CRDT)
-3. Test compatibility with tldraw frontend
-4. Gradually migrate sessions to Rust sync
-
-**Effort:** 2-4 weeks initial + ongoing maintenance
-**Risk:** High - protocol changes break compatibility
-**Benefit:** Pure Rust, ~40MB total memory, no JS runtime
-
----
-
-#### Option C: Static Canvas (Not Recommended)
-
-**If:**
-- Canvas usage is very low (<10% of sessions)
-- Real-time sync isn't essential
-
-**Action:** Remove live sync, show static snapshots only.
-
-**Benefit:** Pure Rust, simple
-**Cost:** Lose key differentiating feature
-**Recommendation:** Only if data shows users don't value canvas
-
----
-
-## Component Migration Analysis
-
-### Easy to Migrate ✅
-
-| Component | Current (TS) | Rust Equivalent | Effort | Phase |
-|-----------|--------------|-----------------|--------|-------|
-| HTTP server | `Bun.serve()` | Axum | Low | 2.1 |
-| File I/O | `Bun.file()` | Tauri fs plugin | Trivial | 2.1 |
-| Config | JSON read/write | `serde_json` | Low | 2.1 |
-| Env vars | `process.env` | `std::env` | Trivial | 2.1 |
-
-### Medium Difficulty 🟡
-
-| Component | Current (TS) | Rust Equivalent | Effort | Phase |
-|-----------|--------------|-----------------|--------|-------|
-| LLM APIs | `@anthropic-ai/sdk`, `openai` | `reqwest` + `serde` | Medium | 2.2 |
-| PDF parsing | `pdf-parse` | `pdf-extract` / `lopdf` | Medium | 2.3 |
-| MCP server | `@modelcontextprotocol/sdk` | Rust MCP SDK | Medium | 2.3 |
-| WebSocket (generic) | Bun WebSocket | `tokio-tungstenite` | Medium | 2.1 |
-
-### Keep in TypeScript ⚠️
-
-| Component | Why TypeScript? | Alternative? | Decision |
-|-----------|-----------------|--------------|----------|
-| **tldraw sync** | `@tldraw/sync-core` is TS-only | Rewrite protocol (weeks of work) | Keep in minimal Bun process |
-| **React frontend** | tldraw requires React | N/A | Stays in WebView |
-
-### Migration Priority (Phase 2)
-
-**Order of migration:**
-1. **HTTP/WS server** (2.1) - Foundation, unlocks other migrations
-2. **LLM API calls** (2.2) - High-frequency operations, good perf gains
-3. **MCP server** (2.3) - Uses existing Rust SDK
-4. **Minimize Bun** (2.4) - Strip to tldraw-only after migrations
-
-**Defer to Phase 3:**
-- PDF parsing (medium effort, low frequency)
-- tldraw sync rewrite (high effort, unclear ROI)
-
----
-
-## Performance Targets
-
-### Bundle Size
-
-| Target | Size | Notes |
-|--------|------|-------|
-| **Phase 1** | <25MB | Tauri + Bun sidecar |
-| **Phase 2** | <15MB | Tauri + minimal Bun |
-| **Phase 3** | <10MB | Pure Rust (if tldraw rewritten) |
-
-**Comparison:**
-- Electron baseline: 120MB
-- Target is **5-10x smaller**
-
----
-
-### Memory Usage (Idle)
-
-| Target | Memory | Breakdown |
-|--------|--------|-----------|
-| **Phase 1** | <150MB | Rust (30MB) + Bun full (120MB) |
-| **Phase 2** | <100MB | Rust (40MB) + Bun minimal (50MB) + WebView (30MB) |
-| **Phase 3** | <70MB | Rust only (40MB) + WebView (30MB) |
-
-**Comparison:**
-- Electron baseline: 250-300MB
-- Target is **2-3x more efficient**
-
----
-
-### Startup Time
-
-| Target | Time | Notes |
-|--------|------|-------|
-| **All phases** | <0.5s | Tauri baseline (WebView is fast) |
-
-**Comparison:**
-- Electron: 1.5s
-- Target is **3x faster**
-
----
-
-### Measurement Plan
-
-**Before each phase:**
-1. Profile current memory usage:
-   ```bash
-   # macOS
-   ps aux | grep clark
-
-   # Get detailed memory
-   sudo vmmap <pid> | grep -i "physical size"
-   ```
-
-2. Benchmark startup time:
-   ```bash
-   time open ClarkApp.app
-   ```
-
-3. Measure bundle size:
-   ```bash
-   du -sh ClarkApp.dmg
-   ```
-
-**Acceptance criteria:**
-- Memory: Must be ≤ target for phase
-- Startup: Must be <0.5s
-- Bundle: Must be ≤ target for phase
-
-**If targets missed:** Investigate before proceeding to next phase.
-
----
-
 ## Open Questions
 
-### Q1: How much memory does current Bun backend actually use?
-
-**Action:** Profile before Phase 1
-```bash
-bun index.ts
-ps aux | grep bun  # Check RSS (resident memory)
-```
-
-**Decision threshold:**
-- If <100MB → Bun sidecar overhead is acceptable, Phase 2 is optional
-- If >150MB → Prioritize Phase 2 migration
-
----
-
-### Q2: Should we maintain both CLI and GUI long-term?
+### Q1: Should we maintain both CLI and GUI long-term?
 
 **Current stance:** Unsure, depends on user feedback.
 
@@ -856,20 +622,7 @@ ps aux | grep bun  # Check RSS (resident memory)
 
 ---
 
-### Q3: Which platforms to support initially?
-
-**Recommendation:** macOS + Windows (defer Linux GUI)
-
-**Rationale:**
-- Primary audience (students) mostly use Mac/Windows
-- Linux users more comfortable with CLI
-- Can add Linux later if demand exists
-
-**Tauri supports:** macOS (.dmg), Windows (.msi), Linux (.AppImage, .deb, .rpm)
-
----
-
-### Q4: How to handle updates?
+### Q2: How to handle updates?
 
 **Tauri built-in updater:**
 - Checks for updates on GitHub Releases
@@ -900,41 +653,12 @@ ps aux | grep bun  # Check RSS (resident memory)
 - [tldraw Documentation](https://tldraw.dev/)
 - [tldraw Multiplayer Starter Kit](https://tldraw.dev/starter-kits/multiplayer)
 
-### Benchmarks & Comparisons
-- [Tauri vs Electron: Performance & Bundle Size](https://www.gethopp.app/blog/tauri-vs-electron)
-- [Tauri vs Electron Framework Comparison](https://raftlabs.medium.com/tauri-vs-electron-a-practical-guide-to-picking-the-right-framework-5df80e360f26)
-- [Web-to-Desktop Framework Comparison (GitHub)](https://github.com/Elanis/web-to-desktop-framework-comparison)
-
 ### Rust Ecosystem
 - [Axum Web Framework](https://docs.rs/axum/latest/axum/)
 - [Reqwest HTTP Client](https://docs.rs/reqwest/latest/reqwest/)
 - [Serde JSON](https://docs.rs/serde_json/latest/serde_json/)
-- [MCP Rust SDK](https://github.com/modelcontextprotocol) *(verify actual repo)*
+- [MCP Rust SDK](https://github.com/modelcontextprotocol/rust-sdk)
 
 ### React + Vite
 - [Vite Documentation](https://vitejs.dev/)
 - [React Documentation](https://react.dev/)
-
----
-
-## Appendix: Decision Log
-
-| Date | Decision | Rationale |
-|------|----------|-----------|
-| 2026-02-23 | Use Tauri v2 (not Electron) | Smaller bundles, better performance, aligns with local-first goals |
-| 2026-02-23 | Use React (not Svelte) | tldraw requires it, team already knows it |
-| 2026-02-23 | Phased migration (Bun → Rust) | Balance speed-to-market vs optimization |
-| 2026-02-23 | Keep tldraw sync in TypeScript | Library is TS-only, rewrite effort too high for Phase 1-2 |
-| 2026-02-23 | Shared `src-core/` for CLI+GUI | Enable both UIs long-term, decide deprecation later |
-
----
-
-**Next Steps:**
-1. Review and approve this specification
-2. Spike: Set up minimal Tauri + Bun sidecar (1-2 days)
-3. Begin Phase 1 implementation (Week 1: Scaffold)
-
-**Approval Required From:**
-- [ ] Project lead (architecture sign-off)
-- [ ] Development team (technical feasibility)
-- [ ] Design (UI/UX alignment)

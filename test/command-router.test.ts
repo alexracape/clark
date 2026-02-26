@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSlashCommandHandler } from "../src/app/command-router.ts";
-import type { CanvasSessionManager } from "../src/app/canvas-session.ts";
+import { createSlashCommandHandler } from "../core/app/command-router.ts";
+import type { CanvasSessionManager } from "../core/app/canvas-session.ts";
 
 const minimalPNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";

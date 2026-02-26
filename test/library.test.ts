@@ -11,7 +11,7 @@ import {
   isExistingLibrary,
   validateLibraryPath,
   scaffoldLibrary,
-} from "../src/library.ts";
+} from "../core/library.ts";
 
 describe("expandPath", () => {
   test("expands ~ to home directory", () => {

@@ -41,7 +41,7 @@ Every message sent to the LLM includes these components, assembled at different 
 
 The static core of Clark's personality and behavior.
 
-**Defined in:** [`src/prompts/system.md`](../src/prompts/system.md)
+**Defined in:** [`core/prompts/system.md`](../core/prompts/system.md)
 
 Contains:
 - **Identity** — "You are Clark, a Socratic tutoring assistant"
@@ -58,7 +58,7 @@ import baseSystemPrompt from "../prompts/system.md" with { type: "text" };
 
 Auto-generated section that tells the LLM what note structures are available in the student's workspace.
 
-**Loaded by:** [`src/bootstrap/system-prompt.ts`](../src/bootstrap/system-prompt.ts) — `loadStructureSummary()`
+**Loaded by:** [`cli/bootstrap/system-prompt.ts`](../cli/bootstrap/system-prompt.ts) — `loadStructureSummary()`
 
 **Source files:** `Clark/Structures/*.md` in the student's workspace
 
@@ -78,13 +78,13 @@ When they want to create a new structure, read the full definition file for inst
 - **Resource**: These are raw documents that are not in markdown format
 ```
 
-**Default structure templates defined in:** [`src/library.ts`](../src/library.ts) (lines 188–263)
+**Default structure templates defined in:** [`core/library.ts`](../core/library.ts) (lines 188–263)
 
 ### 3. CLARK.md (User Customization)
 
 A per-workspace file where students can add custom instructions that get injected into the system prompt.
 
-**Loaded by:** [`src/library.ts`](../src/library.ts) — `loadClarkContext()`
+**Loaded by:** [`core/library.ts`](../core/library.ts) — `loadClarkContext()`
 
 **File location:** `Clark/CLARK.md` in the student's workspace
 
@@ -99,7 +99,7 @@ A default `CLARK.md` is scaffolded when a workspace is first initialized.
 
 All three sections above are combined into one string.
 
-**Assembled by:** [`src/bootstrap/system-prompt.ts`](../src/bootstrap/system-prompt.ts) — `loadEffectiveSystemPrompt()`
+**Assembled by:** [`cli/bootstrap/system-prompt.ts`](../cli/bootstrap/system-prompt.ts) — `loadEffectiveSystemPrompt()`
 
 ```
 {base system prompt}
@@ -118,9 +118,9 @@ Sections are separated by `\n\n---\n` and only included if non-empty.
 
 Clark exposes 13 tools to the LLM via JSON schemas. These are serialized and sent alongside each request.
 
-**Defined in:** [`src/mcp/tools.ts`](../src/mcp/tools.ts) — `createTools()`
+**Defined in:** [`core/mcp/tools.ts`](../core/mcp/tools.ts) — `createTools()`
 
-**Converted to LLM format in:** [`src/tui/app.tsx`](../src/tui/app.tsx) — `toLLMTools()` (line 51)
+**Converted to LLM format in:** [`cli/tui/app.tsx`](../cli/tui/app.tsx) — `toLLMTools()` (line 51)
 
 | Tool | Description |
 |------|-------------|
@@ -144,7 +144,7 @@ Each tool definition includes a `name`, `description`, `inputSchema` (JSON Schem
 
 The running message history managed by the `Conversation` class.
 
-**Defined in:** [`src/llm/messages.ts`](../src/llm/messages.ts)
+**Defined in:** [`core/llm/messages.ts`](../core/llm/messages.ts)
 
 Message types in the conversation:
 - **User text** — typed input from the student
@@ -160,7 +160,7 @@ Images are estimated at 1,600 tokens each. Text tokens are estimated at 4 charac
 
 The agentic loop that handles multi-step tool use.
 
-**Orchestrated in:** [`src/tui/app.tsx`](../src/tui/app.tsx) — `runConversationTurn()` (line 162)
+**Orchestrated in:** [`cli/tui/app.tsx`](../cli/tui/app.tsx) — `runConversationTurn()` (line 162)
 
 ```
 User sends message
@@ -177,20 +177,20 @@ User sends message
 
 Each LLM provider receives the system prompt differently.
 
-**Provider interface:** [`src/llm/provider.ts`](../src/llm/provider.ts)
+**Provider interface:** [`core/llm/provider.ts`](../core/llm/provider.ts)
 
 | Provider | System prompt injection | File |
 |----------|------------------------|------|
-| Anthropic | `system` parameter (native) | [`src/llm/anthropic.ts`](../src/llm/anthropic.ts) |
-| OpenAI | First message with `role: "system"` | [`src/llm/openai.ts`](../src/llm/openai.ts) |
-| Gemini | `systemInstruction` parameter | [`src/llm/gemini.ts`](../src/llm/gemini.ts) |
-| Ollama | Prepended as system message | [`src/llm/ollama.ts`](../src/llm/ollama.ts) |
+| Anthropic | `system` parameter (native) | [`core/llm/anthropic.ts`](../core/llm/anthropic.ts) |
+| OpenAI | First message with `role: "system"` | [`core/llm/openai.ts`](../core/llm/openai.ts) |
+| Gemini | `systemInstruction` parameter | [`core/llm/gemini.ts`](../core/llm/gemini.ts) |
+| Ollama | Prepended as system message | [`core/llm/ollama.ts`](../core/llm/ollama.ts) |
 
 ### 9. Context Window Visualization
 
 The `/context` slash command renders a 10x10 grid showing token usage by category.
 
-**Defined in:** [`src/tui/context.ts`](../src/tui/context.ts) — `formatContextGrid()`
+**Defined in:** [`cli/tui/context.ts`](../cli/tui/context.ts) — `formatContextGrid()`
 
 Categories tracked:
 - System prompt, Tool definitions, User messages, Assistant messages, Tool results, Thinking, Skills (reserved, currently 0), Free space
@@ -209,15 +209,15 @@ All files involved in prompt and context management:
 
 | File | Role |
 |------|------|
-| [`src/prompts/system.md`](../src/prompts/system.md) | Base system prompt text |
-| [`src/bootstrap/system-prompt.ts`](../src/bootstrap/system-prompt.ts) | Assembles system prompt from parts |
-| [`src/library.ts`](../src/library.ts) | CLARK.md loading, structure templates, workspace scaffolding |
-| [`src/mcp/tools.ts`](../src/mcp/tools.ts) | Tool definitions and handlers |
-| [`src/llm/messages.ts`](../src/llm/messages.ts) | Conversation state and message management |
-| [`src/llm/provider.ts`](../src/llm/provider.ts) | Provider interface |
-| [`src/llm/anthropic.ts`](../src/llm/anthropic.ts) | Anthropic provider (Claude) |
-| [`src/llm/openai.ts`](../src/llm/openai.ts) | OpenAI provider |
-| [`src/llm/gemini.ts`](../src/llm/gemini.ts) | Gemini provider |
-| [`src/llm/ollama.ts`](../src/llm/ollama.ts) | Ollama provider |
-| [`src/tui/app.tsx`](../src/tui/app.tsx) | Conversation turn loop and tool dispatch |
-| [`src/tui/context.ts`](../src/tui/context.ts) | Context window visualization |
+| [`core/prompts/system.md`](../core/prompts/system.md) | Base system prompt text |
+| [`cli/bootstrap/system-prompt.ts`](../cli/bootstrap/system-prompt.ts) | Assembles system prompt from parts |
+| [`core/library.ts`](../core/library.ts) | CLARK.md loading, structure templates, workspace scaffolding |
+| [`core/mcp/tools.ts`](../core/mcp/tools.ts) | Tool definitions and handlers |
+| [`core/llm/messages.ts`](../core/llm/messages.ts) | Conversation state and message management |
+| [`core/llm/provider.ts`](../core/llm/provider.ts) | Provider interface |
+| [`core/llm/anthropic.ts`](../core/llm/anthropic.ts) | Anthropic provider (Claude) |
+| [`core/llm/openai.ts`](../core/llm/openai.ts) | OpenAI provider |
+| [`core/llm/gemini.ts`](../core/llm/gemini.ts) | Gemini provider |
+| [`core/llm/ollama.ts`](../core/llm/ollama.ts) | Ollama provider |
+| [`cli/tui/app.tsx`](../cli/tui/app.tsx) | Conversation turn loop and tool dispatch |
+| [`cli/tui/context.ts`](../cli/tui/context.ts) | Context window visualization |

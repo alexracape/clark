@@ -9,7 +9,7 @@
 import { test, expect, describe, afterEach, mock } from "bun:test";
 import { render, cleanup } from "ink-testing-library";
 import React from "react";
-import { Onboarding } from "../src/tui/onboarding.tsx";
+import { Onboarding } from "../cli/tui/onboarding.tsx";
 
 describe("Onboarding", () => {
 	afterEach(() => {
