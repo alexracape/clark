@@ -338,6 +338,7 @@ clark/
 │   └── dependencies/          # Vendored LLM-friendly docs for tldraw, MCP
 │
 ├── core/                      # Shared business logic (UI-agnostic)
+│   ├── engine.ts              # ConversationEngine — turn loop (stream → tool dispatch → loop)
 │   ├── version.ts             # Version constant (compile-time or package.json fallback)
 │   ├── config.ts              # Config persistence (~/.clark/config.json)
 │   ├── library.ts             # Library scaffolding (directory structure + templates)

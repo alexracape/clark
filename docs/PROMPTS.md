@@ -160,17 +160,20 @@ Images are estimated at 1,600 tokens each. Text tokens are estimated at 4 charac
 
 The agentic loop that handles multi-step tool use.
 
-**Orchestrated in:** [`cli/tui/app.tsx`](../cli/tui/app.tsx) — `runConversationTurn()` (line 162)
+**Orchestrated in:** [`core/engine.ts`](../core/engine.ts) — `ConversationEngine.runTurn()`
+
+The `ConversationEngine` class owns the turn loop and is UI-agnostic. Both the CLI (`cli/tui/app.tsx`) and GUI (Tauri sidecar) drive it via `TurnCallbacks`.
 
 ```
 User sends message
-  └─> streamLLM() — send messages + tools + system prompt to provider
-       └─> Provider returns response (text, tool calls, or both)
-            ├─> If no tool calls → display text, done
-            └─> If tool calls → dispatch each tool
-                 ├─> Add tool results to conversation
-                 └─> Loop back to streamLLM() with updated messages
-                      (up to maxToolCallsPerTurn, default 8)
+  └─> engine.runTurn(provider, callbacks)
+       └─> streamLLM() — send messages + tools + system prompt to provider
+            └─> Provider returns response (text, tool calls, or both)
+                 ├─> If no tool calls → callbacks.onAssistantMessage(), done
+                 └─> If tool calls → dispatchTool() for each
+                      ├─> Add tool results to conversation
+                      └─> Loop back to streamLLM() with updated messages
+                           (up to maxToolCallsPerTurn, default 8)
 ```
 
 ### 8. Provider-Specific Prompt Handling
@@ -219,5 +222,6 @@ All files involved in prompt and context management:
 | [`core/llm/openai.ts`](../core/llm/openai.ts) | OpenAI provider |
 | [`core/llm/gemini.ts`](../core/llm/gemini.ts) | Gemini provider |
 | [`core/llm/ollama.ts`](../core/llm/ollama.ts) | Ollama provider |
-| [`cli/tui/app.tsx`](../cli/tui/app.tsx) | Conversation turn loop and tool dispatch |
+| [`core/engine.ts`](../core/engine.ts) | Conversation turn loop and tool dispatch (UI-agnostic) |
+| [`cli/tui/app.tsx`](../cli/tui/app.tsx) | TUI shell — wires engine callbacks to React state |
 | [`cli/tui/context.ts`](../cli/tui/context.ts) | Context window visualization |

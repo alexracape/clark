@@ -1,0 +1,322 @@
+import { test, expect, describe, beforeEach } from "bun:test";
+import { ConversationEngine, toLLMTools, normalizeVisionMediaType } from "../core/engine.ts";
+import { Conversation } from "../core/llm/messages.ts";
+import { MockProvider, type MockResponse } from "../core/llm/mock.ts";
+import type { ToolDefinition, ToolResult } from "../core/mcp/tools.ts";
+import type { TurnCallbacks } from "../core/engine.ts";
+
+/** Helper: create a simple echo tool */
+function echoTool(): ToolDefinition {
+  return {
+    name: "echo",
+    description: "Echoes input back",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "Text to echo" },
+      },
+      required: ["text"],
+    },
+    handler: async (input) => ({
+      content: [{ type: "text", text: `echo: ${input.text}` }],
+      isError: false,
+    }),
+  };
+}
+
+/** Helper: create a tool that returns an image */
+function imageTool(): ToolDefinition {
+  return {
+    name: "screenshot",
+    description: "Returns a screenshot",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    handler: async () => ({
+      content: [
+        { type: "image", data: "base64data", mimeType: "image/png" },
+        { type: "text", text: "Screenshot captured" },
+      ],
+      isError: false,
+    }),
+  };
+}
+
+/** Helper: collect callback events */
+function trackCallbacks() {
+  const events: Array<{ type: string; value?: string }> = [];
+  const callbacks: TurnCallbacks = {
+    onStreamingText: (t) => events.push({ type: "streaming_text", value: t }),
+    onStreamingThinking: (t) => events.push({ type: "streaming_thinking", value: t }),
+    onStreamingDone: () => events.push({ type: "streaming_done" }),
+    onAssistantMessage: (t) => events.push({ type: "assistant", value: t }),
+    onToolStart: (name) => events.push({ type: "tool_start", value: name }),
+    onSystemMessage: (msg) => events.push({ type: "system", value: msg }),
+  };
+  return { events, callbacks };
+}
+
+describe("toLLMTools", () => {
+  test("converts ToolDefinition[] to Tool[]", () => {
+    const tools = toLLMTools([echoTool()]);
+    expect(tools).toHaveLength(1);
+    expect(tools[0]!.name).toBe("echo");
+    expect(tools[0]!.description).toBe("Echoes input back");
+    expect(tools[0]!.parameters).toEqual(echoTool().inputSchema);
+  });
+});
+
+describe("normalizeVisionMediaType", () => {
+  test("normalizes supported types", () => {
+    expect(normalizeVisionMediaType("image/png")).toBe("image/png");
+    expect(normalizeVisionMediaType("image/jpeg")).toBe("image/jpeg");
+    expect(normalizeVisionMediaType("image/jpg")).toBe("image/jpeg");
+    expect(normalizeVisionMediaType("image/webp")).toBe("image/webp");
+    expect(normalizeVisionMediaType("IMAGE/PNG")).toBe("image/png");
+  });
+
+  test("returns null for unsupported types", () => {
+    expect(normalizeVisionMediaType("image/gif")).toBeNull();
+    expect(normalizeVisionMediaType("text/plain")).toBeNull();
+    expect(normalizeVisionMediaType(undefined)).toBeNull();
+  });
+});
+
+describe("ConversationEngine", () => {
+  let conversation: Conversation;
+  let engine: ConversationEngine;
+
+  beforeEach(() => {
+    conversation = new Conversation();
+    engine = new ConversationEngine({
+      conversation,
+      tools: [echoTool()],
+      systemPrompt: "You are a helpful assistant.",
+    });
+  });
+
+  test("simple text response", async () => {
+    const provider = new MockProvider([{ text: "Hello world" }]);
+    const { events, callbacks } = trackCallbacks();
+
+    conversation.addUserMessage("Hi");
+    await engine.runTurn(provider, callbacks);
+
+    // Should have streamed text and emitted assistant message
+    expect(events.some((e) => e.type === "assistant" && e.value === "Hello world")).toBe(true);
+    expect(events.some((e) => e.type === "streaming_done")).toBe(true);
+    // Provider should have been called once
+    expect(provider.calls).toHaveLength(1);
+  });
+
+  test("tool call and follow-up response", async () => {
+    const provider = new MockProvider([
+      // First response: tool call
+      {
+        toolCalls: [{ id: "tc1", name: "echo", input: { text: "ping" } }],
+      },
+      // Second response: final text after tool result
+      { text: "The echo said: ping" },
+    ]);
+    const { events, callbacks } = trackCallbacks();
+
+    conversation.addUserMessage("echo ping");
+    await engine.runTurn(provider, callbacks);
+
+    // Should have dispatched the tool
+    expect(events.some((e) => e.type === "tool_start" && e.value === "echo")).toBe(true);
+    // Should have final text
+    expect(events.some((e) => e.type === "assistant" && e.value === "The echo said: ping")).toBe(true);
+    // Provider called twice (initial + after tool result)
+    expect(provider.calls).toHaveLength(2);
+  });
+
+  test("unknown tool returns error result", async () => {
+    const provider = new MockProvider([
+      {
+        toolCalls: [{ id: "tc1", name: "nonexistent", input: {} }],
+      },
+      { text: "Sorry about that" },
+    ]);
+    const { events, callbacks } = trackCallbacks();
+
+    conversation.addUserMessage("do something");
+    await engine.runTurn(provider, callbacks);
+
+    // Should still complete without throwing
+    expect(events.some((e) => e.type === "assistant")).toBe(true);
+    // The conversation should contain the error tool result
+    const messages = conversation.getMessages();
+    const toolResultMsg = messages.find(
+      (m) => m.role === "tool" && m.content.some(
+        (c) => c.type === "tool_result" && typeof c.content === "string" && c.content.includes("Unknown tool"),
+      ),
+    );
+    expect(toolResultMsg).toBeDefined();
+  });
+
+  test("tool call limit enforcement", async () => {
+    const engine2 = new ConversationEngine({
+      conversation,
+      tools: [echoTool()],
+      systemPrompt: "test",
+      maxToolCallsPerTurn: 2,
+    });
+
+    const provider = new MockProvider([
+      // First call: 2 tool uses
+      {
+        toolCalls: [
+          { id: "tc1", name: "echo", input: { text: "a" } },
+          { id: "tc2", name: "echo", input: { text: "b" } },
+        ],
+      },
+      // Second call: 1 more tool use (should exceed limit)
+      {
+        toolCalls: [
+          { id: "tc3", name: "echo", input: { text: "c" } },
+        ],
+      },
+    ]);
+    const { events, callbacks } = trackCallbacks();
+
+    conversation.addUserMessage("echo many times");
+    await engine2.runTurn(provider, callbacks);
+
+    // Should have a system message about the limit
+    expect(events.some((e) => e.type === "system" && e.value?.includes("max tool calls"))).toBe(true);
+  });
+
+  test("max_tokens stop reason emits warning", async () => {
+    const provider = new MockProvider([{ text: "partial...", stopReason: "max_tokens" }]);
+    const { events, callbacks } = trackCallbacks();
+
+    conversation.addUserMessage("write a very long essay");
+    await engine.runTurn(provider, callbacks);
+
+    expect(events.some((e) => e.type === "system" && e.value?.includes("max_tokens"))).toBe(true);
+  });
+
+  test("streaming error is caught and reported", async () => {
+    // Create a provider that throws during streaming
+    const errorProvider: any = {
+      name: "error",
+      supportsVision: false,
+      async *chat() {
+        throw new Error("Connection reset");
+      },
+    };
+    const { events, callbacks } = trackCallbacks();
+
+    conversation.addUserMessage("Hi");
+    await engine.runTurn(errorProvider, callbacks);
+
+    expect(events.some((e) => e.type === "system" && e.value?.includes("Connection reset"))).toBe(true);
+    // Should also call onStreamingDone to clear UI state
+    expect(events.some((e) => e.type === "streaming_done")).toBe(true);
+  });
+
+  test("image tool result with anthropic provider uses native images", async () => {
+    const engineWithImage = new ConversationEngine({
+      conversation,
+      tools: [imageTool()],
+      systemPrompt: "test",
+    });
+
+    const provider = new MockProvider([
+      {
+        toolCalls: [{ id: "tc1", name: "screenshot", input: {} }],
+      },
+      { text: "I see the screenshot" },
+    ]);
+    // Override name to anthropic
+    Object.defineProperty(provider, "name", { value: "anthropic" });
+
+    conversation.addUserMessage("take a screenshot");
+    await engineWithImage.runTurn(provider, {});
+
+    // The tool result should use addToolResultWithImage (image content, not text)
+    const messages = conversation.getMessages();
+    const toolResult = messages.find(
+      (m) => m.role === "tool" && m.content.some((c) => c.type === "tool_result"),
+    );
+    expect(toolResult).toBeDefined();
+    const content = toolResult!.content[0]!;
+    expect(content.type).toBe("tool_result");
+    if (content.type === "tool_result") {
+      // For Anthropic, content should be an array of images (not a string)
+      expect(Array.isArray(content.content)).toBe(true);
+    }
+  });
+
+  test("image tool result with non-anthropic provider adds user image message", async () => {
+    const engineWithImage = new ConversationEngine({
+      conversation,
+      tools: [imageTool()],
+      systemPrompt: "test",
+    });
+
+    const provider = new MockProvider([
+      {
+        toolCalls: [{ id: "tc1", name: "screenshot", input: {} }],
+      },
+      { text: "I see the screenshot" },
+    ]);
+
+    conversation.addUserMessage("take a screenshot");
+    await engineWithImage.runTurn(provider, {});
+
+    // For non-Anthropic, should have a user image message injected
+    const messages = conversation.getMessages();
+    const userImageMsg = messages.find(
+      (m) => m.role === "user" && m.content.some((c) => c.type === "image"),
+    );
+    expect(userImageMsg).toBeDefined();
+  });
+
+  test("setTools updates tools at runtime", async () => {
+    const newTool: ToolDefinition = {
+      name: "greet",
+      description: "Greets someone",
+      inputSchema: {
+        type: "object",
+        properties: { name: { type: "string", description: "Name" } },
+        required: ["name"],
+      },
+      handler: async (input) => ({
+        content: [{ type: "text", text: `Hello, ${input.name}!` }],
+        isError: false,
+      }),
+    };
+
+    engine.setTools([newTool]);
+
+    const provider = new MockProvider([
+      {
+        toolCalls: [{ id: "tc1", name: "greet", input: { name: "World" } }],
+      },
+      { text: "Greeted!" },
+    ]);
+
+    conversation.addUserMessage("greet World");
+    await engine.runTurn(provider, {});
+
+    // The greet tool should have been dispatched successfully
+    const messages = conversation.getMessages();
+    const toolResult = messages.find(
+      (m) => m.role === "tool" && m.content.some(
+        (c) => c.type === "tool_result" && typeof c.content === "string" && c.content.includes("Hello, World!"),
+      ),
+    );
+    expect(toolResult).toBeDefined();
+  });
+
+  test("works with no callbacks", async () => {
+    const provider = new MockProvider([{ text: "response" }]);
+    conversation.addUserMessage("Hi");
+    // Should not throw when callbacks are undefined
+    await engine.runTurn(provider);
+    expect(provider.calls).toHaveLength(1);
+  });
+});

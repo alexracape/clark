@@ -27,7 +27,7 @@ describe("createSlashCommandHandler /export", () => {
           exportDir = next;
         },
         conversation: {} as never,
-        provider: {} as never,
+        getProvider: () => ({} as never),
       });
 
       const result = await handler("export", "");
@@ -63,7 +63,7 @@ describe("createSlashCommandHandler /export", () => {
           persistedDir = next;
         },
         conversation: {} as never,
-        provider: {} as never,
+        getProvider: () => ({} as never),
       });
 
       const first = await handler("export", "exports");
@@ -98,7 +98,7 @@ describe("createSlashCommandHandler /export", () => {
         getExportDir: () => dir,
         setExportDir: () => {},
         conversation: {} as never,
-        provider: {} as never,
+        getProvider: () => ({} as never),
       });
 
       const result = await handler("export", "");
@@ -132,7 +132,7 @@ describe("createSlashCommandHandler /export", () => {
           throw new Error("disk is read-only");
         },
         conversation: {} as never,
-        provider: {} as never,
+        getProvider: () => ({} as never),
       });
 
       const result = await handler("export", "exports");

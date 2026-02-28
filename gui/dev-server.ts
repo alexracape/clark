@@ -1,57 +1,147 @@
-import { extname, join, normalize } from "node:path";
+/**
+ * GUI dev server — serves the React app and starts the sidecar.
+ *
+ * Spawns the Bun sidecar API server, builds the React frontend,
+ * and serves everything on a single dev command.
+ *
+ * Usage:
+ *   bun gui/dev-server.ts
+ *   # or from project root:
+ *   bun run dev:gui
+ *
+ * Then open http://localhost:1420
+ */
+
+import { join, resolve } from "node:path";
+import { spawn } from "node:child_process";
 
 const PORT = Number(process.env.PORT ?? "1420");
 const ROOT = import.meta.dir;
+const PROJECT_ROOT = resolve(ROOT, "..");
 
-const CONTENT_TYPES: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".ico": "image/x-icon",
-};
+// --- Start sidecar process ---
 
-function resolvePath(pathname: string): string | null {
-  const normalized = pathname === "/" ? "/index.html" : pathname;
-  const cleanPath = normalize(normalized).replace(/^(\.\.[/\\])+/, "");
-  const absolutePath = join(ROOT, cleanPath);
+const SIDECAR_PORT = process.env.CLARK_SIDECAR_PORT ?? "3456";
 
-  if (!absolutePath.startsWith(ROOT)) {
-    return null;
+console.log("Starting sidecar...");
+const sidecar = spawn("bun", [join(ROOT, "sidecar.ts")], {
+  cwd: PROJECT_ROOT,
+  env: { ...process.env, CLARK_SIDECAR_PORT: SIDECAR_PORT },
+  stdio: ["ignore", "pipe", "inherit"],
+});
+
+// Wait for sidecar to be ready
+await new Promise<void>((resolve, reject) => {
+  const timeout = setTimeout(() => reject(new Error("Sidecar startup timed out")), 15000);
+
+  sidecar.stdout!.on("data", (chunk: Buffer) => {
+    const text = chunk.toString();
+    process.stdout.write(text);
+    if (text.includes("CLARK_SIDECAR_PORT=")) {
+      clearTimeout(timeout);
+      resolve();
+    }
+  });
+
+  sidecar.on("error", (err) => {
+    clearTimeout(timeout);
+    reject(err);
+  });
+
+  sidecar.on("exit", (code) => {
+    if (code !== null && code !== 0) {
+      clearTimeout(timeout);
+      reject(new Error(`Sidecar exited with code ${code}`));
+    }
+  });
+});
+
+console.log("Sidecar ready.");
+
+// Clean up sidecar on exit
+process.on("SIGINT", () => {
+  sidecar.kill();
+  process.exit(0);
+});
+process.on("SIGTERM", () => {
+  sidecar.kill();
+  process.exit(0);
+});
+process.on("exit", () => {
+  sidecar.kill();
+});
+
+// --- Build frontend ---
+
+const buildResult = await Bun.build({
+  entrypoints: [join(ROOT, "src/main.tsx")],
+  outdir: join(ROOT, "dist"),
+  sourcemap: "inline",
+  target: "browser",
+  define: {
+    "process.env.NODE_ENV": JSON.stringify("development"),
+  },
+});
+
+if (!buildResult.success) {
+  console.error("Build failed:");
+  for (const log of buildResult.logs) {
+    console.error(log);
   }
-
-  return absolutePath;
+  sidecar.kill();
+  process.exit(1);
 }
 
-function contentTypeFor(pathname: string): string {
-  const ext = extname(pathname).toLowerCase();
-  return CONTENT_TYPES[ext] ?? "application/octet-stream";
+// Prepare the HTML with injected JS bundle
+const indexHtml = await Bun.file(join(ROOT, "index.html")).text();
+const jsFile = buildResult.outputs.find((o) => o.path.endsWith(".js"));
+const jsFileName = jsFile ? jsFile.path.split("/").pop() : "main.js";
+
+let html = indexHtml.replace(
+  '<script type="module" src="./src/main.tsx"></script>',
+  `<script type="module" src="/${jsFileName}"></script>`,
+);
+
+// Inject CSS if emitted
+const cssFile = buildResult.outputs.find((o) => o.path.endsWith(".css"));
+if (cssFile) {
+  const cssName = cssFile.path.split("/").pop()!;
+  html = html.replace(
+    "</head>",
+    `  <link rel="stylesheet" href="/${cssName}" />\n  </head>`,
+  );
 }
+
+// --- Serve frontend ---
 
 const server = Bun.serve({
   port: PORT,
   async fetch(req) {
     const { pathname } = new URL(req.url);
-    const filePath = resolvePath(pathname);
-    if (!filePath) {
-      return new Response("forbidden", { status: 403 });
+
+    // Serve index.html at root
+    if (pathname === "/" || pathname === "/index.html") {
+      return new Response(html, {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
     }
 
-    const file = Bun.file(filePath);
-    if (!(await file.exists())) {
-      return new Response("not found", { status: 404 });
+    // Serve built assets from dist/
+    const distPath = join(ROOT, "dist", pathname.slice(1));
+    const distFile = Bun.file(distPath);
+    if (await distFile.exists()) {
+      return new Response(distFile);
     }
 
-    return new Response(file, {
-      headers: {
-        "content-type": contentTypeFor(filePath),
-      },
-    });
+    // Serve static assets from gui/
+    const staticPath = join(ROOT, pathname.slice(1));
+    const staticFile = Bun.file(staticPath);
+    if (await staticFile.exists()) {
+      return new Response(staticFile);
+    }
+
+    return new Response("not found", { status: 404 });
   },
 });
 
-console.log(`GUI dev server listening on http://localhost:${server.port}`);
+console.log(`\nGUI dev server at http://localhost:${server.port}`);

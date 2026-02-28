@@ -85,7 +85,7 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
       await saveConfig({ ...currentConfig, pdfExportDir: dir });
     },
     conversation,
-    provider,
+    getProvider: () => currentProvider,
   });
 
   const history = new CommandHistory();

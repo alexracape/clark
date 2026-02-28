@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "bun --hot dev-server.ts",
-    "build": "bun build.ts"
+    "dev": "bun dev-server.ts",
+    "build": "bun build.ts",
+    "sidecar": "bun sidecar.ts",
+    "sidecar:dev": "bun --hot sidecar.ts"
   }
 }

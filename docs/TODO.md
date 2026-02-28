@@ -2,11 +2,15 @@ Some future enhancements and things that need fixing, organized into parallel ex
 
 ## Backlog of future enhancements
 
+GUI
+- No emojis
+- Basic functionality works
+- Restyle
+
 - Tavily option for websearch?
   - Seems like a good fit, but don't want users to worry about another setup step
 - Add lines to the pdf pages optionally
 - Fix windows tests (3)
-- Fix install command missing folder
 
 - **Office hours + class notes user stories**
   - Write concrete user journeys (student, TA/instructor) for office hours and notes workflows.

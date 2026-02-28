@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Clark",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "com.clark.app",
   "build": {
     "frontendDist": "../gui/dist",
     "beforeDevCommand": "bun run build:gui",
@@ -12,14 +12,18 @@
     "windows": [
       {
         "title": "Clark",
-        "width": 800,
-        "height": 600,
+        "width": 960,
+        "height": 700,
+        "minWidth": 600,
+        "minHeight": 400,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": true,
+        "center": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' http://localhost:* ws://localhost:*; img-src 'self' data:"
     }
   },
   "bundle": {

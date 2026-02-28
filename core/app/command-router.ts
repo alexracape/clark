@@ -16,7 +16,7 @@ export interface CommandRouterOptions {
   setExportDir: (dir: string) => void;
   persistExportDir?: (dir: string) => Promise<void>;
   conversation: Conversation;
-  provider: LLMProvider;
+  getProvider: () => LLMProvider;
 }
 
 export function createSlashCommandHandler(options: CommandRouterOptions) {
@@ -26,7 +26,7 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
     setExportDir,
     persistExportDir,
     conversation,
-    provider,
+    getProvider,
   } = options;
 
   async function pathIsDirectory(path: string): Promise<boolean> {
@@ -155,7 +155,7 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
       }
 
       case "tutorial":
-        return null;
+        return "The /tutorial command is only available in the CLI.";
 
       case "model":
         return null;
@@ -180,7 +180,7 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
           const transcript = textParts.join("\n---\n").slice(0, 8000);
 
           let summary = "";
-          for await (const chunk of provider.chat(
+          for await (const chunk of getProvider().chat(
             [
               {
                 role: "user",
@@ -220,7 +220,7 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
             platform: process.platform,
             arch: process.arch,
             bunVersion: Bun.version,
-            provider: provider.constructor.name,
+            provider: getProvider().constructor.name,
           };
 
           // Format Discord message with embed for better readability

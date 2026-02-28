@@ -2,10 +2,10 @@
  * Root TUI application component.
  *
  * Composes the chat, input, and status bar into the full terminal UI.
- * Handles the streaming LLM conversation loop including tool dispatch.
+ * Delegates the conversation turn loop to the shared ConversationEngine.
  */
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { Box, Text, useApp } from "ink";
 import { Chat, type ChatMessage } from "./chat.tsx";
 import { Input, parseSlashCommand } from "./input.tsx";
@@ -16,7 +16,7 @@ import { Tutorial } from "./tutorial.tsx";
 import { createProvider } from "../../core/llm/provider.ts";
 import { setProviderOptions } from "../../core/llm/provider.ts";
 import { formatContextGrid } from "./context.ts";
-import type { LLMProvider, Tool, StreamChunk } from "../../core/llm/provider.ts";
+import type { LLMProvider } from "../../core/llm/provider.ts";
 import {
   loadConfig,
   resolveApiKey,
@@ -25,24 +25,12 @@ import {
   type ClarkConfig,
 } from "../../core/config.ts";
 import { Conversation } from "../../core/llm/messages.ts";
-import type { ToolDefinition, ToolResult } from "../../core/mcp/tools.ts";
+import type { ToolDefinition } from "../../core/mcp/tools.ts";
 import type { CommandHistory } from "../../core/history.ts";
 import { detectFilePath, copyFileToResources } from "../../core/app/ingest.ts";
 import type { CanvasConnectionStatus } from "../../core/app/canvas-session.ts";
 import { theme } from "./theme.ts";
-
-type VisionMediaType = "image/png" | "image/jpeg" | "image/webp";
-
-function normalizeVisionMediaType(
-  value: string | undefined,
-): VisionMediaType | null {
-  if (!value) return null;
-  const lower = value.toLowerCase();
-  if (lower === "image/png") return "image/png";
-  if (lower === "image/jpeg" || lower === "image/jpg") return "image/jpeg";
-  if (lower === "image/webp") return "image/webp";
-  return null;
-}
+import { ConversationEngine, type TurnCallbacks } from "../../core/engine.ts";
 
 export interface AppProps {
   provider: LLMProvider;
@@ -66,15 +54,6 @@ export interface AppProps {
   onSetProgressCallback?: (cb: (message: string) => void) => void;
   /** Called when the user switches providers, so OCR uses the current one. */
   onProviderChange?: (provider: LLMProvider) => void;
-}
-
-/** Convert our MCP tool definitions to LLM tool format */
-function toLLMTools(tools: ToolDefinition[]): Tool[] {
-  return tools.map(({ name, description, inputSchema }) => ({
-    name,
-    description,
-    parameters: inputSchema,
-  }));
 }
 
 export function App({
@@ -128,6 +107,27 @@ export function App({
       getCanvasConnectionStatus ? getCanvasConnectionStatus() : null,
     );
 
+  // Conversation engine — shared turn loop logic
+  const engine = useMemo(
+    () =>
+      new ConversationEngine({
+        conversation,
+        tools,
+        systemPrompt,
+        maxToolCallsPerTurn,
+      }),
+    [],
+  );
+
+  // Keep engine in sync when tools or system prompt change
+  useEffect(() => {
+    engine.setTools(tools);
+  }, [engine, tools]);
+
+  useEffect(() => {
+    engine.setSystemPrompt(systemPrompt);
+  }, [engine, systemPrompt]);
+
   useEffect(() => {
     if (!subscribeCanvasConnectionStatus) return;
     return subscribeCanvasConnectionStatus((status) => {
@@ -150,219 +150,33 @@ export function App({
     onSetProgressCallback?.((msg) => addMessage("system", msg));
   }, [addMessage, onSetProgressCallback]);
 
-  /**
-   * Run the LLM, streaming text to the UI.
-   * Returns the collected chunks and full text when done.
-   */
-  const streamLLM = useCallback(
-    async (
-      promptOverride?: string,
-    ): Promise<{ chunks: StreamChunk[]; text: string }> => {
-      const llmTools = toLLMTools(tools);
-      const chunks: StreamChunk[] = [];
-      let text = "";
-      let thinking = "";
-      const effectivePrompt = promptOverride ?? systemPrompt;
-
-      setStreamingText("");
-      setStreamingThinking(undefined);
-
-      for await (const chunk of activeProvider.chat(
-        conversation.getMessages(),
-        llmTools,
-        effectivePrompt,
-      )) {
-        chunks.push(chunk);
-        if (chunk.type === "thinking_delta") {
-          thinking += chunk.text;
-          setStreamingThinking(thinking);
-        } else if (chunk.type === "text_delta") {
-          text += chunk.text;
-          setStreamingText(text);
-        }
-      }
-
-      setStreamingText(undefined);
-      setStreamingThinking(undefined);
-      return { chunks, text };
-    },
-    [activeProvider, conversation, tools, systemPrompt],
+  /** Build TurnCallbacks that wire engine events to React state */
+  const makeTurnCallbacks = useCallback(
+    (): TurnCallbacks => ({
+      onStreamingText: (t) => setStreamingText(t),
+      onStreamingThinking: (t) => setStreamingThinking(t),
+      onStreamingDone: () => {
+        setStreamingText(undefined);
+        setStreamingThinking(undefined);
+      },
+      onAssistantMessage: (t) => addMessage("assistant", t),
+      onToolStart: (name) => addMessage("system", `Using tool: ${name}`),
+      onSystemMessage: (msg) => addMessage("system", msg),
+    }),
+    [addMessage],
   );
 
-  /**
-   * Dispatch a tool call and return the result.
-   */
-  const dispatchTool = useCallback(
-    async (
-      name: string,
-      input: Record<string, unknown>,
-    ): Promise<ToolResult> => {
-      const tool = tools.find((t) => t.name === name);
-      if (!tool) {
-        return {
-          content: [{ type: "text", text: `Unknown tool: ${name}` }],
-          isError: true,
-        };
-      }
-      return tool.handler(input);
-    },
-    [tools],
-  );
-
-  /**
-   * Full conversation turn: stream LLM → handle tool calls → loop until done.
-   */
+  /** Run a conversation turn via the engine */
   const runConversationTurn = useCallback(
     async (promptOverride?: string) => {
       setIsThinking(true);
-
       try {
-        let continueLoop = true;
-        let toolCallsUsed = 0;
-
-        while (continueLoop) {
-          const { chunks, text } = await streamLLM(promptOverride);
-          const stopReason = [...chunks]
-            .reverse()
-            .find((c) => c.type === "done")?.stopReason;
-
-          // Collect the assistant message content
-          const assistantContent = conversation.collectStreamResponse(chunks);
-          conversation.addAssistantMessage(assistantContent);
-
-          // Check if there are tool calls
-          const toolUses = assistantContent.filter(
-            (c) => c.type === "tool_use",
-          );
-
-          if (toolUses.length === 0) {
-            // No tool calls — show the final text and stop
-            if (text) addMessage("assistant", text);
-            if (stopReason === "max_tokens") {
-              addMessage(
-                "system",
-                'Response was truncated due to max_tokens limit. Set "maxTokens" in ~/.clark/config.json to increase.',
-              );
-            }
-            continueLoop = false;
-          } else {
-            // Show any text before tool calls
-            if (text) addMessage("assistant", text);
-
-            if (toolCallsUsed + toolUses.length > maxToolCallsPerTurn) {
-              const msg = `Stopped: max tool calls per turn reached (${maxToolCallsPerTurn}).`;
-              addMessage("system", msg);
-              for (const toolUse of toolUses) {
-                if (toolUse.type !== "tool_use") continue;
-                conversation.addToolResult(toolUse.id, msg, true);
-              }
-              continueLoop = false;
-              continue;
-            }
-
-            // Dispatch each tool call
-            for (const toolUse of toolUses) {
-              if (toolUse.type !== "tool_use") continue;
-
-              addMessage("system", `Using tool: ${toolUse.name}`);
-
-              const result = await dispatchTool(toolUse.name, toolUse.input);
-              const resultText = result.content
-                .filter(
-                  (c): c is { type: "text"; text: string } => c.type === "text",
-                )
-                .map((c) => c.text)
-                .join("\n");
-
-              const rawImageBlocks = result.content.filter(
-                (
-                  c,
-                ): c is {
-                  type: "image";
-                  data: string;
-                  mimeType?: string;
-                  mediaType?: string;
-                } => c.type === "image",
-              );
-              const imageBlocks = rawImageBlocks
-                .map((img) => ({
-                  data: img.data,
-                  mediaType: normalizeVisionMediaType(
-                    img.mediaType ?? img.mimeType,
-                  ),
-                }))
-                .filter(
-                  (img): img is { data: string; mediaType: VisionMediaType } =>
-                    img.mediaType !== null,
-                );
-              const droppedImageTypes = rawImageBlocks
-                .map((img) => img.mediaType ?? img.mimeType)
-                .filter(
-                  (t): t is string =>
-                    !!t && normalizeVisionMediaType(t) === null,
-                );
-              const resultTextWithWarnings =
-                droppedImageTypes.length > 0
-                  ? `${resultText}${resultText ? "\n\n" : ""}[Skipped ${droppedImageTypes.length} unsupported image tool result(s): ${[...new Set(droppedImageTypes)].join(", ")}]`
-                  : resultText;
-
-              if (
-                imageBlocks.length > 0 &&
-                activeProvider.name === "anthropic"
-              ) {
-                // Anthropic supports images natively in tool results
-                conversation.addToolResultWithImage(
-                  toolUse.id,
-                  imageBlocks.map((img) => ({
-                    data: img.data,
-                    mediaType: img.mediaType,
-                  })),
-                );
-              } else {
-                // Text-only tool result for all providers
-                conversation.addToolResult(
-                  toolUse.id,
-                  resultTextWithWarnings,
-                  result.isError,
-                );
-
-                // Re-inject images as a follow-up user message for non-Anthropic providers
-                if (
-                  imageBlocks.length > 0 &&
-                  activeProvider.name !== "anthropic"
-                ) {
-                  for (const img of imageBlocks) {
-                    conversation.addUserImageMessage(
-                      `[Image from tool: ${toolUse.name}]`,
-                      img.data,
-                      img.mediaType,
-                    );
-                  }
-                }
-              }
-
-              toolCallsUsed++;
-            }
-
-            // Loop: send tool results back to the LLM
-          }
-        }
-      } catch (err) {
-        setStreamingText(undefined);
-        const msg = err instanceof Error ? err.message : String(err);
-        addMessage("system", `Error: ${msg}`);
+        await engine.runTurn(activeProvider, makeTurnCallbacks(), promptOverride);
       } finally {
         setIsThinking(false);
       }
     },
-    [
-      streamLLM,
-      conversation,
-      dispatchTool,
-      addMessage,
-      maxToolCallsPerTurn,
-      activeProvider,
-    ],
+    [engine, activeProvider, makeTurnCallbacks],
   );
 
   /** Handle model selection from the picker */
