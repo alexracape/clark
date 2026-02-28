@@ -3,6 +3,7 @@ export type StreamingThinkingEvent = { type: "streaming_thinking"; text: string 
 export type StreamingDoneEvent = { type: "streaming_done" };
 export type AssistantMessageEvent = { type: "assistant_message"; text: string };
 export type ToolStartEvent = { type: "tool_start"; name: string };
+export type ToolResultEvent = { type: "tool_result"; name: string; result: string };
 export type SystemMessageEvent = { type: "system_message"; text: string };
 export type StatusUpdateEvent = { type: "status_update"; provider: string; model: string };
 export type TurnCompleteEvent = { type: "turn_complete" };
@@ -19,6 +20,7 @@ export type SidecarStreamEvent =
   | StreamingDoneEvent
   | AssistantMessageEvent
   | ToolStartEvent
+  | ToolResultEvent
   | SystemMessageEvent
   | StatusUpdateEvent
   | TurnCompleteEvent
@@ -41,6 +43,8 @@ export function isSidecarStreamEvent(value: unknown): value is SidecarStreamEven
       return hasString(value, "text");
     case "tool_start":
       return hasString(value, "name");
+    case "tool_result":
+      return hasString(value, "name") && hasString(value, "result");
     case "status_update":
       return hasString(value, "provider") && hasString(value, "model");
     case "canvas_status":

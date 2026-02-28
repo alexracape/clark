@@ -5,6 +5,7 @@ import {
   applySlashCommandResult,
   applyStreamEvent,
   createInitialAppState,
+  getMessages,
   planSendInput,
   type AppState,
 } from "../gui/src/app-controller.ts";
@@ -20,7 +21,8 @@ describe("gui app controller", () => {
 
     expect(plan.effects).toHaveLength(1);
     expect(plan.effects[0]).toMatchObject({ type: "invoke", command: "send_message" });
-    expect(plan.state.messages.at(-1)).toMatchObject({ role: "user", text: "hello" });
+    const msgs = getMessages(plan.state);
+    expect(msgs.at(-1)).toMatchObject({ role: "user", text: "hello" });
     expect(plan.state.isStreaming).toBe(true);
 
     const end = runEvents(plan.state, [
@@ -30,7 +32,8 @@ describe("gui app controller", () => {
       { type: "turn_complete" },
     ]);
 
-    expect(end.messages.at(-1)).toMatchObject({ role: "assistant", text: "world" });
+    const endMsgs = getMessages(end);
+    expect(endMsgs.at(-1)).toMatchObject({ role: "assistant", text: "world" });
     expect(end.isStreaming).toBe(false);
     expect(end.streamingText).toBeNull();
     expect(end.pendingToolCalls).toHaveLength(0);
@@ -44,7 +47,7 @@ describe("gui app controller", () => {
     expect(applySlashCommandResult(start, { uiAction: "context" }).showContextPanel).toBe(true);
   });
 
-  test("streaming tool accumulation attaches to final assistant message", () => {
+  test("tool calls appear as separate chat items (not attached to messages)", () => {
     const plan = planSendInput(createInitialAppState(), "run tools");
 
     const end = runEvents(plan.state, [
@@ -54,11 +57,36 @@ describe("gui app controller", () => {
       { type: "turn_complete" },
     ]);
 
-    expect(end.messages.at(-1)?.toolCalls?.map((t) => t.name)).toEqual([
-      "search_notes",
-      "read_file",
-    ]);
+    // Chat items: user message, tool(search_notes), tool(read_file), assistant message
+    expect(end.chatItems).toHaveLength(4);
+    expect(end.chatItems[0]).toMatchObject({ type: "message" });
+    expect(end.chatItems[1]).toMatchObject({ type: "tool", toolCall: { name: "search_notes" } });
+    expect(end.chatItems[2]).toMatchObject({ type: "tool", toolCall: { name: "read_file" } });
+    expect(end.chatItems[3]).toMatchObject({ type: "message" });
+
+    // Messages should not have toolCalls field
+    const msgs = getMessages(end);
+    expect(msgs.at(-1)).toMatchObject({ role: "assistant", text: "done" });
     expect(end.pendingToolCalls).toHaveLength(0);
+  });
+
+  test("tool_result event updates pending tool call", () => {
+    const plan = planSendInput(createInitialAppState(), "run tools");
+
+    const afterToolStart = applyStreamEvent(plan.state, {
+      type: "tool_start",
+      name: "read_file",
+    });
+    expect(afterToolStart.pendingToolCalls).toHaveLength(1);
+    expect(afterToolStart.pendingToolCalls[0].result).toBeUndefined();
+
+    const afterToolResult = applyStreamEvent(afterToolStart, {
+      type: "tool_result",
+      name: "read_file",
+      result: "file contents here",
+    });
+    expect(afterToolResult.pendingToolCalls).toHaveLength(1);
+    expect(afterToolResult.pendingToolCalls[0].result).toBe("file contents here");
   });
 
   test("duplicate send is prevented while streaming", () => {
@@ -66,8 +94,9 @@ describe("gui app controller", () => {
     const second = planSendInput(first.state, "second");
 
     expect(second.effects).toHaveLength(0);
-    expect(second.state.messages).toHaveLength(1);
-    expect(second.state.messages[0]?.text).toBe("first");
+    expect(second.state.chatItems).toHaveLength(1);
+    const msgs = getMessages(second.state);
+    expect(msgs[0]?.text).toBe("first");
   });
 
   test("recoverable errors append system messages and reset streaming", () => {
@@ -75,13 +104,15 @@ describe("gui app controller", () => {
     const afterSendError = applySendError(sending, new Error("boom"));
 
     expect(afterSendError.isStreaming).toBe(false);
-    expect(afterSendError.messages.at(-1)).toMatchObject({
+    const msgs1 = getMessages(afterSendError);
+    expect(msgs1.at(-1)).toMatchObject({
       role: "system",
       text: "Failed to send message: Error: boom",
     });
 
     const afterSlashError = applySlashCommandError(afterSendError, "bad command");
-    expect(afterSlashError.messages.at(-1)).toMatchObject({
+    const msgs2 = getMessages(afterSlashError);
+    expect(msgs2.at(-1)).toMatchObject({
       role: "system",
       text: "Command error: bad command",
     });

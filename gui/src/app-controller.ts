@@ -10,8 +10,11 @@ export interface Message {
   id: string;
   role: "user" | "assistant" | "system";
   text: string;
-  toolCalls?: ToolCall[];
 }
+
+export type ChatItem =
+  | { type: "message"; message: Message }
+  | { type: "tool"; toolCall: ToolCall };
 
 export interface ProviderInfo {
   provider: string;
@@ -25,7 +28,7 @@ export interface CanvasStatus {
 }
 
 export interface AppState {
-  messages: Message[];
+  chatItems: ChatItem[];
   streamingText: string | null;
   streamingThinking: string | null;
   isStreaming: boolean;
@@ -63,7 +66,7 @@ export interface IngestResponse {
 
 export function createInitialAppState(): AppState {
   return {
-    messages: [],
+    chatItems: [],
     streamingText: null,
     streamingThinking: null,
     isStreaming: false,
@@ -78,25 +81,33 @@ export function createInitialAppState(): AppState {
   };
 }
 
+/** Helper: get messages from chat items (for backwards compat) */
+export function getMessages(state: AppState): Message[] {
+  return state.chatItems
+    .filter((item): item is { type: "message"; message: Message } => item.type === "message")
+    .map((item) => item.message);
+}
+
 function appendMessage(
   state: AppState,
   role: Message["role"],
   text: string,
-  toolCalls?: ToolCall[],
 ): AppState {
   const id = String(state.nextMessageId + 1);
   return {
     ...state,
     nextMessageId: state.nextMessageId + 1,
-    messages: [
-      ...state.messages,
-      {
-        id,
-        role,
-        text,
-        ...(toolCalls && toolCalls.length > 0 ? { toolCalls } : {}),
-      },
+    chatItems: [
+      ...state.chatItems,
+      { type: "message", message: { id, role, text } },
     ],
+  };
+}
+
+function appendToolCall(state: AppState, toolCall: ToolCall): AppState {
+  return {
+    ...state,
+    chatItems: [...state.chatItems, { type: "tool", toolCall }],
   };
 }
 
@@ -120,12 +131,11 @@ export function onCanvasOpened(
   state: AppState,
   info: { name: string; url: string },
 ): AppState {
-  const next = {
+  return {
     ...state,
     canvasStatus: { status: "connecting", canvasName: info.name, canvasUrl: info.url },
     showCanvasPicker: false,
   };
-  return appendMessage(next, "system", `Canvas "${info.name}" opened at ${info.url}`);
 }
 
 export function applyStreamEvent(state: AppState, event: SidecarStreamEvent): AppState {
@@ -137,14 +147,14 @@ export function applyStreamEvent(state: AppState, event: SidecarStreamEvent): Ap
     case "streaming_done":
       return state;
     case "assistant_message": {
-      const withMessage = appendMessage(
-        state,
-        "assistant",
-        event.text,
-        state.pendingToolCalls.length > 0 ? [...state.pendingToolCalls] : undefined,
-      );
+      // Flush pending tool calls as inline chat items, then append message
+      let next = state;
+      for (const tc of state.pendingToolCalls) {
+        next = appendToolCall(next, tc);
+      }
+      next = appendMessage(next, "assistant", event.text);
       return {
-        ...withMessage,
+        ...next,
         streamingText: null,
         streamingThinking: null,
         pendingToolCalls: [],
@@ -156,6 +166,17 @@ export function applyStreamEvent(state: AppState, event: SidecarStreamEvent): Ap
         currentTool: event.name,
         pendingToolCalls: [...state.pendingToolCalls, { name: event.name }],
       };
+    case "tool_result": {
+      // Update the last pending tool call with matching name
+      const updated = [...state.pendingToolCalls];
+      for (let i = updated.length - 1; i >= 0; i--) {
+        if (updated[i].name === event.name && !updated[i].result) {
+          updated[i] = { ...updated[i], result: event.result };
+          break;
+        }
+      }
+      return { ...state, pendingToolCalls: updated };
+    }
     case "system_message":
       return appendMessage(state, "system", event.text);
     case "status_update":

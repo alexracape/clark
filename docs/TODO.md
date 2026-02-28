@@ -5,32 +5,32 @@ Some future enhancements and things that need fixing, organized into parallel ex
 Priority work to bring the GUI from placeholder to polished.
 
 ### Phase 1: Window Chrome & Layout
-- [ ] Custom Tauri titlebar — set `decorations: false`, add drag region with `data-tauri-drag-region`
-- [ ] Embed model name + canvas status in titlebar (alongside traffic lights)
-- [ ] Add slim bottom status bar (24-28px) for thinking indicator + context usage
-- [ ] Remove the current green top status bar
-- [ ] Parchment background throughout (replace any cool grays)
+- [x] Custom Tauri titlebar — set `decorations: false`, add drag region with `data-tauri-drag-region`
+- [x] Embed model name + canvas status in titlebar (alongside traffic lights)
+- [x] Add slim bottom status bar (24-28px) for thinking indicator + context usage
+- [x] Remove the current green top status bar
+- [x] Parchment background throughout (replace any cool grays)
 
 ### Phase 2: Sidebar Restyle
-- [ ] Replace emoji file icons with disclosure triangles (folders) and extension labels or monochrome SVG icons
-- [ ] Implement nested folder expansion (click to toggle open/closed)
-- [ ] Warm neutral background (`#F5F0E6`), subtle right border
-- [ ] Active/selected item: lamp-green left border accent
-- [ ] Consistent IBM Plex Mono typography (13px body, 11px labels)
+- [x] Replace emoji file icons with disclosure triangles (folders) and extension labels or monochrome SVG icons
+- [x] Implement nested folder expansion (click to toggle open/closed)
+- [x] Warm neutral background (`#F5F0E6`), subtle right border
+- [x] Active/selected item: lamp-green left border accent
+- [x] Consistent IBM Plex Mono typography (13px body, 11px labels)
 
 ### Phase 3: Chat & Messages
-- [ ] Inline thinking indicator — show in chat flow with animated dots, expandable for content
-- [ ] Inline tool call cards — summary line (icon + name + result) with expand/collapse
-- [ ] Remove thinking/tool status from status bar (it now lives inline in chat)
-- [ ] Refine message bubbles — user messages get subtle lamp-green left border, assistant messages stay clean
-- [ ] System messages: centered, italic, dimmed patina
-- [ ] Streaming cursor refinement — subtle blinking in lamp-green
+- [x] Inline thinking indicator — show in chat flow with animated dots, expandable for content
+- [x] Inline tool call cards — summary line (icon + name + result) with expand/collapse
+- [x] Remove thinking/tool status from status bar (it now lives inline in chat)
+- [x] Refine message bubbles — user messages get subtle lamp-green left border, assistant messages stay clean
+- [x] System messages: centered, italic, dimmed patina
+- [x] Streaming cursor refinement — subtle blinking in lamp-green
 
 ### Phase 4: Model Picker Rework
-- [ ] Replace modal with dropdown/popover triggered from titlebar model name
-- [ ] Group models by provider, show current with lamp-green dot
-- [ ] Inline API key input for unconfigured providers (within the dropdown)
-- [ ] Keyboard navigation: arrows, enter, escape
+- [x] Replace modal with dropdown/popover triggered from titlebar model name
+- [x] Group models by provider, show current with lamp-green dot
+- [x] Inline API key input for unconfigured providers (within the dropdown)
+- [x] Keyboard navigation: arrows, enter, escape
 
 ### Phase 5: Canvas Picker Rework
 - [ ] Always-visible canvas button in titlebar (even with no session)
@@ -57,10 +57,11 @@ Priority work to bring the GUI from placeholder to polished.
 ## Backlog of future enhancements
 
 GUI
-- Functional file viewer (click file to preview content)
 - Interactive tutorial
 - Enter works for slash commands
 - Automatically focus cursor in chat
+- Select workspace flow
+- Drag and drop
 
 - Tavily option for websearch?
   - Seems like a good fit, but don't want users to worry about another setup step

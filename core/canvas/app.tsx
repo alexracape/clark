@@ -352,8 +352,14 @@ function CanvasApp() {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       wsRef.current = null;
+      // Canvas switches explicitly close the broker socket with this reason.
+      // Force a page reload so useSync re-initializes against the new session.
+      if (event.reason === "Canvas session closed") {
+        setTimeout(() => window.location.reload(), 150);
+        return;
+      }
       // Auto-reconnect after 2s
       setTimeout(connectBrokerWs, 2000);
     };

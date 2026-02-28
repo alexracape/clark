@@ -26,12 +26,11 @@ import {
   type AppState,
   type ControllerEffect,
   type IngestResponse,
-  type Message,
   type SlashCommandResponse,
 } from "./app-controller.ts";
 import { parseSidecarStreamEvent } from "./stream-events.ts";
 
-export type { Message };
+export type { Message } from "./app-controller.ts";
 
 async function runEffects(
   effects: ControllerEffect[],
@@ -74,6 +73,10 @@ export function App() {
   const [state, setState] = useState<AppState>(() => createInitialAppState());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [clipboardToast, setClipboardToast] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     invokeCommand("get_status", {})
@@ -148,6 +151,12 @@ export function App() {
     };
   }, [handleFileDrop]);
 
+  useEffect(() => {
+    if (!clipboardToast) return;
+    const timer = setTimeout(() => setClipboardToast(null), 2200);
+    return () => clearTimeout(timer);
+  }, [clipboardToast]);
+
   return (
     <div className="app-layout">
       <Titlebar
@@ -164,7 +173,8 @@ export function App() {
 
         <div className="chat-window">
           <ChatWindow
-            messages={state.messages}
+            chatItems={state.chatItems}
+            pendingToolCalls={state.pendingToolCalls}
             streamingText={state.streamingText}
             streamingThinking={state.streamingThinking}
             isStreaming={state.isStreaming}
@@ -174,7 +184,7 @@ export function App() {
         </div>
       </div>
 
-      <BottomBar isStreaming={state.isStreaming} currentTool={state.currentTool} />
+      <BottomBar />
 
       {isDragging && (
         <div className="drag-overlay">
@@ -201,7 +211,14 @@ export function App() {
           invoke={invokeCommand}
           onOpen={(info) => setState((prev) => onCanvasOpened(prev, info))}
           onClose={() => setState((prev) => setShowCanvasPicker(prev, false))}
+          onClipboardNotice={(notice) => setClipboardToast(notice)}
         />
+      )}
+
+      {clipboardToast && (
+        <div className={`app-toast app-toast--${clipboardToast.kind}`}>
+          {clipboardToast.text}
+        </div>
       )}
 
       {state.showContextPanel && (

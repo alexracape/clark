@@ -14,6 +14,7 @@
     "tauri": "cd tauri && cargo tauri",
     "tauri:dev": "cd tauri && cargo tauri dev",
     "start": "bun index.ts",
+    "debug:prompt": "bun scripts/debug-system-prompt.ts",
     "test": "CLARK_WORKSPACE_DIR=./test/test_vault bun test",
     "test:core": "CLARK_WORKSPACE_DIR=./test/test_vault bun test ./test/canvas-name.test.ts ./test/canvas-page-autocreate.test.ts ./test/command-router.test.ts ./test/config.test.ts ./test/conversation.test.ts ./test/engine.test.ts ./test/error-scenarios.test.ts ./test/frame-heuristics.test.ts ./test/ingest.test.ts ./test/input.test.ts ./test/library.test.ts ./test/llm.test.ts ./test/mcp-in-process.test.ts ./test/mcp-integration.test.ts ./test/mcp.test.ts ./test/ocr-benchmark.test.ts ./test/onboarding.test.tsx ./test/secret-store-backends.test.ts ./test/tui.test.tsx ./test/upgrade.test.ts --timeout 30000",
     "test:sidecar-contract": "CLARK_WORKSPACE_DIR=./test/test_vault bun test ./test/sidecar-contract.test.ts --timeout 30000",

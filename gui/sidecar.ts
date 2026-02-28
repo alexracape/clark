@@ -173,7 +173,7 @@ async function bootstrap(): Promise<void> {
     const info = canvas.activeInfo;
     broadcast({
       type: "canvas_status",
-      status,
+      status: status.state,
       canvasName: info?.name,
       canvasUrl: info?.url,
     });
@@ -242,6 +242,7 @@ function makeStreamCallbacks(): TurnCallbacks {
     onStreamingDone: () => broadcast({ type: "streaming_done" }),
     onAssistantMessage: (text) => broadcast({ type: "assistant_message", text }),
     onToolStart: (name) => broadcast({ type: "tool_start", name }),
+    onToolResult: (name, result) => broadcast({ type: "tool_result", name, result }),
     onSystemMessage: (text) => broadcast({ type: "system_message", text }),
   };
 }
@@ -485,7 +486,7 @@ async function handleCanvases(): Promise<Response> {
     return jsonResponse({
       canvases,
       active: canvas.activeInfo,
-      connectionStatus: canvas.connectionStatus,
+      connectionStatus: canvas.connectionStatus.state,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

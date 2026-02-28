@@ -444,11 +444,14 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
     },
     websocket: {
       open(ws) {
-        const data = ws.data as CanvasSocketData;
+        const data = ws.data as CanvasSocketData | undefined;
+        if (!data || (data.type !== "sync" && data.type !== "canvas")) return;
+
         if (data.type === "sync") {
+          if (!data.sessionId) return;
           // Wrap Bun WS with bound methods for TLSocketRoom compatibility
           room.handleSocketConnect({
-            sessionId: data.sessionId!,
+            sessionId: data.sessionId,
             socket: wrapBunSocket(ws),
           });
         } else if (data.type === "canvas") {
@@ -456,19 +459,25 @@ export async function startCanvasServer(options: CanvasServerOptions): Promise<C
         }
       },
       message(ws, message) {
-        const data = ws.data as CanvasSocketData;
+        const data = ws.data as CanvasSocketData | undefined;
+        if (!data || (data.type !== "sync" && data.type !== "canvas")) return;
+
         if (data.type === "sync") {
+          if (!data.sessionId) return;
           // Use manual message routing for Bun (no addEventListener on ServerWebSocket)
-          room.handleSocketMessage(data.sessionId!, message);
+          room.handleSocketMessage(data.sessionId, message);
         } else if (data.type === "canvas") {
           const text = typeof message === "string" ? message : new TextDecoder().decode(message);
           broker.handleMessage(text);
         }
       },
       close(ws) {
-        const data = ws.data as CanvasSocketData;
+        const data = ws.data as CanvasSocketData | undefined;
+        if (!data || (data.type !== "sync" && data.type !== "canvas")) return;
+
         if (data.type === "sync") {
-          room.handleSocketClose(data.sessionId!);
+          if (!data.sessionId) return;
+          room.handleSocketClose(data.sessionId);
         } else if (data.type === "canvas") {
           broker.setClientSocket(null);
         }

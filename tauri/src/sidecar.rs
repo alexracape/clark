@@ -32,15 +32,26 @@ impl Sidecar {
     /// Spawn the Bun sidecar process and wait for it to report its port.
     pub async fn spawn(&self) -> Result<u16, String> {
         let sidecar_path = Self::resolve_sidecar_path()?;
+        let workspace_dir = Self::workspace_dir_from_sidecar_path(&sidecar_path);
 
         log::info!("Starting Bun sidecar: {}", sidecar_path);
+        log::info!("Sidecar workspace dir: {}", workspace_dir.display());
 
-        let mut child = Command::new("bun")
-            .arg("run")
+        let mut cmd = Command::new("bun");
+        cmd.arg("run")
             .arg(&sidecar_path)
+            .current_dir(&workspace_dir)
             .env("CLARK_SIDECAR_PORT", "0")
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stderr(Stdio::inherit());
+
+        // Ensure sidecar workspace remains stable in tauri dev (cwd is often tauri/).
+        // Respect explicit overrides from the parent process.
+        if std::env::var_os("CLARK_WORKSPACE_DIR").is_none() {
+            cmd.env("CLARK_WORKSPACE_DIR", workspace_dir.as_os_str());
+        }
+
+        let mut child = cmd
             .spawn()
             .map_err(|e| format!("Failed to spawn Bun sidecar: {}", e))?;
 
@@ -144,6 +155,18 @@ impl Sidecar {
             "Cannot find gui/sidecar.ts (searched: {:?})",
             candidates.iter().map(|p| p.display().to_string()).collect::<Vec<_>>()
         ))
+    }
+
+    fn workspace_dir_from_sidecar_path(sidecar_path: &str) -> std::path::PathBuf {
+        let sidecar = std::path::PathBuf::from(sidecar_path);
+        // Expected dev layout: <repo>/gui/sidecar.ts -> workspace should be <repo>.
+        if let Some(gui_dir) = sidecar.parent() {
+            if let Some(repo_root) = gui_dir.parent() {
+                return repo_root.to_path_buf();
+            }
+            return gui_dir.to_path_buf();
+        }
+        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
     }
 }
 

@@ -58,6 +58,8 @@ export class CanvasSessionManager {
   private brokerUnsubscribe: (() => void) | null = null;
   private hadConnection = false;
   private isClosing = false;
+  private resolvedPort: number | null = null;
+  private authToken: string | null = null;
 
   constructor(options: CanvasSessionManagerOptions) {
     this.port = options.port;
@@ -155,12 +157,15 @@ export class CanvasSessionManager {
     const broker = new CanvasBroker();
     this.brokerUnsubscribe = broker.subscribe((event) => this.handleBrokerEvent(event));
     const { server, saveSnapshot, authToken } = await startCanvasServer({
-      port: this.port,
+      port: this.resolvedPort ?? this.port,
       host: this.bindHost,
       broker,
       snapshotPath,
+      authToken: this.authToken ?? undefined,
     });
 
+    this.resolvedPort = server.port;
+    this.authToken = authToken;
     const url = `http://${this.getHost()}:${server.port}/?token=${authToken}`;
     this.active = { name: validatedName, url, broker, server, saveSnapshot };
     return { name: validatedName, url };

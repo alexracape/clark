@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 
 interface ModelEntry {
   provider: string;
@@ -20,54 +20,68 @@ interface ModelPickerProps {
   onClose: () => void;
 }
 
-function keyForEntry(entry: Pick<ModelEntry, "provider" | "model">): string {
-  return `${entry.provider}::${entry.model}`;
-}
-
-function parseEntryKey(value: string): { provider: string; model: string } | null {
-  const splitAt = value.indexOf("::");
-  if (splitAt < 0) return null;
-  return {
-    provider: value.slice(0, splitAt),
-    model: value.slice(splitAt + 2),
-  };
-}
-
 export function ModelPicker({ invoke, onSelect, onClose }: ModelPickerProps) {
   const [data, setData] = useState<ModelsResponse | null>(null);
-  const [selectedKey, setSelectedKey] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [apiKeyEntry, setApiKeyEntry] = useState<ModelEntry | null>(null);
   const [apiKeyValue, setApiKeyValue] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadModels = useCallback(() => {
     setLoading(true);
-    setLoadError(null);
     invoke("list_models", {})
       .then((res) => {
         const d = res as ModelsResponse;
         setData(d);
-        const current = d.models.find(
-          (m) => m.provider === d.current.provider && m.model === d.current.model,
-        );
-        if (current) {
-          setSelectedKey(keyForEntry(current));
-        } else if (d.models[0]) {
-          setSelectedKey(keyForEntry(d.models[0]));
-        }
         setLoading(false);
       })
-      .catch((err) => {
+      .catch(() => {
         setLoading(false);
-        setLoadError(String(err));
       });
   }, [invoke]);
 
   useEffect(() => {
     loadModels();
   }, [loadModels]);
+
+  // Build flat list of models + group structure for rendering
+  const { flatModels, groups } = useMemo(() => {
+    if (!data) return { flatModels: [] as ModelEntry[], groups: [] as { label: string; available: boolean; models: ModelEntry[] }[] };
+
+    const groupMap = new Map<string, ModelEntry[]>();
+    for (const model of data.models) {
+      const existing = groupMap.get(model.provider);
+      if (existing) {
+        existing.push(model);
+      } else {
+        groupMap.set(model.provider, [model]);
+      }
+    }
+
+    const groups: { label: string; available: boolean; models: ModelEntry[] }[] = [];
+    const flatModels: ModelEntry[] = [];
+
+    for (const [provider, models] of groupMap) {
+      groups.push({
+        label: models[0]?.providerLabel ?? provider,
+        available: !!data.providerAvailability[provider],
+        models,
+      });
+      flatModels.push(...models);
+    }
+
+    return { flatModels, groups };
+  }, [data]);
+
+  // Initialize selectedIndex to current model
+  useEffect(() => {
+    if (!data || flatModels.length === 0) return;
+    const idx = flatModels.findIndex(
+      (m) => m.provider === data.current.provider && m.model === data.current.model,
+    );
+    if (idx >= 0) setSelectedIndex(idx);
+  }, [data, flatModels]);
 
   const handleSelect = useCallback(
     async (entry: ModelEntry) => {
@@ -79,7 +93,7 @@ export function ModelPicker({ invoke, onSelect, onClose }: ModelPickerProps) {
         return;
       }
 
-      // Check if provider has API key
+      // If provider not configured, show API key entry
       if (!data.providerAvailability[entry.provider]) {
         setApiKeyEntry(entry);
         setApiKeyValue("");
@@ -117,7 +131,7 @@ export function ModelPicker({ invoke, onSelect, onClose }: ModelPickerProps) {
     }
   }, [apiKeyEntry, apiKeyValue, invoke, onSelect]);
 
-  // Keyboard shortcuts
+  // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (apiKeyEntry) {
@@ -131,29 +145,32 @@ export function ModelPicker({ invoke, onSelect, onClose }: ModelPickerProps) {
         return;
       }
 
-      if (!data) return;
-
       if (e.key === "Escape") {
         onClose();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((i) => (i + 1) % flatModels.length);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex((i) => (i - 1 + flatModels.length) % flatModels.length);
       } else if (e.key === "Enter") {
-        const selected = parseEntryKey(selectedKey);
-        const entry = selected
-          ? data.models.find((m) => m.provider === selected.provider && m.model === selected.model)
-          : undefined;
+        const entry = flatModels[selectedIndex];
         if (entry) handleSelect(entry);
       }
     };
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [data, selectedKey, apiKeyEntry, handleSelect, handleApiKeySubmit, onClose]);
+  }, [flatModels, selectedIndex, apiKeyEntry, handleSelect, handleApiKeySubmit, onClose]);
+
+  const isCurrent = (entry: ModelEntry) =>
+    data !== null && entry.provider === data.current.provider && entry.model === data.current.model;
 
   if (loading) {
     return (
-      <div className="modal-backdrop" onClick={onClose}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
-          <div className="modal__header">Switch Model</div>
-          <div className="modal__body" style={{ padding: "24px", color: "var(--patina)" }}>
+      <div className="model-popover-backdrop" onClick={onClose}>
+        <div className="model-popover" onClick={(e) => e.stopPropagation()}>
+          <div style={{ padding: "16px", color: "var(--patina)", fontSize: "13px" }}>
             Loading models...
           </div>
         </div>
@@ -163,19 +180,13 @@ export function ModelPicker({ invoke, onSelect, onClose }: ModelPickerProps) {
 
   if (!data) {
     return (
-      <div className="modal-backdrop" onClick={onClose}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
-          <div className="modal__header">
-            <span>Switch Model</span>
-            <button className="modal__close" onClick={onClose}>Esc</button>
-          </div>
-          <div className="modal__body" style={{ padding: "16px", display: "grid", gap: "12px" }}>
-            <div className="modal__error">
-              Failed to load models{loadError ? `: ${loadError}` : "."}
-            </div>
+      <div className="model-popover-backdrop" onClick={onClose}>
+        <div className="model-popover" onClick={(e) => e.stopPropagation()}>
+          <div style={{ padding: "16px", display: "grid", gap: "12px" }}>
+            <div className="modal__error">Failed to load models.</div>
             <div className="modal__actions">
               <button className="modal__button modal__button--ghost" onClick={onClose}>Close</button>
-              <button className="modal__button modal__button--primary" onClick={() => loadModels()}>Retry</button>
+              <button className="modal__button modal__button--primary" onClick={loadModels}>Retry</button>
             </div>
           </div>
         </div>
@@ -183,27 +194,15 @@ export function ModelPicker({ invoke, onSelect, onClose }: ModelPickerProps) {
     );
   }
 
-  const modelsByProvider = data.models.reduce<Map<string, ModelEntry[]>>((acc, model) => {
-    const existing = acc.get(model.provider);
-    if (existing) {
-      existing.push(model);
-    } else {
-      acc.set(model.provider, [model]);
-    }
-    return acc;
-  }, new Map());
+  // Flat index counter for mapping group items to flat indices
+  let flatIndex = 0;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal__header">
-          <span>Switch Model</span>
-          <button className="modal__close" onClick={onClose}>Esc</button>
-        </div>
-
+    <div className="model-popover-backdrop" onClick={onClose}>
+      <div className="model-popover" onClick={(e) => e.stopPropagation()}>
         {apiKeyEntry ? (
-          <div className="modal__body" style={{ padding: "16px" }}>
-            <div style={{ marginBottom: "12px", fontWeight: 500 }}>
+          <div style={{ padding: "16px" }}>
+            <div style={{ marginBottom: "12px", fontWeight: 500, color: "var(--walnut)" }}>
               Enter API key for {apiKeyEntry.providerLabel}
             </div>
             <input
@@ -220,61 +219,42 @@ export function ModelPicker({ invoke, onSelect, onClose }: ModelPickerProps) {
             </div>
           </div>
         ) : (
-          <div className="modal__body" style={{ padding: "16px", display: "grid", gap: "12px" }}>
-            <label className="picker-label" htmlFor="model-select">Provider / Model</label>
-            <select
-              id="model-select"
-              className="modal__select"
-              value={selectedKey}
-              onChange={(e) => {
-                setSelectedKey(e.target.value);
-                setError(null);
-              }}
-              autoFocus
-            >
-              {[...modelsByProvider.entries()].map(([provider, entries]) => (
-                <optgroup key={provider} label={entries[0]?.providerLabel ?? provider}>
-                  {entries.map((entry) => {
-                    const available = data.providerAvailability[entry.provider];
-                    const isCurrent = entry.provider === data.current.provider && entry.model === data.current.model;
-                    const suffix = !available ? " (setup required)" : isCurrent ? " (current)" : "";
-                    return (
-                      <option key={keyForEntry(entry)} value={keyForEntry(entry)}>
-                        {entry.label}{suffix}
-                      </option>
-                    );
-                  })}
-                </optgroup>
-              ))}
-            </select>
+          <div className="picker-list">
+            {groups.map((group) => (
+              <div key={group.label}>
+                <div className="picker-group">
+                  <span>{group.label}</span>
+                  {!group.available && (
+                    <span className="picker-group__badge">(setup required)</span>
+                  )}
+                </div>
+                {group.models.map((entry) => {
+                  const idx = flatIndex++;
+                  const current = isCurrent(entry);
+                  return (
+                    <div
+                      key={`${entry.provider}::${entry.model}`}
+                      className={`picker-item ${idx === selectedIndex ? "picker-item--selected" : ""}`}
+                      onClick={() => handleSelect(entry)}
+                      onMouseEnter={() => setSelectedIndex(idx)}
+                    >
+                      <span className="picker-item__label">
+                        {current && <span className="picker-item__dot" />}
+                        {entry.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
 
             {data.ollamaStatus !== "running" && (
-              <div className="picker-note">
-                Ollama status: {data.ollamaStatus === "not-running" ? "not running" : "no models installed"}
+              <div className="picker-note" style={{ padding: "8px 16px" }}>
+                Ollama: {data.ollamaStatus === "not-running" ? "not running" : "no models installed"}
               </div>
             )}
 
-            {error && <div className="modal__error">{error}</div>}
-
-            <div className="modal__actions">
-              <button className="modal__button modal__button--ghost" onClick={onClose}>Cancel</button>
-              <button
-                className="modal__button modal__button--primary"
-                onClick={() => {
-                  const parsed = parseEntryKey(selectedKey);
-                  if (!parsed) return;
-                  const entry = data.models.find(
-                    (m) => m.provider === parsed.provider && m.model === parsed.model,
-                  );
-                  if (entry) {
-                    void handleSelect(entry);
-                  }
-                }}
-                disabled={!selectedKey}
-              >
-                Switch
-              </button>
-            </div>
+            {error && <div className="modal__error" style={{ margin: "4px 16px" }}>{error}</div>}
           </div>
         )}
       </div>

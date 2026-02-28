@@ -6,6 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use crate::sidecar::Sidecar;
 
@@ -199,6 +200,16 @@ pub async fn pick_file(window: tauri::Window) -> Result<Option<String>, String> 
 
     rx.await
         .map_err(|_| "File picker cancelled".to_string())
+}
+
+#[tauri::command]
+pub async fn write_clipboard_text(
+    text: String,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    app.clipboard()
+        .write_text(text)
+        .map_err(|e| format!("Failed to write clipboard text: {}", e))
 }
 
 #[cfg(test)]

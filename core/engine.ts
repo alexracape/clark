@@ -18,6 +18,7 @@ export interface TurnCallbacks {
   onStreamingDone?: () => void;
   onAssistantMessage?: (text: string) => void;
   onToolStart?: (name: string) => void;
+  onToolResult?: (name: string, result: string) => void;
   onSystemMessage?: (text: string) => void;
 }
 
@@ -133,6 +134,11 @@ export class ConversationEngine {
             callbacks?.onToolStart?.(toolUse.name);
 
             const result = await this.dispatchTool(toolUse.name, toolUse.input);
+            const resultText = result.content
+              .filter((c): c is { type: "text"; text: string } => c.type === "text")
+              .map((c) => c.text)
+              .join("\n");
+            callbacks?.onToolResult?.(toolUse.name, resultText);
             this.processToolResult(provider, toolUse, result);
             toolCallsUsed++;
           }
