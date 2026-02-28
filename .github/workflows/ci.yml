@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  fast-refactor-gate:
     strategy:
       fail-fast: false
       matrix:
@@ -24,5 +24,5 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Run tests
-        run: bun test
+      - name: Run fast refactor test gate
+        run: bun run test:refactor-fast

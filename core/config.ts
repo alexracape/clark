@@ -268,13 +268,18 @@ export function createSecretStore(
   return new FallbackSecretStore();
 }
 
+function resolveConfigPath(path?: string): string {
+  return path ?? process.env.CLARK_CONFIG_PATH ?? DEFAULT_CONFIG_PATH;
+}
+
 async function ensureDir(dir: string) {
   await mkdir(dir, { recursive: true });
 }
 
-export async function loadConfig(path = DEFAULT_CONFIG_PATH): Promise<ClarkConfig> {
+export async function loadConfig(path?: string): Promise<ClarkConfig> {
+  const targetPath = resolveConfigPath(path);
   try {
-    const file = Bun.file(path);
+    const file = Bun.file(targetPath);
     if (await file.exists()) {
       return await file.json();
     }
@@ -284,17 +289,19 @@ export async function loadConfig(path = DEFAULT_CONFIG_PATH): Promise<ClarkConfi
   return {};
 }
 
-export async function hasConfig(path = DEFAULT_CONFIG_PATH): Promise<boolean> {
+export async function hasConfig(path?: string): Promise<boolean> {
+  const targetPath = resolveConfigPath(path);
   try {
-    return await Bun.file(path).exists();
+    return await Bun.file(targetPath).exists();
   } catch {
     return false;
   }
 }
 
-export async function saveConfig(config: ClarkConfig, path = DEFAULT_CONFIG_PATH): Promise<void> {
-  await ensureDir(join(path, ".."));
-  await Bun.write(path, JSON.stringify(config, null, 2) + "\n");
+export async function saveConfig(config: ClarkConfig, path?: string): Promise<void> {
+  const targetPath = resolveConfigPath(path);
+  await ensureDir(join(targetPath, ".."));
+  await Bun.write(targetPath, JSON.stringify(config, null, 2) + "\n");
 }
 
 async function resolveSecretStoreKey(provider: ProviderName, config: ClarkConfig): Promise<string | undefined> {

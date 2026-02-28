@@ -9,13 +9,8 @@ use tauri::State;
 
 use crate::sidecar::Sidecar;
 
-// --- Helpers ---
-
-/// GET a JSON endpoint on the sidecar, returning the raw JSON value.
-async fn sidecar_get(sidecar: &Sidecar, path: &str) -> Result<serde_json::Value, String> {
-    let base = sidecar.base_url().await?;
-    let url = format!("{}{}", base, path);
-    let resp = reqwest::get(&url)
+async fn http_get_json(url: &str, path: &str) -> Result<serde_json::Value, String> {
+    let resp = reqwest::get(url)
         .await
         .map_err(|e| format!("Sidecar request failed: {}", e))?;
     let status = resp.status();
@@ -23,10 +18,46 @@ async fn sidecar_get(sidecar: &Sidecar, path: &str) -> Result<serde_json::Value,
         .text()
         .await
         .map_err(|e| format!("Failed to read response: {}", e))?;
+    parse_json_response(path, status, &body)
+}
+
+async fn http_post_json(
+    url: &str,
+    path: &str,
+    body: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let resp = reqwest::Client::new()
+        .post(url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Sidecar request failed: {}", e))?;
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+    parse_json_response(path, status, &text)
+}
+
+fn parse_json_response(
+    path: &str,
+    status: reqwest::StatusCode,
+    body: &str,
+) -> Result<serde_json::Value, String> {
     if !status.is_success() {
         return Err(format!("Sidecar {} failed ({}): {}", path, status, body));
     }
-    serde_json::from_str(&body).map_err(|e| format!("Invalid JSON from {}: {}", path, e))
+    serde_json::from_str(body).map_err(|e| format!("Invalid JSON from {}: {}", path, e))
+}
+
+// --- Helpers ---
+
+/// GET a JSON endpoint on the sidecar, returning the raw JSON value.
+async fn sidecar_get(sidecar: &Sidecar, path: &str) -> Result<serde_json::Value, String> {
+    let base = sidecar.base_url().await?;
+    let url = format!("{}{}", base, path);
+    http_get_json(&url, path).await
 }
 
 /// POST JSON to a sidecar endpoint, returning the raw JSON value.
@@ -37,21 +68,7 @@ async fn sidecar_post(
 ) -> Result<serde_json::Value, String> {
     let base = sidecar.base_url().await?;
     let url = format!("{}{}", base, path);
-    let resp = reqwest::Client::new()
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("Sidecar request failed: {}", e))?;
-    let status = resp.status();
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read response: {}", e))?;
-    if !status.is_success() {
-        return Err(format!("Sidecar {} failed ({}): {}", path, status, text));
-    }
-    serde_json::from_str(&text).map_err(|e| format!("Invalid JSON from {}: {}", path, e))
+    http_post_json(&url, path, body).await
 }
 
 // --- Response types ---
@@ -110,6 +127,16 @@ pub async fn get_status(sidecar: State<'_, Sidecar>) -> Result<serde_json::Value
 #[tauri::command]
 pub async fn list_files(sidecar: State<'_, Sidecar>) -> Result<serde_json::Value, String> {
     sidecar_get(&sidecar, "/api/files").await
+}
+
+#[tauri::command]
+pub async fn list_files_at(
+    path: String,
+    sidecar: State<'_, Sidecar>,
+) -> Result<serde_json::Value, String> {
+    let encoded: String = url::form_urlencoded::byte_serialize(path.as_bytes()).collect();
+    let endpoint = format!("/api/files?path={}", encoded);
+    sidecar_get(&sidecar, &endpoint).await
 }
 
 #[tauri::command]
@@ -172,4 +199,40 @@ pub async fn pick_file(window: tauri::Window) -> Result<Option<String>, String> 
 
     rx.await
         .map_err(|_| "File picker cancelled".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_json_response;
+
+    #[test]
+    fn get_passes_through_valid_json() {
+        let out = parse_json_response(
+            "/api/status",
+            reqwest::StatusCode::OK,
+            r#"{"ok":true}"#,
+        )
+        .unwrap();
+        assert_eq!(out["ok"], true);
+    }
+
+    #[test]
+    fn get_surfaces_non_2xx_status_and_body() {
+        let err = parse_json_response(
+            "/api/status",
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            r#"{"error":"boom"}"#,
+        )
+        .unwrap_err();
+        assert!(err.contains("/api/status"));
+        assert!(err.contains("500"));
+        assert!(err.contains("boom"));
+    }
+
+    #[test]
+    fn post_reports_invalid_json() {
+        let err = parse_json_response("/api/chat", reqwest::StatusCode::OK, "not json").unwrap_err();
+        assert!(err.contains("Invalid JSON"));
+        assert!(err.contains("/api/chat"));
+    }
 }

@@ -7,18 +7,18 @@ interface ToolCardProps {
 
 /** Map tool names to friendly display names */
 const TOOL_LABELS: Record<string, { label: string; icon: string }> = {
-  read_file: { label: "Read file", icon: "\u{1F4C4}" },
-  create_file: { label: "Create file", icon: "\u{1F4DD}" },
-  list_directory: { label: "List directory", icon: "\u{1F4C1}" },
-  transcribe_pdf: { label: "Transcribe PDF", icon: "\u{1F4D1}" },
-  export_canvas: { label: "Export canvas", icon: "\u{1F5BC}" },
-  search_files: { label: "Search files", icon: "\u{1F50D}" },
-  get_canvas_snapshot: { label: "Canvas snapshot", icon: "\u{1F4F7}" },
+  read_file: { label: "Read file", icon: "\u2192" },
+  create_file: { label: "Create file", icon: "+" },
+  list_directory: { label: "List directory", icon: "\u2261" },
+  transcribe_pdf: { label: "Transcribe PDF", icon: "\u2192" },
+  export_canvas: { label: "Export canvas", icon: "\u2197" },
+  search_files: { label: "Search files", icon: "?" },
+  get_canvas_snapshot: { label: "Canvas snapshot", icon: "\u25A1" },
 };
 
 export function ToolCard({ name, result }: ToolCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const info = TOOL_LABELS[name] ?? { label: name, icon: "\u{2699}" };
+  const info = TOOL_LABELS[name] ?? { label: name, icon: "\u2192" };
 
   return (
     <div className={`tool-card ${expanded ? "tool-card--expanded" : ""}`}>

@@ -1,11 +1,66 @@
 Some future enhancements and things that need fixing, organized into parallel execution sessions.
 
+## GUI Design Restyle
+
+Priority work to bring the GUI from placeholder to polished.
+
+### Phase 1: Window Chrome & Layout
+- [ ] Custom Tauri titlebar — set `decorations: false`, add drag region with `data-tauri-drag-region`
+- [ ] Embed model name + canvas status in titlebar (alongside traffic lights)
+- [ ] Add slim bottom status bar (24-28px) for thinking indicator + context usage
+- [ ] Remove the current green top status bar
+- [ ] Parchment background throughout (replace any cool grays)
+
+### Phase 2: Sidebar Restyle
+- [ ] Replace emoji file icons with disclosure triangles (folders) and extension labels or monochrome SVG icons
+- [ ] Implement nested folder expansion (click to toggle open/closed)
+- [ ] Warm neutral background (`#F5F0E6`), subtle right border
+- [ ] Active/selected item: lamp-green left border accent
+- [ ] Consistent IBM Plex Mono typography (13px body, 11px labels)
+
+### Phase 3: Chat & Messages
+- [ ] Inline thinking indicator — show in chat flow with animated dots, expandable for content
+- [ ] Inline tool call cards — summary line (icon + name + result) with expand/collapse
+- [ ] Remove thinking/tool status from status bar (it now lives inline in chat)
+- [ ] Refine message bubbles — user messages get subtle lamp-green left border, assistant messages stay clean
+- [ ] System messages: centered, italic, dimmed patina
+- [ ] Streaming cursor refinement — subtle blinking in lamp-green
+
+### Phase 4: Model Picker Rework
+- [ ] Replace modal with dropdown/popover triggered from titlebar model name
+- [ ] Group models by provider, show current with lamp-green dot
+- [ ] Inline API key input for unconfigured providers (within the dropdown)
+- [ ] Keyboard navigation: arrows, enter, escape
+
+### Phase 5: Canvas Picker Rework
+- [ ] Always-visible canvas button in titlebar (even with no session)
+- [ ] Replace modal with popover panel
+- [ ] Prominent "Copy URL" button next to active canvas name
+- [ ] Status dot: sage=connected, brass=connecting, patina=none
+- [ ] QR code option for quick mobile connection
+
+### Phase 6: Composer Polish
+- [ ] Refine input styling — warm background on focus, lamp-green border
+- [ ] Slash command hints: clean popover with IBM Plex Mono, no emoji
+- [ ] Enter submits (already working), Shift+Enter for newline
+- [ ] Auto-focus cursor on app launch and after each assistant response
+
+### Phase 7: Typography & Global Polish
+- [ ] Ensure IBM Plex Mono is primary throughout (load via @font-face or bundled)
+- [ ] Georgia serif only for empty state headings and onboarding display text
+- [ ] Audit all components for emoji usage — remove any remaining
+- [ ] Verify contrast ratios meet WCAG AA (4.5:1 minimum)
+- [ ] Consistent spacing scale (8, 12, 16, 24, 32, 48px)
+- [ ] Consistent border-radius scale (4, 6, 8, 12px)
+- [ ] Replace any drop shadows with subtle borders
+
 ## Backlog of future enhancements
 
 GUI
-- No emojis
-- Basic functionality works
-- Restyle
+- Functional file viewer (click file to preview content)
+- Interactive tutorial
+- Enter works for slash commands
+- Automatically focus cursor in chat
 
 - Tavily option for websearch?
   - Seems like a good fit, but don't want users to worry about another setup step
@@ -77,11 +132,11 @@ Deploy a Cloudflare Worker that handles:
 **Worker Architecture:**
 ```
 Clark CLI
-    ↓ POST /events (single endpoint)
+    | POST /events (single endpoint)
 Cloudflare Worker
-    ├→ Discord Webhook (for type: "feedback")
-    ├→ Workers Analytics Engine (for type: "heartbeat", "install", "command")
-    └→ Workers KV (rate limiting state)
+    |-> Discord Webhook (for type: "feedback")
+    |-> Workers Analytics Engine (for type: "heartbeat", "install", "command")
+    |-> Workers KV (rate limiting state)
 ```
 
 **Event Types to Support:**

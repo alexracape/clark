@@ -40,20 +40,9 @@ import { createSlashCommandHandler } from "../core/app/command-router.ts";
 import { VisionOCRProvider } from "../core/ocr/provider.ts";
 import { detectFilePath, copyFileToResources } from "../core/app/ingest.ts";
 import { getWorkspaceDir } from "../core/workspace.ts";
+import type { SidecarStreamEvent } from "./src/stream-events.ts";
 
 // --- Types ---
-
-/** Events sent over the /api/stream WebSocket */
-type StreamEvent =
-  | { type: "streaming_text"; text: string }
-  | { type: "streaming_thinking"; text: string }
-  | { type: "streaming_done" }
-  | { type: "assistant_message"; text: string }
-  | { type: "tool_start"; name: string }
-  | { type: "system_message"; text: string }
-  | { type: "status_update"; provider: string; model: string }
-  | { type: "turn_complete" }
-  | { type: "canvas_status"; status: string; canvasName?: string; canvasUrl?: string };
 
 interface StreamSocketData {
   type: "stream";
@@ -76,10 +65,12 @@ let progressCallback: ((message: string) => void) | undefined;
 
 /** Connected WebSocket clients for streaming events */
 const streamClients = new Set<{ send(data: string): void }>();
+const streamListeners = new Set<(event: SidecarStreamEvent) => void>();
 
 /** Broadcast an event to all connected stream clients */
-function broadcast(event: StreamEvent): void {
+function broadcast(event: SidecarStreamEvent): void {
   const data = JSON.stringify(event);
+  for (const listener of streamListeners) listener(event);
   for (const ws of streamClients) {
     try {
       ws.send(data);
@@ -87,6 +78,11 @@ function broadcast(event: StreamEvent): void {
       streamClients.delete(ws);
     }
   }
+}
+
+export function subscribeStreamEvents(listener: (event: SidecarStreamEvent) => void): () => void {
+  streamListeners.add(listener);
+  return () => streamListeners.delete(listener);
 }
 
 // --- Bootstrap ---
@@ -333,11 +329,27 @@ function handleStatus(): Response {
   });
 }
 
-/** GET /api/files — Workspace file listing */
-async function handleFiles(): Promise<Response> {
+/** GET /api/files — Workspace file listing (optional ?path= for subdirectories) */
+async function handleFiles(req: Request): Promise<Response> {
   try {
-    const entries = await listDirectory(workspaceDir);
-    return jsonResponse({ files: entries });
+    const url = new URL(req.url);
+    const subpath = url.searchParams.get("path") ?? "";
+
+    // Path traversal protection
+    if (subpath.includes("..")) {
+      return jsonResponse({ error: "Invalid path" }, 400);
+    }
+
+    const resolvedDir = subpath ? join(workspaceDir, subpath) : workspaceDir;
+    const entries = await listDirectory(resolvedDir);
+
+    // Include relative path in each entry
+    const filesWithPath = entries.map((e) => ({
+      ...e,
+      path: subpath ? `${subpath}/${e.name}` : e.name,
+    }));
+
+    return jsonResponse({ files: filesWithPath });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return jsonResponse({ error: msg }, 500);
@@ -504,13 +516,18 @@ function handleContext(): Response {
 
 // --- Server ---
 
-const PORT = Number(process.env.CLARK_SIDECAR_PORT ?? "3456");
+export async function createSidecarServer(): Promise<{
+  fetch: (req: Request, server: { upgrade(req: Request, opts: { data: StreamSocketData }): boolean }) => Promise<Response | undefined>;
+  websocket: {
+    open: (ws: { send(data: string): void }) => void;
+    message: (_ws: unknown, _message: unknown) => void;
+    close: (ws: { send(data: string): void }) => void;
+  };
+}> {
+  await bootstrap();
 
-await bootstrap();
-
-const server = Bun.serve<StreamSocketData>({
-  port: PORT,
-  async fetch(req, server) {
+  return {
+    async fetch(req, server) {
     const url = new URL(req.url);
 
     // CORS preflight
@@ -545,7 +562,7 @@ const server = Bun.serve<StreamSocketData>({
         return handleStatus();
       }
       if (url.pathname === "/api/files" && req.method === "GET") {
-        return await handleFiles();
+        return await handleFiles(req);
       }
       if (url.pathname === "/api/history" && req.method === "GET") {
         return handleHistory();
@@ -569,19 +586,32 @@ const server = Bun.serve<StreamSocketData>({
       return jsonResponse({ error: msg }, 500);
     }
   },
-  websocket: {
-    open(ws) {
-      streamClients.add(ws);
+    websocket: {
+      open(ws) {
+        streamClients.add(ws);
+      },
+      message(_ws, _message) {
+        // Stream WebSocket is server → client only; ignore incoming messages
+      },
+      close(ws) {
+        streamClients.delete(ws);
+      },
     },
-    message(_ws, _message) {
-      // Stream WebSocket is server → client only; ignore incoming messages
-    },
-    close(ws) {
-      streamClients.delete(ws);
-    },
-  },
-});
+  };
+}
 
-console.log(`Clark sidecar listening on http://localhost:${server.port}`);
-// Write port to stdout for the Tauri process to read
-console.log(`CLARK_SIDECAR_PORT=${server.port}`);
+export async function runSidecarServer(): Promise<void> {
+  const port = Number(process.env.CLARK_SIDECAR_PORT ?? "3456");
+  const serverConfig = await createSidecarServer();
+  const server = Bun.serve<StreamSocketData>({
+    ...serverConfig,
+    port,
+  });
+  console.log(`Clark sidecar listening on http://localhost:${server.port}`);
+  // Write port to stdout for the Tauri process to read
+  console.log(`CLARK_SIDECAR_PORT=${server.port}`);
+}
+
+if (import.meta.main) {
+  await runSidecarServer();
+}

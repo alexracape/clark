@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { MessageBubble } from "./MessageBubble.tsx";
-import type { Message } from "../App.tsx";
+import type { Message } from "../app-controller.ts";
 
 interface ChatWindowProps {
   messages: Message[];

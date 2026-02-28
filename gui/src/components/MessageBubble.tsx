@@ -1,6 +1,6 @@
 import React from "react";
 import { ToolCard } from "./ToolCard.tsx";
-import type { Message } from "../App.tsx";
+import type { Message } from "../app-controller.ts";
 
 interface MessageBubbleProps {
   message: Message;

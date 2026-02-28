@@ -45,6 +45,7 @@ pub fn run() {
             commands::ingest_file,
             commands::get_status,
             commands::list_files,
+            commands::list_files_at,
             commands::switch_provider,
             commands::pick_file,
             commands::list_models,

@@ -12,6 +12,7 @@ const ROUTE_MAP: Record<string, Route> = {
   ingest_file: { method: "POST", path: "/api/ingest" },
   get_status: { method: "GET", path: "/api/status" },
   list_files: { method: "GET", path: "/api/files" },
+  list_files_at: { method: "GET", path: "/api/files" },
   switch_provider: { method: "POST", path: "/api/provider" },
   list_models: { method: "GET", path: "/api/models" },
   list_canvases: { method: "GET", path: "/api/canvases" },
@@ -33,7 +34,17 @@ export async function invokeCommand(cmd: string, args: InvokeArgs = {}): Promise
   const route = ROUTE_MAP[cmd];
   if (!route) throw new Error(`Unknown command: ${cmd}`);
 
-  const resp = await fetch(`${SIDECAR_URL}${route.path}`, {
+  // For GET requests with args, append as query parameters
+  let url = `${SIDECAR_URL}${route.path}`;
+  if (route.method === "GET" && Object.keys(args).length > 0) {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(args)) {
+      if (v != null) params.set(k, String(v));
+    }
+    url += `?${params.toString()}`;
+  }
+
+  const resp = await fetch(url, {
     method: route.method,
     headers: route.method === "POST" ? { "Content-Type": "application/json" } : {},
     body: route.method === "POST" ? JSON.stringify(args) : undefined,

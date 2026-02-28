@@ -7,6 +7,17 @@ use futures_util::StreamExt;
 use tauri::Emitter;
 use tokio_tungstenite::connect_async;
 
+const RECONNECT_DELAY_SECS: u64 = 2;
+
+pub(crate) fn event_name_for_payload(text: &str) -> Option<String> {
+    let event = serde_json::from_str::<serde_json::Value>(text).ok()?;
+    let event_type = event
+        .get("type")
+        .and_then(|t| t.as_str())
+        .unwrap_or("unknown");
+    Some(format!("sidecar:{}", event_type))
+}
+
 /// Connect to the sidecar WebSocket and forward events to the Tauri frontend.
 pub async fn start_stream_forwarder(app_handle: tauri::AppHandle, sidecar_port: u16) {
     let ws_url = format!("ws://localhost:{}/api/stream", sidecar_port);
@@ -22,15 +33,7 @@ pub async fn start_stream_forwarder(app_handle: tauri::AppHandle, sidecar_port: 
                 while let Some(msg) = read.next().await {
                     match msg {
                         Ok(tokio_tungstenite::tungstenite::Message::Text(text)) => {
-                            // Parse the event type for the Tauri event name
-                            if let Ok(event) = serde_json::from_str::<serde_json::Value>(&text) {
-                                let event_type = event
-                                    .get("type")
-                                    .and_then(|t| t.as_str())
-                                    .unwrap_or("unknown");
-
-                                let event_name = format!("sidecar:{}", event_type);
-
+                            if let Some(event_name) = event_name_for_payload(&text) {
                                 if let Err(e) = app_handle.emit(&event_name, text.to_string()) {
                                     log::error!("Failed to emit event {}: {}", event_name, e);
                                 }
@@ -57,6 +60,37 @@ pub async fn start_stream_forwarder(app_handle: tauri::AppHandle, sidecar_port: 
         }
 
         // Wait before reconnecting
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(RECONNECT_DELAY_SECS)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::event_name_for_payload;
+
+    #[test]
+    fn maps_valid_event_type_to_prefixed_name() {
+        let payload = r#"{"type":"streaming_text","text":"hello"}"#;
+        let event = event_name_for_payload(payload);
+        assert_eq!(event.as_deref(), Some("sidecar:streaming_text"));
+    }
+
+    #[test]
+    fn uses_unknown_when_type_is_missing() {
+        let payload = r#"{"text":"hello"}"#;
+        let event = event_name_for_payload(payload);
+        assert_eq!(event.as_deref(), Some("sidecar:unknown"));
+    }
+
+    #[test]
+    fn ignores_malformed_json() {
+        let payload = r#"{"type": "streaming_text""#;
+        let event = event_name_for_payload(payload);
+        assert!(event.is_none());
+    }
+
+    #[test]
+    fn reconnect_delay_is_stable_for_contract_tests() {
+        assert_eq!(super::RECONNECT_DELAY_SECS, 2);
     }
 }
