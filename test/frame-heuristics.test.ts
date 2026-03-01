@@ -3,7 +3,7 @@ import {
   isFrameBlank,
   intermediateBlankFrameIds,
   trimTrailingBlankFrames,
-} from "../src/canvas/frame-heuristics.ts";
+} from "../core/canvas/frame-heuristics.ts";
 
 describe("frame-heuristics", () => {
   test("marks frame blank only when no child and no overlapping page content", () => {

@@ -2,8 +2,8 @@ import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { resolve, join } from "node:path";
 import { rm, mkdir, mkdtemp, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { createTools, type ToolDefinition } from "../src/mcp/tools.ts";
-import { CanvasBroker } from "../src/canvas/server.ts";
+import { createTools, type ToolDefinition } from "../core/mcp/tools.ts";
+import { CanvasBroker } from "../core/canvas/server.ts";
 import {
   extractWikilinks,
   buildFileIndex,
@@ -13,7 +13,7 @@ import {
   isWithinVault,
   isImageFile,
   isPDFFile,
-} from "../src/mcp/vault.ts";
+} from "../core/mcp/vault.ts";
 
 const TEST_VAULT = resolve(import.meta.dir, "test_vault");
 

@@ -6,17 +6,31 @@
   "private": true,
   "scripts": {
     "dev": "bun --hot index.ts",
+    "dev:cli": "bun --hot index.ts",
+    "dev:gui": "cd gui && bun run dev",
+    "dev:sidecar": "bun gui/sidecar.ts",
+    "build": "bun scripts/build.ts",
+    "build:gui": "cd gui && bun run build",
+    "tauri": "cd tauri && cargo tauri",
+    "tauri:dev": "cd tauri && cargo tauri dev",
     "start": "bun index.ts",
+    "debug:prompt": "bun scripts/debug-system-prompt.ts",
     "test": "CLARK_WORKSPACE_DIR=./test/test_vault bun test",
+    "test:core": "CLARK_WORKSPACE_DIR=./test/test_vault bun test ./test/canvas-name.test.ts ./test/canvas-page-autocreate.test.ts ./test/command-router.test.ts ./test/config.test.ts ./test/conversation.test.ts ./test/engine.test.ts ./test/error-scenarios.test.ts ./test/frame-heuristics.test.ts ./test/ingest.test.ts ./test/input.test.ts ./test/library.test.ts ./test/llm.test.ts ./test/mcp-in-process.test.ts ./test/mcp-integration.test.ts ./test/mcp.test.ts ./test/ocr-benchmark.test.ts ./test/onboarding.test.tsx ./test/secret-store-backends.test.ts ./test/tui.test.tsx ./test/upgrade.test.ts --timeout 30000",
+    "test:sidecar-contract": "CLARK_WORKSPACE_DIR=./test/test_vault bun test ./test/sidecar-contract.test.ts --timeout 30000",
+    "test:gui-controller": "CLARK_WORKSPACE_DIR=./test/test_vault bun test ./test/gui-controller.test.ts --timeout 30000",
+    "test:rust-contract": "cargo test --manifest-path tauri/Cargo.toml",
+    "test:refactor-fast": "bun run test:core && bun run test:sidecar-contract && bun run test:gui-controller && bun run test:rust-contract",
+    "test:desktop-smoke": "CLARK_WORKSPACE_DIR=./test/test_vault bun test ./test/desktop-smoke.test.ts --timeout 30000",
     "bench:pdf-ocr": "bun scripts/benchmark-pdf-transcription.ts",
-    "mcp": "bun src/mcp/standalone.ts",
-    "inspect": "bunx @modelcontextprotocol/inspector bun src/mcp/standalone.ts",
-    "build": "bun scripts/build.ts"
+    "mcp": "bun core/mcp/standalone.ts",
+    "inspect": "bunx @modelcontextprotocol/inspector bun core/mcp/standalone.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@google/genai": "^1.40.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "@tauri-apps/api": "^2.10.1",
     "@tldraw/sync": "^4.1.2",
     "@tldraw/sync-core": "^4.3.1",
     "chalk": "^5.4.1",
@@ -31,6 +45,7 @@
     "yargs": "^17.7.2"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.10.0",
     "@types/bun": "latest",
     "@types/pdf-parse": "^1.1.4",
     "@types/react": "^18.3.18",

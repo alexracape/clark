@@ -2,9 +2,9 @@ import { test, expect, describe, afterEach, beforeEach } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CanvasBroker, startCanvasServer, listCanvasFiles } from "../src/canvas/server.ts";
-import { composePDF } from "../src/canvas/pdf-export.ts";
-import { extractBlurryShapes } from "../src/canvas/context.ts";
+import { CanvasBroker, startCanvasServer, listCanvasFiles } from "../core/canvas/server.ts";
+import { composePDF } from "../core/canvas/pdf-export.ts";
+import { extractBlurryShapes } from "../core/canvas/context.ts";
 import { TLSocketRoom, InMemorySyncStorage } from "@tldraw/sync-core";
 import { suppressConsoleError } from "./test-utils.ts";
 

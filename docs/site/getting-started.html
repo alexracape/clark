@@ -6,7 +6,7 @@
         <title>Getting Started — Clark</title>
         <meta
             name="description"
-            content="Learn how to install and use Clark, a Socratic teaching assistant for your terminal."
+            content="Learn how to install and use Clark, a Socratic desktop tutoring app."
         />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -402,7 +402,7 @@
                 <h1>Getting Started</h1>
                 <p>
                     Set up Clark in a few minutes and learn the basics of
-                    Socratic tutoring from your terminal.
+                    Socratic tutoring from the desktop app.
                 </p>
             </div>
         </header>
@@ -414,64 +414,19 @@
                 <div class="step">
                     <div class="step-number">Step 1</div>
                     <h2>Install Clark</h2>
-                    <p>Run the install script to download Clark</p>
+                    <p>Download the latest macOS desktop build from GitHub Releases.</p>
                     <div class="code-block">
-                        <span class="prompt">$ </span>curl -fsSL
-                        https://raw.githubusercontent.com/alexracape/clark/main/install.sh
-                        | bash
+                        <span class="prompt">> </span>https://github.com/alexracape/clark/releases/latest
                     </div>
                     <p>
-                        Clark works with both existing notes and new projects.
-                        Choose your approach:
+                        Open the downloaded DMG, drag Clark into your Applications folder,
+                        and launch it. Current desktop releases are unsigned beta builds,
+                        so macOS may show a security prompt on first launch.
                     </p>
-
-                    <h3
-                        style="
-                            font-size: 20px;
-                            margin: 16px 0 8px;
-                            color: var(--lamp-green);
-                            font-weight: 600;
-                        "
-                    >
-                        Option 1: Use with existing notes
-                    </h3>
-                    <p>
-                        Navigate to your existing course or project folder and
-                        start Clark. Your markdown files will automatically
-                        become part of the conversation.
-                    </p>
-                    <div class="code-block">
-                        <span class="prompt">$ </span>cd
-                        ~/Documents/cs161-notes<br />
-                        <span class="prompt">$ </span>clark
-                    </div>
-
-                    <h3
-                        style="
-                            font-size: 20px;
-                            margin: 24px 0 8px;
-                            color: var(--lamp-green);
-                            font-weight: 600;
-                        "
-                    >
-                        Option 2: Start a new workspace
-                    </h3>
-                    <p>
-                        Create a fresh directory for your notes and learning.
-                        Clark will automatically set up a folder structure to
-                        get you started.
-                    </p>
-                    <div class="code-block">
-                        <span class="prompt">$ </span>mkdir ~/Library<br />
-                        <span class="prompt">$ </span>cd ~/Library<br />
-                        <span class="prompt">$ </span>clark
-                    </div>
 
                     <div class="tip">
-                        <strong>Tip:</strong> When you start Clark in an empty
-                        directory, it automatically creates folders for Notes/,
-                        Resources/, and Templates/, plus a Clark/ folder for
-                        canvas files and configuration.
+                        <strong>Tip:</strong> Keep the CLI workflow if you prefer terminal usage:
+                        <span class="code-inline">curl -fsSL https://raw.githubusercontent.com/alexracape/clark/main/install.sh | bash</span>.
                     </div>
                 </div>
 
@@ -921,16 +876,14 @@
                     <h2>Start Learning</h2>
                     <p>
                         You now know everything you need to get started with
-                        Clark. Open a terminal, navigate to your course folder,
-                        and run
-                        <span class="code-inline">clark</span> to begin.
+                        Clark. Open the desktop app, select your workspace, and
+                        start chatting.
                     </p>
                     <p>
-                        Remember: type
+                        Remember: use
                         <span class="code-inline">/help</span> anytime to see
-                        all available commands, or
-                        <span class="code-inline">/tutorial</span> to replay the
-                        interactive walkthrough inside the TUI.
+                        available commands, or
+                        <span class="code-inline">/tutorial</span> to replay the walkthrough.
                     </p>
 
                     <p style="margin-top: 16px">

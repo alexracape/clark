@@ -2,15 +2,15 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { dirname, resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
-import { applyConfigToEnv, loadConfig, resolveApiKey } from "../src/config.ts";
-import { getDefaultModelForProvider, listProviderNames, type ProviderName } from "../src/llm/catalog.ts";
-import { createProvider } from "../src/llm/index.ts";
-import { setProviderOptions } from "../src/llm/provider.ts";
-import { checkPopplerAvailable, getPopplerInstallInstructions } from "../src/ocr/pdf-renderer.ts";
-import type { OCRProvider } from "../src/ocr/provider.ts";
-import { VisionOCRProvider } from "../src/ocr/provider.ts";
-import { runBenchmark } from "../src/ocr/benchmark.ts";
-import { transcribePDFToMarkdown } from "../src/ocr/transcribe.ts";
+import { applyConfigToEnv, loadConfig, resolveApiKey } from "../core/config.ts";
+import { getDefaultModelForProvider, listProviderNames, type ProviderName } from "../core/llm/catalog.ts";
+import { createProvider } from "../core/llm/index.ts";
+import { setProviderOptions } from "../core/llm/provider.ts";
+import { checkPopplerAvailable, getPopplerInstallInstructions } from "../core/ocr/pdf-renderer.ts";
+import type { OCRProvider } from "../core/ocr/provider.ts";
+import { VisionOCRProvider } from "../core/ocr/provider.ts";
+import { runBenchmark } from "../core/ocr/benchmark.ts";
+import { transcribePDFToMarkdown } from "../core/ocr/transcribe.ts";
 
 interface ParsedArgs {
   input: string;

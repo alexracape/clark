@@ -1,15 +1,15 @@
 import { test, expect, describe } from "bun:test";
-import { Conversation } from "../src/llm/messages.ts";
-import { listProviders } from "../src/llm/provider.ts";
-import { messagesToGeminiContents } from "../src/llm/gemini.ts";
-import { checkModelFits, listLocalModels } from "../src/llm/ollama.ts";
-import type { Message } from "../src/llm/provider.ts";
+import { Conversation } from "../core/llm/messages.ts";
+import { listProviders } from "../core/llm/provider.ts";
+import { messagesToGeminiContents } from "../core/llm/gemini.ts";
+import { checkModelFits, listLocalModels } from "../core/llm/ollama.ts";
+import type { Message } from "../core/llm/provider.ts";
 
 // Import to trigger provider registration
-import "../src/llm/anthropic.ts";
-import "../src/llm/openai.ts";
-import "../src/llm/gemini.ts";
-import "../src/llm/ollama.ts";
+import "../core/llm/anthropic.ts";
+import "../core/llm/openai.ts";
+import "../core/llm/gemini.ts";
+import "../core/llm/ollama.ts";
 
 describe("LLM Provider Registry", () => {
   test("all providers are registered", () => {

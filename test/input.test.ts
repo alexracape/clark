@@ -13,8 +13,8 @@ import {
   getExportPathSuggestions,
   isShiftEnterInput,
   getMultilineCursorPosition,
-} from "../src/tui/input.tsx";
-import { CommandHistory } from "../src/tui/history.ts";
+} from "../cli/tui/input.tsx";
+import { CommandHistory } from "../core/history.ts";
 
 describe("parseSlashCommand", () => {
   test("returns null for regular text", () => {

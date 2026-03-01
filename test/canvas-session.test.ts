@@ -2,9 +2,32 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CanvasSessionManager } from "../src/app/canvas-session.ts";
+import { CanvasSessionManager } from "../core/app/canvas-session.ts";
 
 describe("CanvasSessionManager", () => {
+  test("open reuses the same canvas URL across canvas switches", async () => {
+    const canvasDir = await mkdtemp(join(tmpdir(), "clark-canvas-session-"));
+
+    try {
+      const manager = new CanvasSessionManager({
+        port: 0,
+        canvasDir,
+        getHost: () => "127.0.0.1",
+        bindHost: "127.0.0.1",
+      });
+
+      const first = await manager.open("HW-Session-A");
+      const second = await manager.open("HW-Session-B");
+
+      expect(second.url).toBe(first.url);
+      expect(second.name).toBe("HW-Session-B");
+
+      await manager.close();
+    } finally {
+      await rm(canvasDir, { recursive: true, force: true });
+    }
+  });
+
   test("close rejects in-flight export deterministically", async () => {
     const canvasDir = await mkdtemp(join(tmpdir(), "clark-canvas-session-"));
 

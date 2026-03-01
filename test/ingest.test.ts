@@ -6,7 +6,7 @@ import { test, expect, describe } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detectFilePath, copyFileToResources } from "../src/app/ingest.ts";
+import { detectFilePath, copyFileToResources } from "../core/app/ingest.ts";
 
 describe("detectFilePath", () => {
   test("returns null for regular text", async () => {

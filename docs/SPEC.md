@@ -133,7 +133,7 @@ Clark assumes the current working directory is the student's workspace root.
     └── Resource.md
 ```
 
-**Scaffolding:** `scaffoldLibrary()` in `src/library.ts` always creates the Clark core directories/files. It only creates top-level defaults when the workspace starts empty.
+**Scaffolding:** `scaffoldLibrary()` in `core/library.ts` always creates the Clark core directories/files. It only creates top-level defaults when the workspace starts empty.
 
 **Structures:** Each Structure file contains `## Purpose`, `## Generation`, and optionally `## Template` sections. The Purpose describes what the structure is for; the Generation section contains LLM-oriented instructions for creating instances; the Template section provides the markdown template. These files double as skill definitions for dynamic slash commands.
 
@@ -253,7 +253,7 @@ This keeps the MCP server decoupled from tldraw internals. It doesn't import tld
 
 **Search (v1):** Keyword/substring search over file contents. Results ranked by relevance (match density).
 
-**Standalone mode:** The MCP server can also run as a standalone stdio process (`src/mcp/standalone.ts`) for testing with the MCP Inspector or external clients.
+**Standalone mode:** The MCP server can also run as a standalone stdio process (`core/mcp/standalone.ts`) for testing with the MCP Inspector or external clients.
 
 ### 5. LLM Layer
 
@@ -285,7 +285,7 @@ interface LLMProvider {
 
 **Model picker:** The `/model` command shows an interactive picker with all configured providers and their models. Ollama dynamically lists locally available models. Selection is persisted to config for next launch.
 
-**Conversation management:** The `Conversation` class (`src/llm/messages.ts`) manages message history with:
+**Conversation management:** The `Conversation` class (`core/llm/messages.ts`) manages message history with:
 - Token estimation per role (for `/context` display)
 - Compaction via LLM-generated summary (for `/compact`)
 - Stream response collection (converting `StreamChunk[]` into `MessageContent[]`)
@@ -308,7 +308,7 @@ The system prompt is the sole guardrail mechanism. It instructs the LLM to:
 - Encourage the student and acknowledge progress
 - Adapt question difficulty based on the student's responses
 
-The system prompt is stored as a plain text file (`src/prompts/system.md`) so users can customize it. When a skill is active, the Structure file's content is appended to the system prompt for that conversation turn.
+The system prompt is stored as a plain text file (`core/prompts/system.md`) so users can customize it. When a skill is active, the Structure file's content is appended to the system prompt for that conversation turn.
 
 If a `CLARK.md` file exists in the workspace's `Clark/` directory, its contents are appended to the system prompt on startup (separated by `---`). This gives students a per-workspace customization point (e.g., "I'm taking CS229 — focus on machine learning concepts").
 
@@ -337,34 +337,18 @@ clark/
 │   ├── site/                  # Landing page and getting-started HTML
 │   └── dependencies/          # Vendored LLM-friendly docs for tldraw, MCP
 │
-├── src/
+├── core/                      # Shared business logic (UI-agnostic)
+│   ├── engine.ts              # ConversationEngine — turn loop (stream → tool dispatch → loop)
+│   ├── version.ts             # Version constant (compile-time or package.json fallback)
 │   ├── config.ts              # Config persistence (~/.clark/config.json)
 │   ├── library.ts             # Library scaffolding (directory structure + templates)
+│   ├── workspace.ts           # Workspace directory resolution
+│   ├── history.ts             # Command history with persistence
 │   │
 │   ├── app/                   # Application-layer orchestration
 │   │   ├── canvas-session.ts  # CanvasSessionManager (one active canvas at a time)
 │   │   ├── command-router.ts  # Slash command dispatch and /export path resolution
 │   │   └── ingest.ts          # File ingestion (path detection, copy, transcription)
-│   │
-│   ├── bootstrap/             # Startup and initialization
-│   │   ├── args.ts            # CLI argument parsing (yargs)
-│   │   ├── provider.ts        # Provider/model resolution with Ollama preflight
-│   │   ├── start-app.ts       # Wire everything together and render the TUI
-│   │   └── system-prompt.ts   # Load system.md + CLARK.md context
-│   │
-│   ├── tui/                   # Ink-based terminal UI
-│   │   ├── app.tsx            # Root Ink component (conversation loop, tool dispatch)
-│   │   ├── chat.tsx           # Chat message display
-│   │   ├── input.tsx          # User input with slash command hints + tab completion
-│   │   ├── status.tsx         # Status bar (model, canvas, thinking)
-│   │   ├── onboarding.tsx     # First-run setup (provider, API key)
-│   │   ├── model-picker.tsx   # Interactive model/provider switcher
-│   │   ├── canvas-picker.tsx  # Canvas file picker (open existing or create new)
-│   │   ├── context.ts         # Context window usage display
-│   │   ├── history.ts         # Command history with persistence
-│   │   └── primitives/        # Reusable UI hooks
-│   │       ├── use-line-editor.ts    # Single-line text input state
-│   │       └── use-selectable-list.ts # Up/down list selection state
 │   │
 │   ├── canvas/                # tldraw server + client app
 │   │   ├── server.ts          # CanvasBroker + Bun.serve for WebSocket messaging
@@ -373,6 +357,8 @@ clark/
 │   │   ├── app.tsx            # tldraw React app for iPad (frames, export handlers)
 │   │   ├── page-autocreate.ts # Logic for auto-creating trailing empty frames
 │   │   ├── pdf-export.ts      # Compose page PNGs into A4 PDF (uses pdf-lib)
+│   │   ├── name.ts            # Canvas name validation and normalization
+│   │   ├── frame-heuristics.ts # Frame detection heuristics
 │   │   └── context.ts         # BlurryShape/SimpleShape types for visual context
 │   │
 │   ├── mcp/                   # MCP server
@@ -391,15 +377,46 @@ clark/
 │   │   ├── ollama.ts          # Ollama local model implementation
 │   │   ├── mock.ts            # Mock provider for tests
 │   │   ├── messages.ts        # Conversation class (history, tokens, compaction)
+│   │   ├── catalog.ts         # Provider/model catalog
 │   │   └── index.ts           # LLM module exports (+ side-effect provider registration)
 │   │
-│   ├── ocr/                    # OCR pipeline (pluggable provider + PDF rendering)
-│   │   ├── provider.ts         # OCRProvider interface + VisionOCRProvider (LLM vision)
-│   │   ├── pdf-renderer.ts     # PDF-to-image rendering via poppler (pdftoppm)
-│   │   └── index.ts            # OCR module exports
+│   ├── ocr/                   # OCR pipeline (pluggable provider + PDF rendering)
+│   │   ├── provider.ts        # OCRProvider interface + VisionOCRProvider (LLM vision)
+│   │   ├── pdf-renderer.ts    # PDF-to-image rendering via poppler (pdftoppm)
+│   │   ├── benchmark.ts       # OCR benchmark utilities
+│   │   ├── transcribe.ts      # PDF transcription pipeline
+│   │   └── index.ts           # OCR module exports
 │   │
 │   └── prompts/
 │       └── system.md          # Socratic system prompt
+│
+├── cli/                       # Terminal UI (Ink/React)
+│   ├── bootstrap/             # CLI startup and initialization
+│   │   ├── args.ts            # CLI argument parsing (yargs)
+│   │   ├── provider.ts        # Provider/model resolution with Ollama preflight
+│   │   ├── start-app.ts       # Wire everything together and render the TUI
+│   │   ├── system-prompt.ts   # Load system.md + CLARK.md context
+│   │   └── upgrade.ts         # Self-update mechanism
+│   │
+│   └── tui/                   # Ink-based terminal UI components
+│       ├── app.tsx            # Root Ink component (conversation loop, tool dispatch)
+│       ├── chat.tsx           # Chat message display
+│       ├── input.tsx          # User input with slash command hints + tab completion
+│       ├── status.tsx         # Status bar (model, canvas, thinking)
+│       ├── onboarding.tsx     # First-run setup (provider, API key)
+│       ├── model-picker.tsx   # Interactive model/provider switcher
+│       ├── canvas-picker.tsx  # Canvas file picker (open existing or create new)
+│       ├── context.ts         # Context window usage display
+│       ├── theme.ts           # Color theme constants
+│       ├── markdown.tsx       # Markdown renderer for terminal
+│       ├── tutorial.tsx       # Interactive tutorial
+│       ├── index.ts           # TUI module exports
+│       └── primitives/        # Reusable UI hooks
+│           ├── use-line-editor.ts    # Single-line text input state
+│           └── use-selectable-list.ts # Up/down list selection state
+│
+├── gui/                       # Placeholder for React web frontend
+├── tauri/                     # Placeholder for Rust backend
 │
 ├── test/                      # Tests (bun test)
 │   ├── mcp.test.ts            # MCP tool unit tests
@@ -504,7 +521,7 @@ Clark includes a built-in feedback mechanism via the `/feedback` command. When u
 3. No user data or conversation content is transmitted - only the explicit feedback message and system metadata
 4. Network failures gracefully degrade with a suggestion to use GitHub Issues as a fallback
 
-This approach provides immediate user feedback collection without requiring external services, authentication, or configuration. The webhook URL can be regenerated if needed without code changes by updating the constant in `src/app/command-router.ts`.
+This approach provides immediate user feedback collection without requiring external services, authentication, or configuration. The webhook URL can be regenerated if needed without code changes by updating the constant in `core/app/command-router.ts`.
 
 ## Distribution
 

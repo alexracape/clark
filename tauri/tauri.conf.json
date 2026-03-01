@@ -1,0 +1,54 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Clark",
+  "version": "0.1.0",
+  "identifier": "com.clark.app",
+  "build": {
+    "frontendDist": "../gui/dist",
+    "beforeDevCommand": "bun run build:gui",
+    "beforeBuildCommand": "bun run build:gui"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Clark",
+        "width": 960,
+        "height": 700,
+        "minWidth": 600,
+        "minHeight": 400,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 14, "y": 18 },
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' http://localhost:* ws://localhost:*; img-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/alexracape/clark/releases/latest/download/latest.json"
+      ],
+      "dialog": true,
+      "pubkey": "__TAURI_UPDATER_PUBLIC_KEY__"
+    }
+  }
+}

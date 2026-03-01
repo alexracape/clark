@@ -3,10 +3,10 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Clark — Command-Line Teaching Assistant</title>
+        <title>Clark — Desktop Socratic Tutor</title>
         <meta
             name="description"
-            content="Clark is a supportive, Socratic teaching assistant for your terminal. Ask questions, write on a canvas, and learn by doing."
+            content="Clark is a supportive, Socratic desktop tutor. Ask questions, sketch on a canvas, and learn by doing."
         />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -272,6 +272,24 @@
             .btn-secondary:hover {
                 border-color: var(--lamp-green);
                 color: var(--lamp-green);
+            }
+
+            .btn-primary {
+                background: var(--lamp-green);
+                color: var(--parchment);
+                border: 1.5px solid var(--lamp-green);
+                padding: 12px 28px;
+                border-radius: 8px;
+                font-family: "DM Mono", monospace;
+                font-size: 14px;
+                font-weight: 500;
+                text-decoration: none;
+                display: inline-block;
+                transition: background 0.2s;
+            }
+
+            .btn-primary:hover {
+                background: var(--deep-fern);
             }
 
             /* ===== SHARED ===== */
@@ -861,64 +879,22 @@
         <!-- ===== HERO ===== -->
         <section class="hero">
             <div class="container">
-                <div class="hero-label">command-line teaching assistant</div>
+                <div class="hero-label">desktop app for focused studying</div>
                 <h1>The assistant that<br />helps <em>you</em> answer.</h1>
                 <p class="subhead">
-                    A supportive, Socratic tutor that lives in your terminal.
-                    Ask questions, sketch on a canvas, and build real
-                    understanding.
+                    A supportive, Socratic tutor for your desktop. Ask
+                    questions, sketch on a canvas, and build real
+                    understanding in one app.
                 </p>
 
-                <div class="install-block">
-                    <div class="install-row">
-                        <div class="install-command">
-                            <span class="prompt">$</span>
-                            <!-- prettier-ignore -->
-                            <span class="cmd-text" id="install-text">curl -fsSL https://raw.githubusercontent.com/alexracape/clark/main/install.sh | bash</span>
-                        </div>
-                        <button
-                            class="install-copy"
-                            onclick="copyInstall()"
-                            id="copy-btn"
-                        >
-                            <svg
-                                class="icon-copy"
-                                viewBox="0 0 16 16"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="1.5"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <rect
-                                    x="5"
-                                    y="5"
-                                    width="9"
-                                    height="9"
-                                    rx="1.5"
-                                />
-                                <path
-                                    d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5"
-                                />
-                            </svg>
-                            <svg
-                                class="icon-check"
-                                viewBox="0 0 16 16"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                            >
-                                <path d="M3 8.5L6.5 12L13 4" />
-                            </svg>
-                            <span class="copy-label">Copy</span>
-                            <span class="copied-label">Copied</span>
-                        </button>
-                    </div>
-                </div>
-
                 <div class="hero-actions">
+                    <a
+                        href="https://github.com/alexracape/clark/releases/latest"
+                        class="btn-primary"
+                        target="_blank"
+                        rel="noopener"
+                        >Download for macOS</a
+                    >
                     <a
                         href="https://github.com/alexracape/clark"
                         class="btn-secondary"
@@ -968,10 +944,10 @@
                         </p>
                     </div>
                     <div class="feature-item">
-                        <h3>Canvas + Terminal</h3>
+                        <h3>Canvas + Chat</h3>
                         <p>
                             Sketch diagrams and write notes on your iPad while
-                            discussing them in the terminal. Two screens, one
+                            discussing them in Clark. Two screens, one
                             conversation.
                         </p>
                     </div>

@@ -44,32 +44,52 @@ The warm, muted greens and browns create a studious, grounded feeling without be
 
 ### Typefaces
 
-**Display & Body: Georgia**
+Typography varies by surface. The shared thread is warmth and readability.
+
+**Display (Landing Page, Onboarding Headers): Georgia**
 - **Display:** Georgia Bold, 60-64px, tight leading (1.08)
-- **Body:** Georgia Regular, 17-19px, generous leading (1.7)
+- **Body (Landing Page):** Georgia Regular, 17-19px, generous leading (1.7)
 
-Georgia provides timeless, readable serif typography that feels both authoritative and warm. It's already installed on every system, ensuring consistency. The combination of bold headlines and readable body copy creates clear hierarchy without needing multiple font families.
+Georgia provides timeless, readable serif typography. On the landing page and marketing materials it carries the primary voice. In the desktop app, it appears sparingly for display headers and empty states to add warmth.
 
-**UI & Labels: DM Mono**
-- **Buttons/Labels:** 12-14px, uppercase, letter-spacing 0.12em
-- Used for: Buttons, tags, eyebrow labels, technical annotations
+**GUI Primary: IBM Plex Mono**
+- **Body:** 13-14px, line-height 1.6
+- **Labels/Captions:** 11-12px, uppercase, letter-spacing 0.08-0.12em
+- **Code blocks:** 13px, line-height 1.5
 
-Clean, modern monospace that pairs well with Georgia. Provides technical credibility without feeling cold.
+IBM Plex Mono gives the desktop app a technical, terminal-adjacent feel while remaining warmer and more readable than system monospace fonts. It serves as the primary font for the GUI — body text, labels, buttons, and all UI chrome.
 
-**Terminal: IBM Plex Mono**
+**UI Accent: DM Mono**
+- **Buttons/Tags (Landing Page):** 12-14px, uppercase, letter-spacing 0.12em
+
+DM Mono pairs with Georgia on the landing page and marketing. In the GUI, IBM Plex Mono fills this role.
+
+**Terminal (TUI): IBM Plex Mono**
 - **TUI Text:** 13px, line-height 1.7
-- Used exclusively in terminal mockups and code blocks
 
-Slightly warmer and more readable than standard Menlo/Consolas, while maintaining terminal authenticity.
+### Surface-Specific Typography
 
-### Hierarchy
-
+**Landing Page / Marketing:**
 ```
 H1: Georgia Bold, 64px, -0.02em tracking, color: #1C1408
 H2: Georgia Bold, 36px, -0.01em tracking, color: #1C1408
-H3: Georgia Semibold, 18px, color: #2C2417
 Body: Georgia Regular, 19px, 1.7 leading, color: #6B5E4F
 Caption: DM Mono, 12px, uppercase, 0.12em tracking, color: #8B7B5E
+```
+
+**Desktop App (GUI):**
+```
+Display: Georgia Bold, 24-28px, color: #1C1408  (empty states, onboarding)
+H3: IBM Plex Mono, 14px, semi-bold, color: #2C2417
+Body: IBM Plex Mono, 13-14px, 1.6 leading, color: #6B5E4F
+Label: IBM Plex Mono, 11px, uppercase, 0.08em tracking, color: #7A6B52
+Code: IBM Plex Mono, 13px, 1.5 leading
+```
+
+**Terminal (TUI):**
+```
+Body: IBM Plex Mono, 13px, 1.7 leading, color: #E8DCCA
+Dim: IBM Plex Mono, 13px, color: #5C4E38
 ```
 
 ---
@@ -236,6 +256,12 @@ Cards and containers use subtle borders and spacing rather than heavy shadows or
 ### 5. Terminal as First-Class Citizen
 The TUI isn't an afterthought—it's the primary interface. Colors, typography, and spacing are optimized for terminal rendering. The design doesn't try to make the terminal look like a web app; it embraces its terminal nature with warmth.
 
+### 6. Inline Over Modal
+Prefer dropdowns, popovers, and inline expansion over modal dialogs. Modals interrupt flow and feel heavy. Use them only for destructive actions or multi-step forms (e.g., API key entry). For selections (model, canvas), use compact dropdowns or popover panels.
+
+### 7. Integrated Chrome
+UI chrome (status bars, toolbars) should feel like part of the window, not bolted on. Use the native titlebar area where possible. Avoid heavy colored bars. Status information should be present but not loud — subtle text alongside window controls, not a competing visual element.
+
 ---
 
 ## Implementation Notes
@@ -271,6 +297,83 @@ md: 6px   (buttons, small cards)
 lg: 8px   (voice blocks, feature cards)
 xl: 12px  (terminal windows)
 ```
+
+---
+
+## Desktop App (GUI) Components
+
+The GUI is a Tauri desktop app with a React frontend. It shares the Library palette and brand values with the TUI but adapts them for a graphical context.
+
+### Window Structure
+
+```
+┌─ Custom Titlebar ──────────────────────────────────────────┐
+│  [●●●]  model: claude-sonnet   ○ Canvas: Problem Set 3    │
+├────────────────────────────────────────────────────────────┤
+│  ┌── Sidebar ──┐  ┌── Chat ────────────────────────────┐  │
+│  │  File tree   │  │                                    │  │
+│  │  (collaps.)  │  │  Messages + inline tool cards      │  │
+│  │             │  │                                    │  │
+│  └─────────────┘  │                                    │  │
+│                    ├────────────────────────────────────┤  │
+│                    │  Composer (textarea + send)        │  │
+│                    └────────────────────────────────────┘  │
+├────────────────────────────────────────────────────────────┤
+│  [thinking...]                          context: 42%      │
+└────────────────────────────────────────────────────────────┘
+```
+
+- **Custom titlebar:** `decorations: false` in Tauri, custom drag region. Embeds model name and canvas status alongside traffic lights. Parchment background, subtle bottom border.
+- **Sidebar:** Collapsible file tree. No emojis — disclosure triangles for folders, file extensions for type. Warm neutral background (`#F5F0E6`).
+- **Chat area:** Parchment background. Messages flow top-to-bottom with clear role distinction.
+- **Composer:** Fixed bottom of chat area. Clean input with subtle border, lamp-green send button.
+- **Bottom bar:** Slim (24-28px), shows thinking indicator and context usage. Blends with window chrome.
+
+### Chat Messages
+
+**User messages:**
+- Subtle lamp-green left border (3px) or very light green tint background
+- Right-aligned is optional; left-aligned with role distinction works well too
+
+**Assistant messages:**
+- White or parchment background, walnut text
+- "clark" label in sky blue, IBM Plex Mono 11px uppercase
+
+**Tool call cards (inline):**
+- Compact summary: icon + tool name + brief result (e.g., "Read notes.md — 42 lines")
+- Expandable on click to show full input/output
+- Subtle background (`#F5F0E6`), 1px patina border, 6px border-radius
+- No drop shadows
+
+**Thinking indicator (inline):**
+- Shows in the chat flow as a message-like block
+- Animated dots or subtle spinner + "Thinking..." in dim patina text
+- Expandable to show thinking content if available
+
+### Model Picker
+
+- **Trigger:** Clickable model name in titlebar or status area
+- **Presentation:** Dropdown/popover, not a modal
+- **Content:** Grouped by provider, current model highlighted with lamp-green dot
+- **API key flow:** Inline password input within the dropdown for unconfigured providers
+- **Interaction:** Click or arrow keys to select, Escape to dismiss
+
+### Canvas Picker
+
+- **Trigger:** Canvas status indicator in titlebar (always visible, even when no session)
+- **Presentation:** Popover panel below the trigger
+- **Content:** List of existing canvases + "New canvas" input
+- **Copy URL:** Prominent copy button next to the active canvas name (primary action)
+- **Status:** Colored dot (sage=connected, brass=connecting, patina=none)
+
+### File Sidebar
+
+- **Toggle:** Small icon button in titlebar or keyboard shortcut
+- **Structure:** Nested tree with disclosure triangles (not emoji folders)
+- **File type:** Indicated by extension text (`.md`, `.pdf`) or minimal monochrome SVG icon
+- **Interaction:** Click to expand folders; click file for future preview/action
+- **Active item:** Lamp-green left border accent
+- **Background:** Warm neutral (#F5F0E6), 1px right border in patina
 
 ---
 

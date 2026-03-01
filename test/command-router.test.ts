@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSlashCommandHandler } from "../src/app/command-router.ts";
-import type { CanvasSessionManager } from "../src/app/canvas-session.ts";
+import { createSlashCommandHandler } from "../core/app/command-router.ts";
+import type { CanvasSessionManager } from "../core/app/canvas-session.ts";
 
 const minimalPNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
@@ -27,7 +27,7 @@ describe("createSlashCommandHandler /export", () => {
           exportDir = next;
         },
         conversation: {} as never,
-        provider: {} as never,
+        getProvider: () => ({} as never),
       });
 
       const result = await handler("export", "");
@@ -63,7 +63,7 @@ describe("createSlashCommandHandler /export", () => {
           persistedDir = next;
         },
         conversation: {} as never,
-        provider: {} as never,
+        getProvider: () => ({} as never),
       });
 
       const first = await handler("export", "exports");
@@ -98,7 +98,7 @@ describe("createSlashCommandHandler /export", () => {
         getExportDir: () => dir,
         setExportDir: () => {},
         conversation: {} as never,
-        provider: {} as never,
+        getProvider: () => ({} as never),
       });
 
       const result = await handler("export", "");
@@ -132,7 +132,7 @@ describe("createSlashCommandHandler /export", () => {
           throw new Error("disk is read-only");
         },
         conversation: {} as never,
-        provider: {} as never,
+        getProvider: () => ({} as never),
       });
 
       const result = await handler("export", "exports");
