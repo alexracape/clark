@@ -138,7 +138,7 @@ function filterSystemDirs(entries: string[]): string[] {
     "Clark", // Don't list Clark in the workspace layout
   ]);
 
-  return entries.filter(entry => {
+  return entries.filter((entry) => {
     // Skip hidden dirs (starting with .)
     if (entry.startsWith(".")) return false;
     // Skip known system dirs
@@ -150,7 +150,10 @@ function filterSystemDirs(entries: string[]): string[] {
 /**
  * Generate the Workspace Layout section based on vault state.
  */
-async function generateWorkspaceLayout(path: string, startedEmpty: boolean): Promise<string> {
+async function generateWorkspaceLayout(
+  path: string,
+  startedEmpty: boolean,
+): Promise<string> {
   if (startedEmpty) {
     // Use default layout for new vaults
     return `- \`Notes/\` — Markdown notes, one file per topic
@@ -165,8 +168,8 @@ async function generateWorkspaceLayout(path: string, startedEmpty: boolean): Pro
     // Scan and list actual top-level directories
     const entries = await readdir(path, { withFileTypes: true });
     const dirs = entries
-      .filter(entry => entry.isDirectory())
-      .map(entry => entry.name);
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
 
     const userDirs = filterSystemDirs(dirs);
 
@@ -176,7 +179,9 @@ async function generateWorkspaceLayout(path: string, startedEmpty: boolean): Pro
 - \`Clark/Transcripts/\` — Markdown transcripts of PDFs and images`;
     }
 
-    const userDirList = userDirs.map(dir => `- \`${dir}/\` — (your directory)`).join("\n");
+    const userDirList = userDirs
+      .map((dir) => `- \`${dir}/\` — (your directory)`)
+      .join("\n");
     return `${userDirList}
 - \`Clark/Canvas/\` — tldraw canvas files (.tldr)
 - \`Clark/Structures/\` — Structure definitions that guide how Clark creates files
@@ -187,13 +192,13 @@ async function generateWorkspaceLayout(path: string, startedEmpty: boolean): Pro
 /**
  * Generate CLARK.md content based on vault state.
  */
-async function generateClarkMd(path: string, startedEmpty: boolean): Promise<string> {
+async function generateClarkMd(
+  path: string,
+  startedEmpty: boolean,
+): Promise<string> {
   const workspaceLayout = await generateWorkspaceLayout(path, startedEmpty);
 
-  return `# CLARK.md
-
-Add context about your courses, preferences, and workflow here.
-Clark reads this file at startup and uses it to personalize responses.
+  return `
 
 ## Workspace Layout
 
@@ -205,7 +210,6 @@ ${workspaceLayout}
 - \`#problem_set\` — A homework assignment or problem set
 - \`#paper\` — An academic paper
 - \`#quote\` — A quote
-- \`#idea\` — An atomic idea or concept
 
 ## File Processing Conventions
 
@@ -227,7 +231,10 @@ When processing PDFs and images:
 `;
 }
 
-async function ensureClarkCore(path: string, startedEmpty: boolean): Promise<void> {
+async function ensureClarkCore(
+  path: string,
+  startedEmpty: boolean,
+): Promise<void> {
   const dirs = [
     clarkDirPath(path),
     clarkCanvasDirPath(path),
