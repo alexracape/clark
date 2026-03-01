@@ -19,6 +19,9 @@ const ROUTE_MAP: Record<string, Route> = {
   open_canvas: { method: "POST", path: "/api/canvas/open" },
   get_context: { method: "GET", path: "/api/context" },
   get_history: { method: "GET", path: "/api/history" },
+  get_onboarding_status: { method: "GET", path: "/api/onboarding-status" },
+  complete_onboarding: { method: "POST", path: "/api/complete-onboarding" },
+  list_ollama_models: { method: "GET", path: "/api/ollama-models" },
 };
 
 function isTauriRuntime(): boolean {

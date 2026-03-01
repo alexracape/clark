@@ -7,6 +7,7 @@ import { Sidebar } from "./components/Sidebar.tsx";
 import { ModelPicker } from "./components/ModelPicker.tsx";
 import { CanvasPicker } from "./components/CanvasPicker.tsx";
 import { ContextPanel } from "./components/ContextPanel.tsx";
+import { Onboarding } from "./components/Onboarding.tsx";
 import { invokeCommand, listenEvent } from "./ipc.ts";
 import {
   applyFileDropError,
@@ -15,14 +16,27 @@ import {
   applySlashCommandError,
   applySlashCommandResult,
   applyStreamEvent,
+  completeOnboarding,
   createInitialAppState,
+  onboardingNextStep,
+  onboardingPrevStep,
   onCanvasOpened,
   planFileDrop,
   planSendInput,
+  setOnboardingApiKey,
+  setOnboardingError,
+  setOnboardingOllamaModel,
+  setOnboardingOllamaModels,
+  setOnboardingProvider,
+  setOnboardingStepOllama,
+  setOnboardingSubmitting,
+  setOnboardingWorkspace,
+  setOnboardingWorkspaceIsNew,
   setProviderInfo,
   setShowCanvasPicker,
   setShowContextPanel,
   setShowModelPicker,
+  startOnboarding,
   type AppState,
   type ControllerEffect,
   type IngestResponse,
@@ -69,6 +83,8 @@ async function runEffects(
   }
 }
 
+const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
 export function App() {
   const [state, setState] = useState<AppState>(() => createInitialAppState());
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -77,6 +93,18 @@ export function App() {
     kind: "success" | "error";
     text: string;
   } | null>(null);
+
+  // Check onboarding status on mount
+  useEffect(() => {
+    invokeCommand("get_onboarding_status", {})
+      .then((data) => {
+        const result = data as { needsOnboarding: boolean };
+        if (result.needsOnboarding) {
+          setState((prev) => startOnboarding(prev));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     invokeCommand("get_status", {})
@@ -156,6 +184,118 @@ export function App() {
     const timer = setTimeout(() => setClipboardToast(null), 2200);
     return () => clearTimeout(timer);
   }, [clipboardToast]);
+
+  const handleOnboardingComplete = useCallback(async () => {
+    const ob = state.onboarding;
+    if (!ob) return;
+    setState((prev) => setOnboardingSubmitting(prev, true));
+    try {
+      await invokeCommand("complete_onboarding", {
+        provider: ob.selectedProvider,
+        apiKey: ob.apiKey || undefined,
+        workspaceDir: ob.workspaceDir || undefined,
+        model: ob.selectedOllamaModel || undefined,
+        workspaceIsNew: ob.workspaceIsNew,
+      });
+      // Refresh status after onboarding
+      const data = (await invokeCommand("get_status", {})) as { provider: string; model: string };
+      setState((prev) => {
+        let next = completeOnboarding(prev);
+        next = setProviderInfo(next, { provider: data.provider, model: data.model });
+        return next;
+      });
+    } catch (err) {
+      setState((prev) => {
+        let next = setOnboardingSubmitting(prev, false);
+        next = setOnboardingError(next, String(err));
+        return next;
+      });
+    }
+  }, [state.onboarding]);
+
+  const handlePickFolder = useCallback(async (): Promise<string | null> => {
+    try {
+      return (await invokeCommand("pick_folder", {})) as string | null;
+    } catch {
+      // User cancelled
+      return null;
+    }
+  }, []);
+
+  const handleRefreshOllamaModels = useCallback(async () => {
+    try {
+      const data = (await invokeCommand("list_ollama_models", {})) as {
+        models: string[];
+        status: string;
+      };
+      setState((prev) => {
+        let next = setOnboardingOllamaModels(prev, data.models);
+        if (data.status === "not-running") {
+          next = setOnboardingError(next, "Ollama is not running. Start it with: ollama serve");
+        } else if (data.status === "no-models") {
+          next = setOnboardingError(next, "No models found. Pull one with: ollama pull llama3.2");
+        } else {
+          next = setOnboardingError(next, null);
+        }
+        return next;
+      });
+    } catch (err) {
+      setState((prev) => setOnboardingError(prev, String(err)));
+    }
+  }, []);
+
+  const handleOllamaNext = useCallback(async () => {
+    setState((prev) => setOnboardingStepOllama(prev));
+    // Auto-fetch models when entering the ollama setup step
+    try {
+      const data = (await invokeCommand("list_ollama_models", {})) as {
+        models: string[];
+        status: string;
+      };
+      setState((prev) => {
+        let next = setOnboardingOllamaModels(prev, data.models);
+        if (data.status === "not-running") {
+          next = setOnboardingError(next, "Ollama is not running. Start it with: ollama serve");
+        } else if (data.status === "no-models") {
+          next = setOnboardingError(next, "No models found. Pull one with: ollama pull llama3.2");
+        }
+        return next;
+      });
+    } catch {
+      // Will show instructions
+    }
+  }, []);
+
+  if (state.onboarding) {
+    return (
+      <div className="app-layout">
+        <Onboarding
+          state={state.onboarding}
+          isTauri={isTauri}
+          onNext={() => setState((prev) => onboardingNextStep(prev))}
+          onPrev={() => {
+            if (state.onboarding?.step === "ollama-setup") {
+              // Go back from ollama-setup to provider step
+              setState((prev) => prev.onboarding
+                ? { ...prev, onboarding: { ...prev.onboarding, step: "provider", error: null } }
+                : prev);
+            } else {
+              setState((prev) => onboardingPrevStep(prev));
+            }
+          }}
+          onSetWorkspace={(dir) => setState((prev) => setOnboardingWorkspace(prev, dir))}
+          onSetWorkspaceIsNew={(isNew) => setState((prev) => setOnboardingWorkspaceIsNew(prev, isNew))}
+          onPickFolder={handlePickFolder}
+          onSetProvider={(p) => setState((prev) => setOnboardingProvider(prev, p))}
+          onSetApiKey={(k) => setState((prev) => setOnboardingApiKey(prev, k))}
+          onOllamaNext={handleOllamaNext}
+          onRefreshOllamaModels={handleRefreshOllamaModels}
+          onSelectOllamaModel={(m) => setState((prev) => setOnboardingOllamaModel(prev, m))}
+          onComplete={handleOnboardingComplete}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="app-layout">

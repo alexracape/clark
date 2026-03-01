@@ -203,6 +203,57 @@ pub async fn pick_file(window: tauri::Window) -> Result<Option<String>, String> 
 }
 
 #[tauri::command]
+pub async fn pick_folder(window: tauri::Window) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    window.dialog().file().pick_folder(move |path| {
+        let _ = tx.send(path.map(|p| p.to_string()));
+    });
+
+    rx.await
+        .map_err(|_| "Folder picker cancelled".to_string())
+}
+
+#[tauri::command]
+pub async fn get_onboarding_status(
+    sidecar: State<'_, Sidecar>,
+) -> Result<serde_json::Value, String> {
+    sidecar_get(&sidecar, "/api/onboarding-status").await
+}
+
+#[tauri::command]
+pub async fn complete_onboarding(
+    provider: String,
+    api_key: Option<String>,
+    workspace_dir: Option<String>,
+    model: Option<String>,
+    workspace_is_new: Option<bool>,
+    sidecar: State<'_, Sidecar>,
+) -> Result<serde_json::Value, String> {
+    sidecar_post(
+        &sidecar,
+        "/api/complete-onboarding",
+        serde_json::json!({
+            "provider": provider,
+            "apiKey": api_key,
+            "workspaceDir": workspace_dir,
+            "model": model,
+            "workspaceIsNew": workspace_is_new,
+        }),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn list_ollama_models(
+    sidecar: State<'_, Sidecar>,
+) -> Result<serde_json::Value, String> {
+    sidecar_get(&sidecar, "/api/ollama-models").await
+}
+
+#[tauri::command]
 pub async fn write_clipboard_text(
     text: String,
     app: tauri::AppHandle,

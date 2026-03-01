@@ -31,7 +31,7 @@ import type { LLMProvider } from "../core/llm/provider.ts";
 import { getDefaultModelForProvider, getCloudModelEntries, getProviderCatalogEntry, isApiKeyProvider } from "../core/llm/catalog.ts";
 import { createTools } from "../core/mcp/index.ts";
 import type { ToolDefinition } from "../core/mcp/tools.ts";
-import { loadConfig, saveConfig, resolveApiKey, setProviderApiKey } from "../core/config.ts";
+import { loadConfig, saveConfig, resolveApiKey, setProviderApiKey, needsOnboarding } from "../core/config.ts";
 import type { ClarkConfig } from "../core/config.ts";
 import { scaffoldLibrary, clarkCanvasDirPath } from "../core/library.ts";
 import { loadEffectiveSystemPrompt } from "../cli/bootstrap/system-prompt.ts";
@@ -105,11 +105,20 @@ async function resolveProviderFromConfig(cfg: ClarkConfig): Promise<{
   provider: LLMProvider;
 }> {
   const pName = cfg.provider ?? "anthropic";
-  const mName =
+  let mName =
     cfg.model
-    ?? getDefaultModelForProvider(pName)
-    // Ollama has no static default model in the catalog.
-    ?? (pName === "ollama" ? "llama3.2" : undefined);
+    ?? getDefaultModelForProvider(pName);
+
+  // Ollama has no static default model — pick the first locally available one.
+  if (!mName && pName === "ollama") {
+    try {
+      const { listLocalModels } = await import("../core/llm/ollama.ts");
+      const models = await listLocalModels();
+      if (models.length > 0) mName = models[0]!.name;
+    } catch {
+      // Ollama not running — mName stays undefined, will fail below
+    }
+  }
 
   // Keep the sidecar bootable even when no cloud API keys are configured.
   // This allows the GUI model picker to load and collect missing keys.
@@ -123,26 +132,36 @@ async function resolveProviderFromConfig(cfg: ClarkConfig): Promise<{
   try {
     return {
       providerName: pName,
-      modelName: mName,
+      modelName: mName ?? pName,
       provider: createProvider(pName, mName),
     };
   } catch (err) {
     // If the configured provider cannot be constructed (e.g. missing API key),
     // fall back to a local provider so the GUI can still boot and open /model.
-    const fallbackProvider = "ollama";
-    const fallbackModel = "llama3.2";
-    setProviderOptions(fallbackProvider, {
-      ...(cfg.maxTokens ? { maxTokens: cfg.maxTokens } : {}),
-    });
+    let fallbackModel: string | undefined;
     try {
-      return {
-        providerName: fallbackProvider,
-        modelName: fallbackModel,
-        provider: createProvider(fallbackProvider, fallbackModel),
-      };
+      const { listLocalModels } = await import("../core/llm/ollama.ts");
+      const models = await listLocalModels();
+      if (models.length > 0) fallbackModel = models[0]!.name;
     } catch {
-      throw err;
+      // Ollama not available
     }
+
+    if (fallbackModel) {
+      setProviderOptions("ollama", {
+        ...(cfg.maxTokens ? { maxTokens: cfg.maxTokens } : {}),
+      });
+      try {
+        return {
+          providerName: "ollama",
+          modelName: fallbackModel,
+          provider: createProvider("ollama", fallbackModel),
+        };
+      } catch {
+        throw err;
+      }
+    }
+    throw err;
   }
 }
 
@@ -515,6 +534,86 @@ function handleContext(): Response {
   return jsonResponse(ctx);
 }
 
+/** GET /api/ollama-models — List locally available Ollama models */
+async function handleOllamaModels(): Promise<Response> {
+  try {
+    const { listLocalModels } = await import("../core/llm/ollama.ts");
+    const models = await listLocalModels();
+    if (models.length === 0) {
+      return jsonResponse({ models: [], status: "no-models" });
+    }
+    return jsonResponse({
+      models: models.map((m) => m.name),
+      status: "running",
+    });
+  } catch {
+    return jsonResponse({ models: [], status: "not-running" });
+  }
+}
+
+/** GET /api/onboarding-status — Check if onboarding is needed */
+async function handleOnboardingStatus(): Promise<Response> {
+  const currentConfig = await loadConfig();
+  if (currentConfig.hasCompletedOnboarding) {
+    return jsonResponse({ needsOnboarding: false });
+  }
+  const needs = await needsOnboarding(currentConfig);
+  return jsonResponse({ needsOnboarding: needs });
+}
+
+/** POST /api/complete-onboarding — Save provider, API key, workspace, and mark onboarding done */
+async function handleCompleteOnboarding(req: Request): Promise<Response> {
+  const body = await req.json() as {
+    provider: string;
+    apiKey?: string;
+    workspaceDir?: string;
+    model?: string;
+    workspaceIsNew?: boolean;
+  };
+  if (!body.provider) {
+    return jsonResponse({ error: "Missing 'provider' field" }, 400);
+  }
+
+  try {
+    let newConfig = await loadConfig();
+
+    // Save API key to system secret store (sets secretStoreBackend on config)
+    if (body.apiKey && isApiKeyProvider(body.provider)) {
+      newConfig = await setProviderApiKey(body.provider, body.apiKey, newConfig);
+    }
+
+    // Set provider and model. Use explicit model if provided (e.g. Ollama),
+    // otherwise fall back to catalog default.
+    newConfig.provider = body.provider;
+    newConfig.model = body.model || getDefaultModelForProvider(body.provider);
+    newConfig.hasCompletedOnboarding = true;
+
+    // Set pdfExportDir: for new workspaces use Resources/PDFs, otherwise workspace root
+    const targetWorkspace = body.workspaceDir || workspaceDir;
+    if (body.workspaceIsNew) {
+      newConfig.pdfExportDir = join(targetWorkspace, "Resources", "PDFs");
+    } else {
+      newConfig.pdfExportDir = newConfig.pdfExportDir ?? targetWorkspace;
+    }
+    await saveConfig(newConfig);
+
+    // Scaffold workspace
+    await scaffoldLibrary(targetWorkspace);
+
+    // Re-resolve provider so the app is ready to use
+    const resolved = await resolveProviderFromConfig(newConfig);
+    provider = resolved.provider;
+    providerName = resolved.providerName;
+    modelName = resolved.modelName;
+
+    broadcast({ type: "status_update", provider: providerName, model: modelName });
+    return jsonResponse({ ok: true, provider: providerName, model: modelName });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return jsonResponse({ error: msg }, 500);
+  }
+}
+
 // --- Server ---
 
 export async function createSidecarServer(): Promise<{
@@ -579,6 +678,15 @@ export async function createSidecarServer(): Promise<{
       }
       if (url.pathname === "/api/context" && req.method === "GET") {
         return handleContext();
+      }
+      if (url.pathname === "/api/ollama-models" && req.method === "GET") {
+        return await handleOllamaModels();
+      }
+      if (url.pathname === "/api/onboarding-status" && req.method === "GET") {
+        return await handleOnboardingStatus();
+      }
+      if (url.pathname === "/api/complete-onboarding" && req.method === "POST") {
+        return await handleCompleteOnboarding(req);
       }
 
       return new Response("Not Found", { status: 404, headers: corsHeaders() });

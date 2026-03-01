@@ -6,8 +6,6 @@ Some future enhancements and things that need fixing, organized into parallel ex
 
 GUI
 - Interactive tutorial
-- Enter works for slash commands
-- Automatically focus cursor in chat
 - Select workspace flow
 - Drag and drop
 - **In depth system prompt with tool use**

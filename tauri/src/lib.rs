@@ -55,6 +55,10 @@ pub fn run() {
             commands::get_context,
             commands::get_history,
             commands::write_clipboard_text,
+            commands::pick_folder,
+            commands::get_onboarding_status,
+            commands::complete_onboarding,
+            commands::list_ollama_models,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

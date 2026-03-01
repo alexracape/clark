@@ -46,6 +46,47 @@ describe("desktop smoke", () => {
     expect(typeof status.model).toBe("string");
   });
 
+  test("GET /api/onboarding-status returns needsOnboarding", async () => {
+    const res = await callRoute("/api/onboarding-status");
+    expect(res.status).toBe(200);
+    const data = await res.json() as { needsOnboarding: boolean };
+    expect(typeof data.needsOnboarding).toBe("boolean");
+  });
+
+  test("POST /api/complete-onboarding saves config and returns ok", async () => {
+    const res = await callRoute("/api/complete-onboarding", "POST", {
+      provider: "ollama",
+      workspaceDir: process.env.CLARK_WORKSPACE_DIR,
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json() as { ok: boolean; provider: string; model: string };
+    expect(data.ok).toBe(true);
+    expect(data.provider).toBe("ollama");
+
+    // After completing onboarding, status should say not needed
+    const statusRes = await callRoute("/api/onboarding-status");
+    const status = await statusRes.json() as { needsOnboarding: boolean };
+    expect(status.needsOnboarding).toBe(false);
+
+    // Status endpoint should reflect the onboarded provider
+    const providerStatus = await callRoute("/api/status");
+    const ps = await providerStatus.json() as { provider: string };
+    expect(ps.provider).toBe("ollama");
+  });
+
+  test("POST /api/complete-onboarding rejects missing provider", async () => {
+    const res = await callRoute("/api/complete-onboarding", "POST", {});
+    expect(res.status).toBe(400);
+  });
+
+  test("GET /api/ollama-models returns models array and status", async () => {
+    const res = await callRoute("/api/ollama-models");
+    expect(res.status).toBe(200);
+    const data = await res.json() as { models: string[]; status: string };
+    expect(Array.isArray(data.models)).toBe(true);
+    expect(["running", "not-running", "no-models"]).toContain(data.status);
+  });
+
   test("stream channel receives valid event from chat", async () => {
     await callRoute("/api/provider", "POST", { provider: "mock", model: "test" });
 

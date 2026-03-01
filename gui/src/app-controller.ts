@@ -1,5 +1,21 @@
 import type { SidecarStreamEvent } from "./stream-events.ts";
 
+// --- Onboarding State ---
+
+export type OnboardingStep = "welcome" | "workspace" | "provider" | "api-key" | "ollama-setup";
+
+export interface OnboardingState {
+  step: OnboardingStep;
+  workspaceDir: string;
+  workspaceIsNew: boolean;
+  selectedProvider: string;
+  apiKey: string;
+  ollamaModels: string[];
+  selectedOllamaModel: string;
+  error: string | null;
+  isSubmitting: boolean;
+}
+
 export interface ToolCall {
   name: string;
   result?: string;
@@ -40,6 +56,7 @@ export interface AppState {
   canvasStatus: CanvasStatus | null;
   pendingToolCalls: ToolCall[];
   nextMessageId: number;
+  onboarding: OnboardingState | null;
 }
 
 export type ControllerEffect = {
@@ -78,6 +95,7 @@ export function createInitialAppState(): AppState {
     canvasStatus: null,
     pendingToolCalls: [],
     nextMessageId: 0,
+    onboarding: null,
   };
 }
 
@@ -286,4 +304,95 @@ export function applyIngestResult(state: AppState, result: IngestResponse): AppS
 
 export function applyFileDropError(state: AppState, err: unknown): AppState {
   return appendMessage(state, "system", `File drop error: ${String(err)}`);
+}
+
+// --- Onboarding pure functions ---
+
+const STEP_ORDER: OnboardingStep[] = ["welcome", "workspace", "provider", "api-key"];
+
+function createOnboardingState(): OnboardingState {
+  return {
+    step: "welcome",
+    workspaceDir: "",
+    workspaceIsNew: false,
+    selectedProvider: "",
+    apiKey: "",
+    ollamaModels: [],
+    selectedOllamaModel: "",
+    error: null,
+    isSubmitting: false,
+  };
+}
+
+export function startOnboarding(state: AppState): AppState {
+  return { ...state, onboarding: createOnboardingState() };
+}
+
+export function onboardingNextStep(state: AppState): AppState {
+  if (!state.onboarding) return state;
+  const idx = STEP_ORDER.indexOf(state.onboarding.step);
+  if (idx < 0 || idx >= STEP_ORDER.length - 1) return state;
+  return {
+    ...state,
+    onboarding: { ...state.onboarding, step: STEP_ORDER[idx + 1], error: null },
+  };
+}
+
+export function onboardingPrevStep(state: AppState): AppState {
+  if (!state.onboarding) return state;
+  const idx = STEP_ORDER.indexOf(state.onboarding.step);
+  if (idx <= 0) return state;
+  return {
+    ...state,
+    onboarding: { ...state.onboarding, step: STEP_ORDER[idx - 1], error: null },
+  };
+}
+
+export function setOnboardingWorkspace(state: AppState, dir: string): AppState {
+  if (!state.onboarding) return state;
+  return { ...state, onboarding: { ...state.onboarding, workspaceDir: dir } };
+}
+
+export function setOnboardingProvider(state: AppState, provider: string): AppState {
+  if (!state.onboarding) return state;
+  return { ...state, onboarding: { ...state.onboarding, selectedProvider: provider } };
+}
+
+export function setOnboardingApiKey(state: AppState, apiKey: string): AppState {
+  if (!state.onboarding) return state;
+  return { ...state, onboarding: { ...state.onboarding, apiKey } };
+}
+
+export function setOnboardingError(state: AppState, error: string | null): AppState {
+  if (!state.onboarding) return state;
+  return { ...state, onboarding: { ...state.onboarding, error } };
+}
+
+export function setOnboardingSubmitting(state: AppState, isSubmitting: boolean): AppState {
+  if (!state.onboarding) return state;
+  return { ...state, onboarding: { ...state.onboarding, isSubmitting } };
+}
+
+export function completeOnboarding(state: AppState): AppState {
+  return { ...state, onboarding: null };
+}
+
+export function setOnboardingWorkspaceIsNew(state: AppState, isNew: boolean): AppState {
+  if (!state.onboarding) return state;
+  return { ...state, onboarding: { ...state.onboarding, workspaceIsNew: isNew } };
+}
+
+export function setOnboardingOllamaModels(state: AppState, models: string[]): AppState {
+  if (!state.onboarding) return state;
+  return { ...state, onboarding: { ...state.onboarding, ollamaModels: models } };
+}
+
+export function setOnboardingOllamaModel(state: AppState, model: string): AppState {
+  if (!state.onboarding) return state;
+  return { ...state, onboarding: { ...state.onboarding, selectedOllamaModel: model } };
+}
+
+export function setOnboardingStepOllama(state: AppState): AppState {
+  if (!state.onboarding) return state;
+  return { ...state, onboarding: { ...state.onboarding, step: "ollama-setup", error: null } };
 }

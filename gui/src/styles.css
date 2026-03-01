@@ -1171,3 +1171,431 @@ body {
     font-family: "IBM Plex Mono", monospace;
     font-size: 12px;
 }
+
+/* Onboarding */
+.onboarding {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    background: var(--parchment);
+    padding: 40px 24px;
+    animation: fade-in 0.3s ease;
+}
+
+.onboarding--welcome {
+    padding: 0;
+}
+
+/* ── Welcome step with particle animation ── */
+
+.welcome-step {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+.particle-graph-canvas {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+}
+
+.welcome-step__ui {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding-bottom: 15%;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity 0.8s ease, transform 0.8s ease;
+}
+
+.welcome-step__ui--visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.welcome-step__ui > * {
+    pointer-events: auto;
+}
+
+.welcome-step__ui .onboarding-subtitle {
+    transition-delay: 0.1s;
+}
+
+.welcome-step__ui .onboarding-body {
+    max-width: 520px;
+    transition-delay: 0.3s;
+}
+
+.welcome-step__ui .onboarding-btn {
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.6s ease 0.5s, transform 0.6s ease 0.5s, background 0.15s ease;
+}
+
+.welcome-step__ui--visible .onboarding-btn {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.onboarding-steps {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 40px;
+}
+
+.onboarding-steps__dot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid var(--patina);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--patina);
+    background: transparent;
+    transition: all 0.2s ease;
+}
+
+.onboarding-steps__dot--active {
+    border-color: var(--lamp-green);
+    color: var(--lamp-green);
+    background: rgba(61, 122, 95, 0.08);
+}
+
+.onboarding-steps__dot--done {
+    border-color: var(--sage);
+    background: var(--sage);
+    color: #fff;
+}
+
+.onboarding-steps__line {
+    width: 32px;
+    height: 2px;
+    background: var(--patina);
+    opacity: 0.3;
+    transition: all 0.2s ease;
+}
+
+.onboarding-steps__line--done {
+    background: var(--sage);
+    opacity: 1;
+}
+
+.onboarding-content {
+    max-width: 520px;
+    width: 100%;
+    text-align: center;
+    animation: modal-slide-up 0.25s ease;
+}
+
+.onboarding-logo {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 48px;
+    font-weight: 700;
+    color: var(--walnut);
+    margin-bottom: 12px;
+    animation: fade-in 0.5s ease;
+}
+
+.onboarding-heading {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--walnut);
+    margin-bottom: 8px;
+}
+
+.onboarding-subtitle {
+    font-size: 16px;
+    color: var(--walnut);
+    margin-bottom: 8px;
+}
+
+.onboarding-body {
+    font-size: 14px;
+    color: var(--patina);
+    margin-bottom: 24px;
+    line-height: 1.6;
+}
+
+.onboarding-note {
+    font-size: 12px;
+    color: var(--patina);
+    margin-top: 8px;
+}
+
+.onboarding-link {
+    color: var(--sky);
+    font-weight: 500;
+}
+
+.onboarding-error {
+    color: var(--error);
+    font-size: 13px;
+    margin-top: 8px;
+}
+
+.onboarding-input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #e5ddd0;
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--walnut);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.onboarding-input:focus {
+    border-color: var(--lamp-green);
+}
+
+.onboarding-path {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: #f5f0e6;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--walnut);
+    font-family: "IBM Plex Mono", monospace;
+    word-break: break-all;
+}
+
+.onboarding-providers {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.onboarding-provider-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 20px 16px;
+    border: 2px solid #e5ddd0;
+    border-radius: 10px;
+    background: #ffffff;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: inherit;
+}
+
+.onboarding-provider-card:hover {
+    border-color: var(--patina);
+    background: #faf8f3;
+}
+
+.onboarding-provider-card--selected {
+    border-color: var(--sky);
+    background: rgba(126, 184, 201, 0.06);
+}
+
+.onboarding-provider-card__label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--walnut);
+}
+
+.onboarding-provider-card__badge {
+    font-size: 11px;
+    color: var(--sage);
+    font-weight: 500;
+}
+
+.onboarding-nav {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.onboarding-btn {
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: none;
+}
+
+.onboarding-btn--primary {
+    background: var(--lamp-green);
+    color: var(--parchment);
+}
+
+.onboarding-btn--primary:hover {
+    background: var(--deep-fern);
+}
+
+.onboarding-btn--primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.onboarding-btn--secondary {
+    background: #f5f0e6;
+    color: var(--walnut);
+    border: 1px solid #e5ddd0;
+}
+
+.onboarding-btn--secondary:hover {
+    background: #ede7d9;
+}
+
+.onboarding-btn--ghost {
+    background: transparent;
+    color: var(--patina);
+}
+
+.onboarding-btn--ghost:hover {
+    background: #f5f0e6;
+}
+
+.onboarding-btn--ghost:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Workspace mode toggle */
+.onboarding-mode-toggle {
+    display: flex;
+    border: 1px solid #e5ddd0;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.onboarding-mode-toggle__btn {
+    flex: 1;
+    padding: 10px 16px;
+    background: #ffffff;
+    border: none;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--patina);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.onboarding-mode-toggle__btn + .onboarding-mode-toggle__btn {
+    border-left: 1px solid #e5ddd0;
+}
+
+.onboarding-mode-toggle__btn--active {
+    background: rgba(61, 122, 95, 0.08);
+    color: var(--lamp-green);
+}
+
+.onboarding-mode-description {
+    font-size: 13px;
+    color: var(--patina);
+    line-height: 1.5;
+    margin-bottom: 16px;
+    text-align: left;
+}
+
+/* Ollama setup step */
+.onboarding-instructions {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    text-align: left;
+    margin-bottom: 12px;
+}
+
+.onboarding-instruction {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.onboarding-instruction__num {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--lamp-green);
+    color: var(--parchment);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.onboarding-instruction__title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--walnut);
+    margin-bottom: 4px;
+}
+
+.onboarding-instruction__hint {
+    font-size: 12px;
+    color: var(--patina);
+    margin-top: 4px;
+}
+
+.onboarding-code {
+    display: inline-block;
+    padding: 4px 10px;
+    background: #f5f0e6;
+    border-radius: 4px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px;
+    color: var(--walnut);
+}
+
+/* Ollama model list */
+.onboarding-model-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 240px;
+    overflow-y: auto;
+    margin-bottom: 8px;
+}
+
+.onboarding-model-item {
+    padding: 10px 14px;
+    border: 1px solid #e5ddd0;
+    border-radius: 6px;
+    background: #ffffff;
+    text-align: left;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px;
+    color: var(--walnut);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.onboarding-model-item:hover {
+    border-color: var(--patina);
+    background: #faf8f3;
+}
+
+.onboarding-model-item--selected {
+    border-color: var(--sky);
+    background: rgba(126, 184, 201, 0.06);
+}

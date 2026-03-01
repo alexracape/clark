@@ -123,7 +123,6 @@ export function ModelPicker({ invoke, onSelect, onClose }: ModelPickerProps) {
         provider: apiKeyEntry.provider,
         model: apiKeyEntry.model,
         apiKey: apiKeyValue.trim(),
-        api_key: apiKeyValue.trim(),
       });
       onSelect(apiKeyEntry.provider, apiKeyEntry.model);
     } catch (err) {
