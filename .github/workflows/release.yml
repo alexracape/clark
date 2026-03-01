@@ -80,16 +80,16 @@ jobs:
       - name: Inject updater public key for build
         run: |
           python3 - <<'PY'
-import json
-from pathlib import Path
+          import json
+          from pathlib import Path
 
-cfg_path = Path("tauri/tauri.conf.json")
-cfg = json.loads(cfg_path.read_text())
-cfg.setdefault("plugins", {})
-cfg["plugins"].setdefault("updater", {})
-cfg["plugins"]["updater"]["pubkey"] = __import__("os").environ["TAURI_UPDATER_PUBLIC_KEY"]
-cfg_path.write_text(json.dumps(cfg, indent=2) + "\n")
-PY
+          cfg_path = Path("tauri/tauri.conf.json")
+          cfg = json.loads(cfg_path.read_text())
+          cfg.setdefault("plugins", {})
+          cfg["plugins"].setdefault("updater", {})
+          cfg["plugins"]["updater"]["pubkey"] = __import__("os").environ["TAURI_UPDATER_PUBLIC_KEY"]
+          cfg_path.write_text(json.dumps(cfg, indent=2) + "\n")
+          PY
 
       - name: Build desktop artifacts
         run: bun run tauri build
