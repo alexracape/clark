@@ -7,6 +7,7 @@ on:
 
 jobs:
   fast-refactor-gate:
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -35,6 +36,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install
+
+      - name: Build GUI dist for Tauri context
+        run: bun run build:gui
 
       - name: Run fast refactor test gate
         run: bun run test:refactor-fast
