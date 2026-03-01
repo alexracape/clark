@@ -2,58 +2,6 @@ Some future enhancements and things that need fixing, organized into parallel ex
 
 ## GUI Design Restyle
 
-Priority work to bring the GUI from placeholder to polished.
-
-### Phase 1: Window Chrome & Layout
-- [x] Custom Tauri titlebar — set `decorations: false`, add drag region with `data-tauri-drag-region`
-- [x] Embed model name + canvas status in titlebar (alongside traffic lights)
-- [x] Add slim bottom status bar (24-28px) for thinking indicator + context usage
-- [x] Remove the current green top status bar
-- [x] Parchment background throughout (replace any cool grays)
-
-### Phase 2: Sidebar Restyle
-- [x] Replace emoji file icons with disclosure triangles (folders) and extension labels or monochrome SVG icons
-- [x] Implement nested folder expansion (click to toggle open/closed)
-- [x] Warm neutral background (`#F5F0E6`), subtle right border
-- [x] Active/selected item: lamp-green left border accent
-- [x] Consistent IBM Plex Mono typography (13px body, 11px labels)
-
-### Phase 3: Chat & Messages
-- [x] Inline thinking indicator — show in chat flow with animated dots, expandable for content
-- [x] Inline tool call cards — summary line (icon + name + result) with expand/collapse
-- [x] Remove thinking/tool status from status bar (it now lives inline in chat)
-- [x] Refine message bubbles — user messages get subtle lamp-green left border, assistant messages stay clean
-- [x] System messages: centered, italic, dimmed patina
-- [x] Streaming cursor refinement — subtle blinking in lamp-green
-
-### Phase 4: Model Picker Rework
-- [x] Replace modal with dropdown/popover triggered from titlebar model name
-- [x] Group models by provider, show current with lamp-green dot
-- [x] Inline API key input for unconfigured providers (within the dropdown)
-- [x] Keyboard navigation: arrows, enter, escape
-
-### Phase 5: Canvas Picker Rework
-- [ ] Always-visible canvas button in titlebar (even with no session)
-- [ ] Replace modal with popover panel
-- [ ] Prominent "Copy URL" button next to active canvas name
-- [ ] Status dot: sage=connected, brass=connecting, patina=none
-- [ ] QR code option for quick mobile connection
-
-### Phase 6: Composer Polish
-- [ ] Refine input styling — warm background on focus, lamp-green border
-- [ ] Slash command hints: clean popover with IBM Plex Mono, no emoji
-- [ ] Enter submits (already working), Shift+Enter for newline
-- [ ] Auto-focus cursor on app launch and after each assistant response
-
-### Phase 7: Typography & Global Polish
-- [ ] Ensure IBM Plex Mono is primary throughout (load via @font-face or bundled)
-- [ ] Georgia serif only for empty state headings and onboarding display text
-- [ ] Audit all components for emoji usage — remove any remaining
-- [ ] Verify contrast ratios meet WCAG AA (4.5:1 minimum)
-- [ ] Consistent spacing scale (8, 12, 16, 24, 32, 48px)
-- [ ] Consistent border-radius scale (4, 6, 8, 12px)
-- [ ] Replace any drop shadows with subtle borders
-
 ## Backlog of future enhancements
 
 GUI
@@ -62,6 +10,9 @@ GUI
 - Automatically focus cursor in chat
 - Select workspace flow
 - Drag and drop
+- **In depth system prompt with tool use**
+- Context visualization missing tool definitions
+- Latex and Markdown output
 
 - Tavily option for websearch?
   - Seems like a good fit, but don't want users to worry about another setup step
