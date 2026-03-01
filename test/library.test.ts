@@ -164,15 +164,21 @@ describe("scaffoldLibrary", () => {
     const libPath = join(tmpDir, "mylib");
     await scaffoldLibrary(libPath);
 
-    const classContent = await Bun.file(join(libPath, "Clark", "Structures", "Class.md")).text();
+    const classContent = await Bun.file(
+      join(libPath, "Clark", "Structures", "Class.md"),
+    ).text();
     expect(classContent).toContain("## Purpose");
     expect(classContent).toContain("#class");
     expect(classContent).toContain("Concepts");
 
-    const psContent = await Bun.file(join(libPath, "Clark", "Structures", "Problem Set.md")).text();
+    const psContent = await Bun.file(
+      join(libPath, "Clark", "Structures", "Problem Set.md"),
+    ).text();
     expect(psContent).toContain("#problem_set");
 
-    const quoteContent = await Bun.file(join(libPath, "Clark", "Structures", "Quote.md")).text();
+    const quoteContent = await Bun.file(
+      join(libPath, "Clark", "Structures", "Quote.md"),
+    ).text();
     expect(quoteContent).toContain("#quote");
     expect(quoteContent).toContain("Yoda");
   });
@@ -181,8 +187,7 @@ describe("scaffoldLibrary", () => {
     const libPath = join(tmpDir, "mylib");
     await scaffoldLibrary(libPath);
     const content = await Bun.file(join(libPath, "Clark", "CLARK.md")).text();
-    expect(content).toContain("# CLARK.md");
-    expect(content).toContain("File Processing Conventions");
+    expect(content).toContain("Workspace Layout");
   });
 
   test("does not scaffold top-level defaults when workspace already has content", async () => {

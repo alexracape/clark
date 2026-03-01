@@ -1,6 +1,6 @@
 # Clark
 
-**Clark is a Socratic tutoring assistant for students.** Instead of giving direct answers, Clark asks guiding questions to help you think through problems - like a good TA would. It seamlessly integrates with handwritten work: write on your iPad while Clark reads and responds from your terminal.
+**Clark is a Socratic tutoring assistant for students.** Instead of giving direct answers, Clark asks guiding questions to help you think through problems - like a good TA would. It seamlessly integrates with handwritten work: write on your iPad while Clark reads and responds in the desktop app.
 
 **Documentation:** [alex.racape.com/clark](https://alex.racape.com/clark)
 
@@ -16,7 +16,10 @@
 
 ## Installation
 
-**Quick install (macOS/Linux):**
+**Desktop app (macOS):**
+Download the latest build from [GitHub Releases](https://github.com/alexracape/clark/releases/latest).
+
+**CLI install (macOS/Linux):**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/alexracape/clark/main/install.sh | bash
 ```
@@ -29,7 +32,7 @@ bun install
 bun run start
 ```
 
-## Quick Start
+## Quick Start (CLI)
 
 ```bash
 # Start Clark in your workspace
