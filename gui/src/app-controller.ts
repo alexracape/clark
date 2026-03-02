@@ -1,5 +1,28 @@
 import type { SidecarStreamEvent } from "./stream-events.ts";
 
+// --- Tutorial State ---
+
+export type TutorialStep =
+  | "intro"
+  | "asking-questions"
+  | "slash-commands"
+  | "file-context"
+  | "canvas-intro"
+  | "completion";
+
+export interface TutorialState {
+  step: TutorialStep;
+}
+
+const TUTORIAL_STEPS: TutorialStep[] = [
+  "intro",
+  "asking-questions",
+  "slash-commands",
+  "file-context",
+  "canvas-intro",
+  "completion",
+];
+
 // --- Onboarding State ---
 
 export type OnboardingStep = "welcome" | "workspace" | "provider" | "api-key" | "ollama-setup";
@@ -57,6 +80,7 @@ export interface AppState {
   pendingToolCalls: ToolCall[];
   nextMessageId: number;
   onboarding: OnboardingState | null;
+  tutorial: TutorialState | null;
 }
 
 export type ControllerEffect = {
@@ -96,6 +120,7 @@ export function createInitialAppState(): AppState {
     pendingToolCalls: [],
     nextMessageId: 0,
     onboarding: null,
+    tutorial: null,
   };
 }
 
@@ -253,6 +278,23 @@ export function planSendInput(state: AppState, text: string): ControllerPlan {
   };
 }
 
+export function startTutorial(state: AppState): AppState {
+  return { ...state, tutorial: { step: "intro" } };
+}
+
+export function tutorialNextStep(state: AppState): AppState {
+  if (!state.tutorial) return state;
+  const idx = TUTORIAL_STEPS.indexOf(state.tutorial.step);
+  if (idx < 0 || idx >= TUTORIAL_STEPS.length - 1) {
+    return { ...state, tutorial: null };
+  }
+  return { ...state, tutorial: { step: TUTORIAL_STEPS[idx + 1] } };
+}
+
+export function completeTutorial(state: AppState): AppState {
+  return { ...state, tutorial: null };
+}
+
 export function applySlashCommandResult(state: AppState, result: SlashCommandResponse): AppState {
   if (result.uiAction === "model") {
     return { ...state, showModelPicker: true };
@@ -262,6 +304,9 @@ export function applySlashCommandResult(state: AppState, result: SlashCommandRes
   }
   if (result.uiAction === "context") {
     return { ...state, showContextPanel: true };
+  }
+  if (result.uiAction === "tutorial") {
+    return startTutorial(state);
   }
   if (result.result != null) {
     return appendMessage(state, "system", String(result.result));

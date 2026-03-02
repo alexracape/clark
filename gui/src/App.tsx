@@ -8,6 +8,7 @@ import { ModelPicker } from "./components/ModelPicker.tsx";
 import { CanvasPicker } from "./components/CanvasPicker.tsx";
 import { ContextPanel } from "./components/ContextPanel.tsx";
 import { Onboarding } from "./components/Onboarding.tsx";
+import { Tutorial } from "./components/Tutorial.tsx";
 import { invokeCommand, listenEvent } from "./ipc.ts";
 import {
   applyFileDropError,
@@ -37,6 +38,8 @@ import {
   setShowContextPanel,
   setShowModelPicker,
   startOnboarding,
+  tutorialNextStep,
+  completeTutorial,
   type AppState,
   type ControllerEffect,
   type IngestResponse,
@@ -365,6 +368,14 @@ export function App() {
         <ContextPanel
           invoke={invokeCommand}
           onClose={() => setState((prev) => setShowContextPanel(prev, false))}
+        />
+      )}
+
+      {state.tutorial && (
+        <Tutorial
+          step={state.tutorial.step}
+          onNext={() => setState((prev) => tutorialNextStep(prev))}
+          onSkip={() => setState((prev) => completeTutorial(prev))}
         />
       )}
     </div>

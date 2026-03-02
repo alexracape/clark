@@ -61,6 +61,12 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri -> target
 
       - name: Install dependencies
         run: bun install
@@ -76,6 +82,7 @@ jobs:
           VERSION="${TAG_VERSION#v}"
           jq --arg version "$VERSION" '.version = $version' tauri/tauri.conf.json > tauri/tauri.conf.json.tmp
           mv tauri/tauri.conf.json.tmp tauri/tauri.conf.json
+          sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" tauri/Cargo.toml
 
       - name: Inject updater public key for build
         run: |
@@ -93,23 +100,40 @@ jobs:
 
       - name: Build desktop artifacts
         working-directory: tauri
-        run: bunx tauri build
-
-      - name: Validate updater metadata version
-        run: |
-          VERSION="${TAG_VERSION#v}"
-          METADATA_FILE="$(find tauri/target/release/bundle -type f -name 'latest*.json' | head -n 1)"
-          test -n "$METADATA_FILE" || (echo "No updater metadata generated" && exit 1)
-          METADATA_VERSION="$(jq -r '.version // empty' "$METADATA_FILE")"
-          test "$METADATA_VERSION" = "$VERSION" || (echo "Updater metadata version '$METADATA_VERSION' does not match tag '$VERSION'" && exit 1)
+        run: bunx @tauri-apps/cli build --target universal-apple-darwin
 
       - name: Collect desktop release assets
         run: |
           mkdir -p dist/desktop
-          find tauri/target/release/bundle -type f \( -name '*.dmg' -o -name '*.tar.gz' -o -name '*.sig' \) -exec cp {} dist/desktop/ \;
-          METADATA_FILE="$(find tauri/target/release/bundle -type f -name 'latest*.json' | head -n 1)"
-          cp "$METADATA_FILE" dist/desktop/latest.json
-          cp "$METADATA_FILE" dist/desktop/latest-macos.json
+          find tauri/target/universal-apple-darwin/release/bundle -type f \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' \) -exec cp {} dist/desktop/ \;
+
+          ARCHIVE_FILE="$(find dist/desktop -type f -name '*.app.tar.gz' | head -n 1)"
+          test -n "$ARCHIVE_FILE" || (echo "No .app.tar.gz updater archive produced" && find tauri/target/universal-apple-darwin/release/bundle -type f | sed -n '1,120p' && exit 1)
+
+          SIG_FILE="${ARCHIVE_FILE}.sig"
+          test -f "$SIG_FILE" || (echo "Missing updater signature file: $SIG_FILE" && exit 1)
+          SIGNATURE="$(cat "$SIG_FILE")"
+
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${TAG_VERSION}/$(basename "$ARCHIVE_FILE")"
+          VERSION="${TAG_VERSION#v}"
+          PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          jq -n \
+            --arg version "$VERSION" \
+            --arg pub_date "$PUB_DATE" \
+            --arg url "$DOWNLOAD_URL" \
+            --arg signature "$SIGNATURE" \
+            '{version: $version, pub_date: $pub_date, platforms: {"darwin-aarch64": {url: $url, signature: $signature}, "darwin-x86_64": {url: $url, signature: $signature}}}' \
+            > dist/desktop/latest.json
+
+          cp dist/desktop/latest.json dist/desktop/latest-macos.json
+
+      - name: Validate updater metadata version
+        run: |
+          VERSION="${TAG_VERSION#v}"
+          METADATA_FILE="dist/desktop/latest.json"
+          test -f "$METADATA_FILE" || (echo "Updater metadata file was not generated at $METADATA_FILE" && exit 1)
+          METADATA_VERSION="$(jq -r '.version // empty' "$METADATA_FILE")"
+          test "$METADATA_VERSION" = "$VERSION" || (echo "Updater metadata version '$METADATA_VERSION' does not match tag '$VERSION'" && exit 1)
 
       - uses: actions/upload-artifact@v4
         with:

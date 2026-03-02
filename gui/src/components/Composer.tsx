@@ -7,6 +7,7 @@ interface ComposerProps {
 
 const SLASH_COMMANDS = [
   { name: "/help", desc: "Show available commands", takesArgs: false },
+  { name: "/tutorial", desc: "Interactive tutorial", takesArgs: false },
   { name: "/canvas", desc: "Open or switch canvas", takesArgs: true },
   { name: "/export", desc: "Export canvas as PDF", takesArgs: true },
   { name: "/model", desc: "Switch provider/model", takesArgs: true },

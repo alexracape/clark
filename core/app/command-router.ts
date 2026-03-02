@@ -155,7 +155,7 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
       }
 
       case "tutorial":
-        return "The /tutorial command is only available in the CLI.";
+        return null;
 
       case "model":
         return null;
