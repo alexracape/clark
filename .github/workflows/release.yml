@@ -92,7 +92,8 @@ jobs:
           PY
 
       - name: Build desktop artifacts
-        run: bun run tauri build
+        working-directory: tauri
+        run: bunx tauri build
 
       - name: Validate updater metadata version
         run: |
