@@ -4,6 +4,69 @@ mod stream;
 
 use tauri::Manager;
 use sidecar::Sidecar;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_updater::UpdaterExt;
+
+async fn check_and_install_updates(app: tauri::AppHandle) {
+    let update = match app.updater() {
+        Ok(updater) => match updater.check().await {
+            Ok(update) => update,
+            Err(err) => {
+                log::error!("Failed to check for updates: {}", err);
+                return;
+            }
+        },
+        Err(err) => {
+            log::error!("Failed to create updater: {}", err);
+            return;
+        }
+    };
+
+    let Some(update) = update else {
+        log::info!("No update available");
+        return;
+    };
+
+    log::info!(
+        "Update available: current={} latest={}",
+        update.current_version,
+        update.version
+    );
+
+    if let Err(err) = update
+        .download_and_install(
+            |chunk_length, content_length| {
+                log::info!(
+                    "Downloading update chunk: {:?} / {:?}",
+                    chunk_length,
+                    content_length
+                );
+            },
+            || {
+                log::info!("Update download finished");
+            },
+        )
+        .await
+    {
+        log::error!("Failed to download/install update: {}", err);
+        return;
+    }
+
+    let app_for_restart = app.clone();
+    app.dialog()
+        .message("An update has been installed. Restart now to use the latest version.")
+        .title("Update Installed")
+        .kind(MessageDialogKind::Info)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Restart now".to_string(),
+            "Later".to_string(),
+        ))
+        .show(move |restart_now| {
+            if restart_now {
+                app_for_restart.restart();
+            }
+        });
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,8 +75,8 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(Sidecar::new())
         .setup(|app| {
+            app.manage(Sidecar::new(app.handle().clone()));
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -38,6 +101,13 @@ pub fn run() {
                     }
                 }
             });
+
+            if !cfg!(debug_assertions) {
+                let updater_app = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    check_and_install_updates(updater_app).await;
+                });
+            }
 
             Ok(())
         })

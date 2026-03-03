@@ -1,93 +1,127 @@
 //! Bun sidecar process management.
 //!
-//! Spawns the Bun sidecar on startup, monitors its health,
+//! Spawns the compiled sidecar binary on startup, monitors its health,
 //! and ensures clean shutdown when the app exits.
 //!
 //! All IPC commands call `base_url()` which awaits a readiness signal,
 //! so requests are never sent before the sidecar is listening.
 
-use std::process::Stdio;
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::{Child, Command};
+use tauri::AppHandle;
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use tauri_plugin_shell::ShellExt;
 use tokio::sync::{Mutex, Notify};
 
-/// Manages the Bun sidecar process lifecycle.
+/// Manages the sidecar process lifecycle.
 #[derive(Clone)]
 pub struct Sidecar {
-    child: Arc<Mutex<Option<Child>>>,
+    app_handle: AppHandle,
+    child: Arc<Mutex<Option<CommandChild>>>,
     port: Arc<Mutex<Option<u16>>>,
     ready: Arc<Notify>,
 }
 
 impl Sidecar {
-    pub fn new() -> Self {
+    pub fn new(app_handle: AppHandle) -> Self {
         Self {
+            app_handle,
             child: Arc::new(Mutex::new(None)),
             port: Arc::new(Mutex::new(None)),
             ready: Arc::new(Notify::new()),
         }
     }
 
-    /// Spawn the Bun sidecar process and wait for it to report its port.
+    /// Spawn the sidecar process and wait for it to report its port.
     pub async fn spawn(&self) -> Result<u16, String> {
-        let sidecar_path = Self::resolve_sidecar_path()?;
-        let workspace_dir = Self::workspace_dir_from_sidecar_path(&sidecar_path);
+        let workspace_dir = Self::resolve_workspace_dir();
+        log::info!("Sidecar workspace dir: {}", workspace_dir);
 
-        log::info!("Starting Bun sidecar: {}", sidecar_path);
-        log::info!("Sidecar workspace dir: {}", workspace_dir.display());
-
-        let mut cmd = Command::new("bun");
-        cmd.arg("run")
-            .arg(&sidecar_path)
-            .current_dir(&workspace_dir)
+        let cmd = self
+            .app_handle
+            .shell()
+            .sidecar("clark-sidecar")
+            .map_err(|e| format!("Failed to create sidecar command: {}", e))?
             .env("CLARK_SIDECAR_PORT", "0")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit());
+            .env("CLARK_WORKSPACE_DIR", &workspace_dir);
 
-        // Ensure sidecar workspace remains stable in tauri dev (cwd is often tauri/).
-        // Respect explicit overrides from the parent process.
-        if std::env::var_os("CLARK_WORKSPACE_DIR").is_none() {
-            cmd.env("CLARK_WORKSPACE_DIR", workspace_dir.as_os_str());
-        }
-
-        let mut child = cmd
+        let (mut rx, child) = cmd
             .spawn()
-            .map_err(|e| format!("Failed to spawn Bun sidecar: {}", e))?;
+            .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
 
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or("Failed to capture sidecar stdout")?;
-
-        let mut reader = BufReader::new(stdout).lines();
+        log::info!("Sidecar process spawned (pid {})", child.pid());
 
         // Wait for the sidecar to report its port (max 15 seconds)
+        let port_notify = self.port.clone();
+        let ready_notify = self.ready.clone();
+        let child_store = self.child.clone();
+
+        // Store child immediately so we can kill it on shutdown
+        *child_store.lock().await = Some(child);
+
         let detected_port = tokio::time::timeout(std::time::Duration::from_secs(15), async {
-            while let Ok(Some(line)) = reader.next_line().await {
-                log::info!("[sidecar] {}", line);
-                if let Some(port_str) = line.strip_prefix("CLARK_SIDECAR_PORT=") {
-                    if let Ok(p) = port_str.trim().parse::<u16>() {
-                        return Ok(p);
+            while let Some(event) = rx.recv().await {
+                match event {
+                    CommandEvent::Stdout(line_bytes) => {
+                        let line = String::from_utf8_lossy(&line_bytes);
+                        let line = line.trim();
+                        log::info!("[sidecar] {}", line);
+                        if let Some(port_str) = line.strip_prefix("CLARK_SIDECAR_PORT=") {
+                            if let Ok(p) = port_str.trim().parse::<u16>() {
+                                *port_notify.lock().await = Some(p);
+                                ready_notify.notify_waiters();
+
+                                // Continue forwarding stdout in the background
+                                tokio::spawn(async move {
+                                    while let Some(event) = rx.recv().await {
+                                        match event {
+                                            CommandEvent::Stdout(bytes) => {
+                                                let l = String::from_utf8_lossy(&bytes);
+                                                log::info!("[sidecar] {}", l.trim());
+                                            }
+                                            CommandEvent::Stderr(bytes) => {
+                                                let l = String::from_utf8_lossy(&bytes);
+                                                log::warn!("[sidecar stderr] {}", l.trim());
+                                            }
+                                            CommandEvent::Error(e) => {
+                                                log::error!("[sidecar error] {}", e);
+                                            }
+                                            CommandEvent::Terminated(payload) => {
+                                                log::info!(
+                                                    "[sidecar] terminated (code: {:?}, signal: {:?})",
+                                                    payload.code,
+                                                    payload.signal
+                                                );
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                });
+
+                                return Ok(p);
+                            }
+                        }
                     }
+                    CommandEvent::Stderr(bytes) => {
+                        let line = String::from_utf8_lossy(&bytes);
+                        log::warn!("[sidecar stderr] {}", line.trim());
+                    }
+                    CommandEvent::Error(e) => {
+                        log::error!("[sidecar error] {}", e);
+                        return Err(format!("Sidecar error: {}", e));
+                    }
+                    CommandEvent::Terminated(payload) => {
+                        return Err(format!(
+                            "Sidecar exited before reporting port (code: {:?}, signal: {:?})",
+                            payload.code, payload.signal
+                        ));
+                    }
+                    _ => {}
                 }
             }
-            Err("Sidecar exited without reporting port".to_string())
+            Err("Sidecar event stream ended without reporting port".to_string())
         })
         .await
         .map_err(|_| "Timeout waiting for sidecar to start".to_string())??;
-
-        // Store port and signal readiness
-        *self.port.lock().await = Some(detected_port);
-        *self.child.lock().await = Some(child);
-        self.ready.notify_waiters();
-
-        // Forward remaining stdout in background
-        tokio::spawn(async move {
-            while let Ok(Some(line)) = reader.next_line().await {
-                log::info!("[sidecar] {}", line);
-            }
-        });
 
         log::info!("Sidecar ready on port {}", detected_port);
         Ok(detected_port)
@@ -117,67 +151,33 @@ impl Sidecar {
     }
 
     /// Shut down the sidecar process.
+    #[allow(dead_code)]
     pub async fn shutdown(&self) {
         let mut child = self.child.lock().await;
-        if let Some(ref mut c) = *child {
+        if let Some(c) = child.take() {
             log::info!("Shutting down sidecar");
-            let _ = c.kill().await;
-            *child = None;
+            let _ = c.kill();
         }
     }
 
-    /// Resolve the path to the sidecar TypeScript file.
-    fn resolve_sidecar_path() -> Result<String, String> {
-        let candidates: Vec<std::path::PathBuf> = std::env::current_dir()
-            .into_iter()
-            .flat_map(|cwd| {
-                // cwd may be the project root or the tauri/ subdirectory
-                vec![cwd.join("gui/sidecar.ts"), cwd.join("../gui/sidecar.ts")]
-            })
-            .chain(std::env::current_exe().into_iter().flat_map(|exe| {
-                let dir = exe.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
-                vec![
-                    dir.join("../gui/sidecar.ts"),
-                    dir.join("gui/sidecar.ts"),
-                ]
-            }))
-            .collect();
-
-        for path in &candidates {
-            if path.exists() {
-                // Canonicalize to avoid ../ in the path
-                let resolved = path.canonicalize().unwrap_or_else(|_| path.clone());
-                return Ok(resolved.to_string_lossy().to_string());
+    /// Resolve the workspace directory for the sidecar.
+    ///
+    /// Priority:
+    /// 1. CLARK_WORKSPACE_DIR env var (set explicitly by dev workflow)
+    /// 2. ~/Clark (default for production desktop app)
+    fn resolve_workspace_dir() -> String {
+        if let Ok(dir) = std::env::var("CLARK_WORKSPACE_DIR") {
+            if !dir.trim().is_empty() {
+                return dir;
             }
         }
 
-        Err(format!(
-            "Cannot find gui/sidecar.ts (searched: {:?})",
-            candidates.iter().map(|p| p.display().to_string()).collect::<Vec<_>>()
-        ))
-    }
-
-    fn workspace_dir_from_sidecar_path(sidecar_path: &str) -> std::path::PathBuf {
-        let sidecar = std::path::PathBuf::from(sidecar_path);
-        // Expected dev layout: <repo>/gui/sidecar.ts -> workspace should be <repo>.
-        if let Some(gui_dir) = sidecar.parent() {
-            if let Some(repo_root) = gui_dir.parent() {
-                return repo_root.to_path_buf();
-            }
-            return gui_dir.to_path_buf();
+        // Production default: ~/Clark
+        if let Some(home) = dirs::home_dir() {
+            return home.join("Clark").to_string_lossy().to_string();
         }
-        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
-    }
-}
 
-impl Drop for Sidecar {
-    fn drop(&mut self) {
-        let child = self.child.clone();
-        tokio::spawn(async move {
-            let mut guard = child.lock().await;
-            if let Some(ref mut c) = *guard {
-                let _ = c.kill().await;
-            }
-        });
+        // Last resort
+        ".".to_string()
     }
 }

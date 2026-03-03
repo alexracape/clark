@@ -5,8 +5,8 @@
   "identifier": "com.clark.app",
   "build": {
     "frontendDist": "../gui/dist",
-    "beforeDevCommand": "bun run build:gui",
-    "beforeBuildCommand": "bun run build:gui"
+    "beforeDevCommand": "bun run build:gui && bun run build:sidecar",
+    "beforeBuildCommand": "bun run build:gui && bun run build:sidecar"
   },
   "app": {
     "windows": [
@@ -33,6 +33,7 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "externalBin": ["binaries/clark-sidecar"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -47,7 +48,7 @@
       "endpoints": [
         "https://github.com/alexracape/clark/releases/latest/download/latest.json"
       ],
-      "dialog": true,
+      "dialog": false,
       "pubkey": "__TAURI_UPDATER_PUBLIC_KEY__"
     }
   }

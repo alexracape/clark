@@ -98,6 +98,9 @@ jobs:
           cfg_path.write_text(json.dumps(cfg, indent=2) + "\n")
           PY
 
+      - name: Build sidecar binaries for both architectures
+        run: bun scripts/build-sidecar.ts --target darwin-arm64 --target darwin-x64
+
       - name: Build desktop artifacts
         working-directory: tauri
         run: bunx @tauri-apps/cli build --target universal-apple-darwin

@@ -11,6 +11,7 @@
     "dev:sidecar": "bun gui/sidecar.ts",
     "build": "bun scripts/build.ts",
     "build:gui": "cd gui && bun run build",
+    "build:sidecar": "bun scripts/build-sidecar.ts",
     "tauri": "cd tauri && cargo tauri",
     "tauri:dev": "cd tauri && cargo tauri dev",
     "start": "bun index.ts",

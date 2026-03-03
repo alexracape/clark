@@ -10,6 +10,8 @@
     "core:window:allow-start-dragging",
     "clipboard-manager:allow-write-text",
     "dialog:default",
-    "shell:default"
+    "shell:default",
+    "shell:allow-spawn",
+    "shell:allow-stdin-write"
   ]
 }

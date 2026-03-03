@@ -36,5 +36,8 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .cursor
 .claude
 
+# compiled sidecar binaries (built by scripts/build-sidecar.ts)
+tauri/binaries/
+
 # local workspace scaffold created by app startup/onboarding
 /Clark/
