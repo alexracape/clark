@@ -90,6 +90,7 @@ const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 
 export function App() {
   const [state, setState] = useState<AppState>(() => createInitialAppState());
+  const [ready, setReady] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [clipboardToast, setClipboardToast] = useState<{
@@ -97,25 +98,23 @@ export function App() {
     text: string;
   } | null>(null);
 
-  // Check onboarding status on mount
+  // Check onboarding + status on mount before revealing the UI
   useEffect(() => {
-    invokeCommand("get_onboarding_status", {})
-      .then((data) => {
-        const result = data as { needsOnboarding: boolean };
-        if (result.needsOnboarding) {
-          setState((prev) => startOnboarding(prev));
+    Promise.all([
+      invokeCommand("get_onboarding_status", {}).catch(() => ({ needsOnboarding: false })),
+      invokeCommand("get_status", {}).catch(() => ({ provider: "", model: "" })),
+    ]).then(([obData, statusData]) => {
+      const obResult = obData as { needsOnboarding: boolean };
+      const status = statusData as { provider: string; model: string };
+      setState((prev) => {
+        let next = setProviderInfo(prev, { provider: status.provider, model: status.model });
+        if (obResult.needsOnboarding) {
+          next = startOnboarding(next);
         }
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    invokeCommand("get_status", {})
-      .then((data) => {
-        const status = data as { provider: string; model: string };
-        setState((prev) => setProviderInfo(prev, { provider: status.provider, model: status.model }));
-      })
-      .catch(() => {});
+        return next;
+      });
+      setReady(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -268,6 +267,11 @@ export function App() {
       // Will show instructions
     }
   }, []);
+
+  // Show blank parchment until we know whether to show onboarding or main UI
+  if (!ready) {
+    return <div className="app-layout" />;
+  }
 
   if (state.onboarding) {
     return (

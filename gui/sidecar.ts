@@ -167,9 +167,14 @@ async function resolveProviderFromConfig(cfg: ClarkConfig): Promise<{
 
 async function bootstrap(): Promise<void> {
   workspaceDir = getWorkspaceDir();
-  await scaffoldLibrary(workspaceDir);
-
   config = await loadConfig();
+
+  // Prefer persisted workspace from onboarding over env var / default
+  if (config.workspaceDir) {
+    workspaceDir = config.workspaceDir;
+  }
+
+  await scaffoldLibrary(workspaceDir);
   exportDir = config.pdfExportDir ?? workspaceDir;
 
   const resolved = await resolveProviderFromConfig(config);
@@ -590,12 +595,17 @@ async function handleCompleteOnboarding(req: Request): Promise<Response> {
 
     // Set pdfExportDir: for new workspaces use Resources/PDFs, otherwise workspace root
     const targetWorkspace = body.workspaceDir || workspaceDir;
+    newConfig.workspaceDir = targetWorkspace;
     if (body.workspaceIsNew) {
       newConfig.pdfExportDir = join(targetWorkspace, "Resources", "PDFs");
     } else {
       newConfig.pdfExportDir = newConfig.pdfExportDir ?? targetWorkspace;
     }
     await saveConfig(newConfig);
+
+    // Update module-level state so /api/files reflects the new workspace immediately
+    workspaceDir = targetWorkspace;
+    exportDir = newConfig.pdfExportDir ?? targetWorkspace;
 
     // Scaffold workspace
     await scaffoldLibrary(targetWorkspace);

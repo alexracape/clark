@@ -37,6 +37,8 @@ export interface ClarkConfig {
   provider?: string;
   model?: string;
   ollamaBaseUrl?: string;
+  /** User-selected workspace directory (persisted during onboarding). */
+  workspaceDir?: string;
   /** Default directory for PDF exports from /export and export_pdf. */
   pdfExportDir?: string;
   /** Internal safety setting: max tool calls allowed per assistant turn loop. */

@@ -312,7 +312,8 @@ export function ParticleGraph({
       requestAnimationFrame(frame);
     }
 
-    frame();
+    // Double-rAF: let the browser settle before first paint
+    requestAnimationFrame(() => requestAnimationFrame(frame));
 
     // Cleanup
     return () => {
@@ -324,8 +325,29 @@ export function ParticleGraph({
   }, [textYRatio]);
 
   useEffect(() => {
-    const cleanup = init();
-    return cleanup;
+    let cleanup = init();
+    const canvas = canvasRef.current;
+    const container = canvas?.parentElement;
+    if (!container) return cleanup;
+
+    let lastW = container.getBoundingClientRect().width;
+    let lastH = container.getBoundingClientRect().height;
+
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (Math.abs(width - lastW) > 5 || Math.abs(height - lastH) > 5) {
+        lastW = width;
+        lastH = height;
+        cleanup?.();
+        cleanup = init();
+      }
+    });
+    observer.observe(container);
+
+    return () => {
+      cleanup?.();
+      observer.disconnect();
+    };
   }, [init]);
 
   return <canvas ref={canvasRef} className="particle-graph-canvas" />;

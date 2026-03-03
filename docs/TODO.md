@@ -5,10 +5,7 @@ Some future enhancements and things that need fixing, organized into parallel ex
 ## Backlog of future enhancements
 
 GUI
-- Interactive tutorial
-- Select workspace flow
 - Drag and drop
-- **In depth system prompt with tool use**
 - Context visualization missing tool definitions
 - Latex and Markdown output
 
