@@ -321,7 +321,12 @@ export function App({
 
       // Regular message
       addMessage("user", text);
-      conversation.addUserMessage(text);
+      const canvasState = canvasConnectionStatus?.state ?? "disconnected";
+      const activeCanvas = getActiveCanvas();
+      const canvasTag = activeCanvas
+        ? `Canvas state: ${canvasState} (${activeCanvas.name})`
+        : `Canvas state: ${canvasState}`;
+      conversation.addUserMessage(`${canvasTag}\n\n${text}`);
       await runConversationTurn();
     },
     [

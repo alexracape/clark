@@ -116,8 +116,8 @@ describe("MCP Protocol — tools/call", () => {
       | { type: "text"; text: string }
       | undefined;
     expect(textContent).toBeDefined();
-    expect(textContent!.text).toContain("<<<BEGIN_FILE_CONTENT");
-    expect(textContent!.text).toContain("<<<END_FILE_CONTENT>>>");
+    expect(textContent!.text).toContain("<file_content path=");
+    expect(textContent!.text).toContain("</file_content>");
     expect(textContent!.text).toContain("Reinforcement learning from human feedback");
     expect(textContent!.text).toContain("Linked files:");
     expect(textContent!.text).toContain("[[GRPO]]");

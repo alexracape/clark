@@ -1282,7 +1282,7 @@ interface SearchResult {
 }
 
 function wrapFileContent(path: string, content: string): string {
-  return `<<<BEGIN_FILE_CONTENT path="${path}">>>\n${content}\n<<<END_FILE_CONTENT>>>`;
+  return `<file_content path="${path}">\n${content}\n</file_content>`;
 }
 
 async function searchFile(

@@ -249,7 +249,7 @@ async function cleanupTranscript(
     return rawText;
   }
 
-  const truncated = truncateForPrompt(rawText, 12000);
+  const truncated = truncateForPrompt(rawText, 100000);
   return await simpleLLMCall(
     provider,
     `Document: ${fileName}\n\nRaw extracted text:\n${truncated}`,

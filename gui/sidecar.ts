@@ -306,7 +306,12 @@ async function handleChat(req: Request): Promise<Response> {
       return jsonResponse({ error: `File ingestion failed: ${msg}` }, 500);
     }
   } else {
-    conversation.addUserMessage(body.text);
+    const canvasState = canvas.connectionStatus.state;
+    const activeCanvas = canvas.activeInfo;
+    const canvasTag = activeCanvas
+      ? `Canvas state: ${canvasState} (${activeCanvas.name})`
+      : `Canvas state: ${canvasState}`;
+    conversation.addUserMessage(`${canvasTag}\n\n${body.text}`);
   }
 
   // Run the turn asynchronously — events stream over WebSocket
