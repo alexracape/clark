@@ -40,5 +40,18 @@ jobs:
       - name: Build GUI dist for Tauri context
         run: bun run build:gui
 
+      - name: Build sidecar for Tauri context
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ] && [ "$RUNNER_ARCH" = "ARM64" ]; then
+            bun run build:sidecar -- --target linux-arm64
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            bun run build:sidecar -- --target linux-x64
+          elif [ "$RUNNER_OS" = "macOS" ] && [ "$RUNNER_ARCH" = "ARM64" ]; then
+            bun run build:sidecar -- --target darwin-arm64
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            bun run build:sidecar -- --target darwin-x64
+          fi
+        if: matrix.os != 'windows-latest'
+
       - name: Run fast refactor test gate
         run: bun run test:refactor-fast
