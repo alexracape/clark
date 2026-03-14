@@ -14,6 +14,28 @@ export type CanvasStatusEvent = {
   canvasUrl?: string;
 };
 
+export type IngestStartEvent = {
+  type: "ingest_start";
+  fileName: string;
+  destPath: string;
+};
+export type IngestProgressEvent = {
+  type: "ingest_progress";
+  fileName: string;
+  stage: "transcribing" | "linking";
+  message: string;
+};
+export type IngestCompleteEvent = {
+  type: "ingest_complete";
+  fileName: string;
+  summary: string;
+};
+export type IngestErrorEvent = {
+  type: "ingest_error";
+  fileName: string;
+  error: string;
+};
+
 export type SidecarStreamEvent =
   | StreamingTextEvent
   | StreamingThinkingEvent
@@ -24,7 +46,11 @@ export type SidecarStreamEvent =
   | SystemMessageEvent
   | StatusUpdateEvent
   | TurnCompleteEvent
-  | CanvasStatusEvent;
+  | CanvasStatusEvent
+  | IngestStartEvent
+  | IngestProgressEvent
+  | IngestCompleteEvent
+  | IngestErrorEvent;
 
 function hasString(v: unknown, key: string): boolean {
   return typeof v === "object" && v !== null && typeof (v as Record<string, unknown>)[key] === "string";
@@ -49,6 +75,14 @@ export function isSidecarStreamEvent(value: unknown): value is SidecarStreamEven
       return hasString(value, "provider") && hasString(value, "model");
     case "canvas_status":
       return hasString(value, "status");
+    case "ingest_start":
+      return hasString(value, "fileName") && hasString(value, "destPath");
+    case "ingest_progress":
+      return hasString(value, "fileName") && hasString(value, "stage") && hasString(value, "message");
+    case "ingest_complete":
+      return hasString(value, "fileName") && hasString(value, "summary");
+    case "ingest_error":
+      return hasString(value, "fileName") && hasString(value, "error");
     case "streaming_done":
     case "turn_complete":
       return true;

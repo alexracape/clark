@@ -5,9 +5,15 @@ Some future enhancements and things that need fixing, organized into parallel ex
 ## Backlog of future enhancements
 
 GUI
-- Drag and drop
 - Context visualization missing tool definitions
 - Latex and Markdown output
+- Thinking indicator
+
+General
+- Add explore tool to start conversations and optimize token usage
+- Semantic search!!!
+- Optimize small tasks with smaller model
+- Settings where you can change workspace and paths
 
 - Tavily option for websearch?
   - Seems like a good fit, but don't want users to worry about another setup step

@@ -21,6 +21,17 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { networkInterfaces } from "node:os";
 
+// macOS GUI apps get a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin).
+// Ensure common Homebrew/system tool paths are available for poppler, etc.
+if (process.platform === "darwin") {
+  const currentPath = process.env.PATH ?? "";
+  const extraPaths = ["/opt/homebrew/bin", "/usr/local/bin", "/opt/homebrew/sbin"];
+  const missing = extraPaths.filter(p => !currentPath.includes(p));
+  if (missing.length > 0) {
+    process.env.PATH = [...missing, currentPath].join(":");
+  }
+}
+
 import { ConversationEngine } from "../core/engine.ts";
 import type { TurnCallbacks } from "../core/engine.ts";
 import { Conversation } from "../core/llm/messages.ts";
@@ -38,7 +49,7 @@ import { loadEffectiveSystemPrompt } from "../cli/bootstrap/system-prompt.ts";
 import { CanvasSessionManager } from "../core/app/canvas-session.ts";
 import { createSlashCommandHandler } from "../core/app/command-router.ts";
 import { VisionOCRProvider } from "../core/ocr/provider.ts";
-import { detectFilePath, copyFileToResources } from "../core/app/ingest.ts";
+import { detectFilePath, copyFileToResources, runIngestionPipeline } from "../core/app/ingest.ts";
 import { getWorkspaceDir } from "../core/workspace.ts";
 import type { SidecarStreamEvent } from "./src/stream-events.ts";
 
@@ -61,6 +72,7 @@ let canvas: CanvasSessionManager;
 let onSlashCommand: (name: string, args: string) => Promise<string | null>;
 let workspaceDir: string;
 let exportDir: string;
+let systemPromptText: string;
 let progressCallback: ((message: string) => void) | undefined;
 
 /** Connected WebSocket clients for streaming events */
@@ -182,7 +194,8 @@ async function bootstrap(): Promise<void> {
   providerName = resolved.providerName;
   modelName = resolved.modelName;
 
-  const systemPrompt = await loadEffectiveSystemPrompt(workspaceDir);
+  systemPromptText = await loadEffectiveSystemPrompt(workspaceDir);
+  const systemPrompt = systemPromptText;
   conversation = new Conversation();
 
   canvas = new CanvasSessionManager({
@@ -284,7 +297,7 @@ async function handleChat(req: Request): Promise<Response> {
   const filePath = await detectFilePath(body.text);
   if (filePath) {
     try {
-      const result = await copyFileToResources(filePath, workspaceDir);
+      const result = await copyFileToResources(filePath, workspaceDir, config.fileRouting);
       conversation.addUserMessage(
         `I've shared a file: ${result.fileName} (${result.fileSize}). It's now at ${result.destPath}. Please process it.`,
       );
@@ -293,7 +306,12 @@ async function handleChat(req: Request): Promise<Response> {
       return jsonResponse({ error: `File ingestion failed: ${msg}` }, 500);
     }
   } else {
-    conversation.addUserMessage(body.text);
+    const canvasState = canvas.connectionStatus.state;
+    const activeCanvas = canvas.activeInfo;
+    const canvasTag = activeCanvas
+      ? `Canvas state: ${canvasState} (${activeCanvas.name})`
+      : `Canvas state: ${canvasState}`;
+    conversation.addUserMessage(`${canvasTag}\n\n${body.text}`);
   }
 
   // Run the turn asynchronously — events stream over WebSocket
@@ -326,7 +344,7 @@ async function handleCommand(req: Request): Promise<Response> {
   return jsonResponse({ result });
 }
 
-/** POST /api/ingest — Copy file to workspace Resources/ */
+/** POST /api/ingest — Copy file to workspace Resources/ and run background pipeline */
 async function handleIngest(req: Request): Promise<Response> {
   const body = await req.json() as { path: string };
   if (!body.path) {
@@ -334,12 +352,76 @@ async function handleIngest(req: Request): Promise<Response> {
   }
 
   try {
-    const result = await copyFileToResources(body.path, workspaceDir);
+    const routing = config.fileRouting;
+    const result = await copyFileToResources(body.path, workspaceDir, routing);
+
+    // Broadcast start event immediately
+    broadcast({ type: "ingest_start", fileName: result.fileName, destPath: result.destPath });
+    console.log(`[ingest] Starting pipeline for ${result.fileName}`);
+
+    // Kick off background pipeline (non-blocking)
+    runIngestionInBackground(result.fileName, result.destPath);
+
     return jsonResponse(result);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return jsonResponse({ error: msg }, 500);
   }
+}
+
+/** Run the ingestion pipeline in the background (transcribe + link). */
+function runIngestionInBackground(fileName: string, destPath: string): void {
+  // Gather conversation context from recent messages
+  const recentMessages = conversation.getMessages();
+  const contextMessages = recentMessages
+    .slice(-6)
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => {
+      const textContent = m.content
+        .filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .map((c) => c.text)
+        .join(" ");
+      return `${m.role}: ${textContent.substring(0, 200)}`;
+    })
+    .join("\n");
+
+  const ocrProvider = provider.supportsVision
+    ? new VisionOCRProvider(provider)
+    : null;
+
+  runIngestionPipeline({
+    filePath: join(workspaceDir, destPath),
+    destPath,
+    fileName,
+    workspaceDir,
+    provider,
+    tools,
+    systemPrompt: systemPromptText,
+    conversationContext: contextMessages,
+    ocrProvider,
+    onProgress: (stage, message) => {
+      broadcast({ type: "ingest_progress", fileName, stage, message });
+    },
+  }).then((result) => {
+    // Inject context into main conversation (LLM sees it on next turn)
+    const finalName = result.finalFileName;
+    const finalDest = result.finalDestPath;
+    const baseName = finalName.substring(0, finalName.lastIndexOf(".")) || finalName;
+    conversation.addUserMessage(
+      `[File imported: ${finalName} → ${finalDest}]\n` +
+      `${result.summary}\n` +
+      `The transcript is at ${result.transcriptPath ?? `Clark/Transcripts/${baseName}.md`}.`,
+    );
+
+    // Show subtle system message in chat
+    broadcast({ type: "system_message", text: `Imported ${finalName} → ${finalDest}` });
+
+    // Broadcast completion
+    broadcast({ type: "ingest_complete", fileName, summary: result.summary });
+  }).catch((err) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    broadcast({ type: "ingest_error", fileName, error: msg });
+  });
 }
 
 /** GET /api/status — Current provider/model info */

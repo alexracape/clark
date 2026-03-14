@@ -210,8 +210,8 @@ describe("MCP Tools", () => {
       expect(result.isError).toBe(false);
 
       const text = result.content[0] as { type: "text"; text: string };
-      expect(text.text).toContain("<<<BEGIN_FILE_CONTENT");
-      expect(text.text).toContain("<<<END_FILE_CONTENT>>>");
+      expect(text.text).toContain("<file_content path=");
+      expect(text.text).toContain("</file_content>");
       expect(text.text).toContain("Reinforcement learning from human feedback");
       expect(text.text).toContain("Linked files:");
       expect(text.text).toContain("[[Reinforcement Learning]]");
@@ -268,7 +268,7 @@ describe("MCP Tools", () => {
       const tool = findTool("search_notes");
       const result = await tool.handler({ query: "reinforcement" });
       const text = (result.content[0] as { type: "text"; text: string }).text;
-      expect(text).toContain("<<<BEGIN_FILE_CONTENT");
+      expect(text).toContain("<file_content path=");
       expect(text).toContain("RLHF.md");
     });
 
@@ -290,8 +290,8 @@ describe("MCP Tools", () => {
       const tool = findTool("search_notes");
       const result = await tool.handler({ query: "reinforcement" });
       const text = (result.content[0] as { type: "text"; text: string }).text;
-      expect(text).toContain("<<<BEGIN_FILE_CONTENT");
-      expect(text).toContain("<<<END_FILE_CONTENT>>>");
+      expect(text).toContain("<file_content path=");
+      expect(text).toContain("</file_content>");
     });
   });
 

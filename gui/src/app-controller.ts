@@ -1,4 +1,4 @@
-import type { SidecarStreamEvent } from "./stream-events.ts";
+import type { SidecarStreamEvent, IngestStartEvent, IngestProgressEvent, IngestCompleteEvent, IngestErrorEvent } from "./stream-events.ts";
 
 // --- Tutorial State ---
 
@@ -66,6 +66,12 @@ export interface CanvasStatus {
   canvasUrl?: string;
 }
 
+export interface IngestionStatus {
+  fileName: string;
+  stage: "copying" | "transcribing" | "linking" | "complete" | "error";
+  message: string;
+}
+
 export interface AppState {
   chatItems: ChatItem[];
   streamingText: string | null;
@@ -81,6 +87,7 @@ export interface AppState {
   nextMessageId: number;
   onboarding: OnboardingState | null;
   tutorial: TutorialState | null;
+  activeIngestions: Record<string, IngestionStatus>;
 }
 
 export type ControllerEffect = {
@@ -121,6 +128,7 @@ export function createInitialAppState(): AppState {
     nextMessageId: 0,
     onboarding: null,
     tutorial: null,
+    activeIngestions: {},
   };
 }
 
@@ -245,6 +253,14 @@ export function applyStreamEvent(state: AppState, event: SidecarStreamEvent): Ap
         currentTool: null,
         pendingToolCalls: [],
       };
+    case "ingest_start":
+      return applyIngestStart(state, event as IngestStartEvent);
+    case "ingest_progress":
+      return applyIngestProgress(state, event as IngestProgressEvent);
+    case "ingest_complete":
+      return applyIngestComplete(state, event as IngestCompleteEvent);
+    case "ingest_error":
+      return applyIngestError(state, event as IngestErrorEvent);
     default:
       return state;
   }
@@ -349,6 +365,75 @@ export function applyIngestResult(state: AppState, result: IngestResponse): AppS
 
 export function applyFileDropError(state: AppState, err: unknown): AppState {
   return appendMessage(state, "system", `File drop error: ${String(err)}`);
+}
+
+// --- Ingestion toast reducers ---
+
+function applyIngestStart(state: AppState, event: IngestStartEvent): AppState {
+  return {
+    ...state,
+    activeIngestions: {
+      ...state.activeIngestions,
+      [event.fileName]: {
+        fileName: event.fileName,
+        stage: "copying",
+        message: `Organizing file...`,
+      },
+    },
+  };
+}
+
+function applyIngestProgress(state: AppState, event: IngestProgressEvent): AppState {
+  const existing = state.activeIngestions[event.fileName];
+  if (!existing) return state;
+  return {
+    ...state,
+    activeIngestions: {
+      ...state.activeIngestions,
+      [event.fileName]: {
+        ...existing,
+        stage: event.stage,
+        message: event.message,
+      },
+    },
+  };
+}
+
+function applyIngestComplete(state: AppState, event: IngestCompleteEvent): AppState {
+  const existing = state.activeIngestions[event.fileName];
+  if (!existing) return state;
+  return {
+    ...state,
+    activeIngestions: {
+      ...state.activeIngestions,
+      [event.fileName]: {
+        ...existing,
+        stage: "complete",
+        message: event.summary,
+      },
+    },
+  };
+}
+
+function applyIngestError(state: AppState, event: IngestErrorEvent): AppState {
+  const existing = state.activeIngestions[event.fileName];
+  if (!existing) return state;
+  return {
+    ...state,
+    activeIngestions: {
+      ...state.activeIngestions,
+      [event.fileName]: {
+        ...existing,
+        stage: "error",
+        message: event.error,
+      },
+    },
+  };
+}
+
+export function dismissIngestion(state: AppState, fileName: string): AppState {
+  const { [fileName]: _, ...rest } = state.activeIngestions;
+  return { ...state, activeIngestions: rest };
 }
 
 // --- Onboarding pure functions ---

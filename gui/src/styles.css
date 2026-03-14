@@ -762,10 +762,23 @@ body {
     background: rgba(61, 122, 95, 0.15);
     border: 3px dashed var(--lamp-green);
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 12px;
     z-index: 100;
     pointer-events: none;
+    animation: drag-overlay-in 150ms ease-out;
+}
+
+@keyframes drag-overlay-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.drag-overlay__icon {
+    font-size: 32px;
+    opacity: 0.9;
 }
 
 .drag-overlay__text {
@@ -775,6 +788,85 @@ body {
     border-radius: 12px;
     font-size: 16px;
     font-weight: 500;
+}
+
+/* Ingestion toast stack */
+.ingest-toast-stack {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    z-index: 260;
+    pointer-events: none;
+}
+
+.ingest-toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: var(--sidebar-bg, #2c2c2c);
+    color: var(--parchment, #f5f0e8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    font-size: 13px;
+    min-width: 240px;
+    max-width: 360px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    animation: ingest-toast-in 200ms ease-out;
+}
+
+@keyframes ingest-toast-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.ingest-toast--complete {
+    border-color: var(--lamp-green);
+}
+
+.ingest-toast--error {
+    border-color: #934040;
+}
+
+.ingest-toast__spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-top-color: var(--lamp-green);
+    border-radius: 50%;
+    animation: ingest-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes ingest-spin {
+    to { transform: rotate(360deg); }
+}
+
+.ingest-toast__icon {
+    flex-shrink: 0;
+    font-size: 14px;
+}
+
+.ingest-toast__body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.ingest-toast__filename {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ingest-toast__stage {
+    font-size: 12px;
+    opacity: 0.7;
 }
 
 /* Modal */
