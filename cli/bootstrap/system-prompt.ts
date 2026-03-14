@@ -1,20 +1,8 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { loadClarkContext, clarkStructuresDirPath } from "../../core/library.ts";
+import { Structure } from "../../core/structure.ts";
 import baseSystemPrompt from "../../core/prompts/system.md" with { type: "text" };
-
-/**
- * Extract the first sentence of the ## Purpose section from a Structure file.
- */
-function extractPurpose(content: string): string {
-  const match = content.match(/## Purpose\s*\n([\s\S]*?)(?=\n## |$)/);
-  if (!match) return "Generate this structure";
-  const text = match[1]!.trim();
-  const firstSentence = text.split(/\.\s/)[0]!;
-  return firstSentence.length > 80
-    ? firstSentence.slice(0, 77) + "..."
-    : firstSentence;
-}
 
 /**
  * Scan Clark/Structures/ and return a summary for the system prompt.
@@ -29,8 +17,8 @@ async function loadStructureSummary(workspaceDir: string): Promise<string> {
     const lines: string[] = [];
     for (const file of mdFiles) {
       const content = await Bun.file(join(structuresDir, file)).text();
-      const purpose = extractPurpose(content);
-      lines.push(`- **${file}**: ${purpose}`);
+      const structure = Structure.fromMarkdown(file.replace(".md", ""), content);
+      lines.push(`- **${file}**: ${structure.summary}`);
     }
 
     return [

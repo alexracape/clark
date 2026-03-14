@@ -11,6 +11,13 @@ import { mkdir, access, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { constants } from "node:fs";
 
+import classStructure from "./prompts/structures/Class.md" with { type: "text" };
+import problemSetStructure from "./prompts/structures/Problem Set.md" with { type: "text" };
+import ideaStructure from "./prompts/structures/Idea.md" with { type: "text" };
+import paperStructure from "./prompts/structures/Paper.md" with { type: "text" };
+import quoteStructure from "./prompts/structures/Quote.md" with { type: "text" };
+import resourceStructure from "./prompts/structures/Resource.md" with { type: "text" };
+
 export const CLARK_DIR_NAME = "Clark";
 export const CLARK_CANVAS_DIR_NAME = "Canvas";
 export const CLARK_STRUCTURES_DIR_NAME = "Structures";
@@ -200,18 +207,20 @@ async function generateClarkMd(
 
   return `
 
-## Workspace Layout
+### Workspace Layout
 
 ${workspaceLayout}
 
-## Tags
+### Tags
 
 - \`#class\` — A course or class
 - \`#problem_set\` — A homework assignment or problem set
 - \`#paper\` — An academic paper
 - \`#quote\` — A quote
 
-## File Processing Conventions
+Do not use ANY additionaly or nested tags unless explicitly asked.
+
+### File Processing Conventions
 
 When processing PDFs and images:
 - Save transcripts to \`Clark/Transcripts/<source-name>.md\`
@@ -223,7 +232,7 @@ When processing PDFs and images:
 1. Same directory with .md extension (e.g., \`Resources/PDFs/lecture.pdf\` → \`Resources/PDFs/lecture.md\`)
 2. Clark transcripts directory (e.g., any PDF/image → \`Clark/Transcripts/<filename>.md\`)
 
-## Linking Conventions
+### Linking Conventions
 
 - Use \`[[wikilinks]]\` to connect related notes
 - Use \`![[embeds]]\` to embed images or other files inline
@@ -266,88 +275,12 @@ async function writeIfMissing(
 // ---------------------------------------------------------------------------
 
 const CLARK_STRUCTURE_TEMPLATES: Record<string, string> = {
-  "Clark/Structures/Class.md": `## Purpose
-This file tracks of the key information associated with a course taken at school.
-## Generation
-The file should include headings such as "Concepts", "Homework", "Slides", "Class Notes". These files should be tracked with the #class tag.
-
-## Template
-#class
-
-## Concepts
--
-## Homework
--
-## Slides
--
-## Class Notes
--
-`,
-
-  "Clark/Structures/Problem Set.md": `## Purpose
-This file represents a problem set that is being submitted for a class.
-## Generation
-These files should have the "Concepts" header and the #problem_set tag. This should link to the assignment document at the top. The main content should be the handwritten content as a linked PNG file. You should should add a link to this problem set in the relevant class.
-
-## Template
-#problem_set
-
-[[questions.pdf]]
-## Concepts
--
-
-![[example_work.png]]`,
-
-  "Clark/Structures/Idea.md": `## Purpose
-This is an atomic unit and each idea should have its own file. Ideas should only link out to other ideas.
-
-## Generation
-During creation, check if this idea should be added to a \`Class\`. `,
-
-  "Clark/Structures/Paper.md": `## Purpose
-This file corresponds to an academic paper that I read.
-
-## Generation
-It should contain headings for "Key Ideas" and "Questions." It will also link out to the pdf version of the paper. These files should be marked with the #paper tag. You should not fill in any of the ideas or questions unless you are able to read them from the annotations on the PDF.
-## Template
-#paper
-
-## Key Ideas
--
-## Questions
--
-
-![[example_paper]]`,
-
-  "Clark/Structures/Quote.md": `The title of the file should be the quote itself. Only make changes or shorten if the formatting does not work as a title.
-
-Include the #quote tag underneath followed by the full text of the quote and the author's name if provided.
-
-## Example
-
-Filename: "Do or do not there is no try"
-
-#quote
-
-"Do or do not there is no try"
-- Yoda`,
-
-  "Clark/Structures/Resource.md": `## Purpose
-These are raw documents that are not in markdown format. They could be images, PDFs, slides, etc.
-## Generation
-When processing a new resource, you can organize it however makes sense for the workspace (e.g., in a Resources/ directory, or alongside related notes).
-
-When a resource is added, you should create a markdown transcript. Save it to either:
-- \`Clark/Transcripts/<filename>.md\` (recommended default)
-- Same directory as the source file with .md extension
-
-The transcript should be in markdown format while preserving headers and bullet points for the structure of the document. Images or diagrams should be tagged with a markdown link. Math should be formatted in LaTeX.
-
-If reading the plain resource yields a significant amount of text, use that to create the markdown. Otherwise you can use the provided transcription tool (\`transcribe_pdf\`).
-
-**Important**: When you call \`read_file\` on a PDF or image that has a transcript, the transcript will be used automatically. You don't need to manually read the transcript file.
-
-If relevant, add this resource to a \`Class\`, \`Problem Set\` or \`Paper\`. `,
+  "Clark/Structures/Class.md": classStructure,
+  "Clark/Structures/Problem Set.md": problemSetStructure,
+  "Clark/Structures/Idea.md": ideaStructure,
+  "Clark/Structures/Paper.md": paperStructure,
+  "Clark/Structures/Quote.md": quoteStructure,
+  "Clark/Structures/Resource.md": resourceStructure,
 };
 
 const DEFAULT_ROOT_TEMPLATES: Record<string, string> = {

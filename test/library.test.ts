@@ -180,7 +180,7 @@ describe("scaffoldLibrary", () => {
       join(libPath, "Clark", "Structures", "Quote.md"),
     ).text();
     expect(quoteContent).toContain("#quote");
-    expect(quoteContent).toContain("Yoda");
+    expect(quoteContent).toContain("## Generation");
   });
 
   test("creates a default CLARK.md with template content", async () => {

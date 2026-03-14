@@ -10,10 +10,11 @@ import { ContextPanel } from "./components/ContextPanel.tsx";
 import { Onboarding } from "./components/Onboarding.tsx";
 import { Tutorial } from "./components/Tutorial.tsx";
 import { invokeCommand, listenEvent } from "./ipc.ts";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   applyFileDropError,
-  applyIngestResult,
   applySendError,
+  dismissIngestion,
   applySlashCommandError,
   applySlashCommandResult,
   applyStreamEvent,
@@ -42,7 +43,7 @@ import {
   completeTutorial,
   type AppState,
   type ControllerEffect,
-  type IngestResponse,
+  type IngestionStatus,
   type SlashCommandResponse,
 } from "./app-controller.ts";
 import { parseSidecarStreamEvent } from "./stream-events.ts";
@@ -77,8 +78,9 @@ async function runEffects(
 
     if (effect.command === "ingest_file") {
       try {
-        const result = (await invokeCommand(effect.command, effect.args)) as IngestResponse;
-        setState((prev) => applyIngestResult(prev, result));
+        // Response returns immediately after file copy; background pipeline
+        // broadcasts ingest_start/progress/complete events via WebSocket.
+        await invokeCommand(effect.command, effect.args);
       } catch (err) {
         setState((prev) => applyFileDropError(prev, err));
       }
@@ -87,6 +89,71 @@ async function runEffects(
 }
 
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+function IngestToastStack({
+  ingestions,
+  onDismiss,
+}: {
+  ingestions: Record<string, IngestionStatus>;
+  onDismiss: (fileName: string) => void;
+}) {
+  const entries = Object.values(ingestions);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="ingest-toast-stack">
+      {entries.map((ing) => (
+        <IngestToastItem key={ing.fileName} ingestion={ing} onDismiss={onDismiss} />
+      ))}
+    </div>
+  );
+}
+
+function IngestToastItem({
+  ingestion,
+  onDismiss,
+}: {
+  ingestion: IngestionStatus;
+  onDismiss: (fileName: string) => void;
+}) {
+  useEffect(() => {
+    if (ingestion.stage === "complete" || ingestion.stage === "error") {
+      const timer = setTimeout(() => onDismiss(ingestion.fileName), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [ingestion.stage, ingestion.fileName, onDismiss]);
+
+  const stageLabel =
+    ingestion.stage === "copying" ? "Organizing..."
+    : ingestion.stage === "transcribing" ? "Transcribing..."
+    : ingestion.stage === "linking" ? "Linking..."
+    : ingestion.stage === "complete" ? "Done"
+    : "Error";
+
+  const className = `ingest-toast${
+    ingestion.stage === "complete" ? " ingest-toast--complete"
+    : ingestion.stage === "error" ? " ingest-toast--error"
+    : ""
+  }`;
+
+  return (
+    <div className={className}>
+      {ingestion.stage === "complete" ? (
+        <span className="ingest-toast__icon">&#10003;</span>
+      ) : ingestion.stage === "error" ? (
+        <span className="ingest-toast__icon">&#10007;</span>
+      ) : (
+        <span className="ingest-toast__spinner" />
+      )}
+      <div className="ingest-toast__body">
+        <span className="ingest-toast__filename">{ingestion.fileName}</span>
+        <span className="ingest-toast__stage">
+          {ingestion.stage === "error" ? ingestion.message : stageLabel}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export function App() {
   const [state, setState] = useState<AppState>(() => createInitialAppState());
@@ -150,6 +217,27 @@ export function App() {
   );
 
   useEffect(() => {
+    if (isTauri) {
+      // Tauri v2: use native window drag-drop events (browser DOM events don't
+      // fire for OS-level file drops in Tauri).
+      let unlisten: (() => void) | undefined;
+      getCurrentWindow().onDragDropEvent((event) => {
+        const payload = event.payload;
+        if (payload.type === "enter" || payload.type === "over") {
+          setIsDragging(true);
+        } else if (payload.type === "drop") {
+          setIsDragging(false);
+          for (const path of payload.paths) {
+            void handleFileDrop(path);
+          }
+        } else if (payload.type === "leave") {
+          setIsDragging(false);
+        }
+      }).then((fn) => { unlisten = fn; });
+      return () => unlisten?.();
+    }
+
+    // Non-Tauri fallback (browser dev mode): use DOM drag events.
     const handleDragOver = (e: DragEvent) => {
       e.preventDefault();
       setIsDragging(true);
@@ -169,11 +257,9 @@ export function App() {
         }
       }
     };
-
     document.addEventListener("dragover", handleDragOver);
     document.addEventListener("dragleave", handleDragLeave);
     document.addEventListener("drop", handleDrop);
-
     return () => {
       document.removeEventListener("dragover", handleDragOver);
       document.removeEventListener("dragleave", handleDragLeave);
@@ -335,9 +421,21 @@ export function App() {
 
       {isDragging && (
         <div className="drag-overlay">
-          <div className="drag-overlay__text">Drop file to add to workspace</div>
+          <div className="drag-overlay__icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </div>
+          <div className="drag-overlay__text">Drop to import</div>
         </div>
       )}
+
+      <IngestToastStack
+        ingestions={state.activeIngestions}
+        onDismiss={(fileName) => setState((prev) => dismissIngestion(prev, fileName))}
+      />
 
       {state.showModelPicker && (
         <ModelPicker

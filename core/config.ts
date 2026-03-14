@@ -48,6 +48,13 @@ export interface ClarkConfig {
   /** Secret backend used for API keys. */
   secretStoreBackend?: "macos-keychain" | "linux-libsecret" | "windows-credential" | "fallback";
 
+  /** Destination folders for drag-and-drop file routing (relative to workspace). */
+  fileRouting?: {
+    pdf?: string;    // default: "Resources/PDFs"
+    image?: string;  // default: "Resources/Images"
+    other?: string;  // default: "Resources"
+  };
+
   /** Flag indicating user has completed initial onboarding. */
   hasCompletedOnboarding?: boolean;
   /** Tutorial progress tracking. */
