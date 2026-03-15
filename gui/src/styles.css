@@ -38,7 +38,7 @@
     /* Layout */
     --sidebar-width: 260px;
     --titlebar-height: 38px;
-    --bottombar-height: 28px;
+
     --composer-min-height: 52px;
 }
 
@@ -209,30 +209,7 @@ body {
     flex-shrink: 0;
 }
 
-/* Bottom Bar */
-.bottombar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: var(--bottombar-height);
-    padding: 0 16px;
-    background: var(--parchment);
-    border-top: 1px solid #e5ddd0;
-    flex-shrink: 0;
-    user-select: none;
-}
-
-.bottombar__left {
-    display: flex;
-    align-items: center;
-}
-
-.bottombar__right {
-    display: flex;
-    align-items: center;
-}
-
-.bottombar__btn {
+.titlebar__settings-btn {
     background: none;
     border: none;
     color: var(--patina);
@@ -242,13 +219,18 @@ body {
     line-height: 1;
     display: flex;
     align-items: center;
-    transition: background 0.15s, color 0.15s;
+    -webkit-app-region: no-drag;
+    transition:
+        background 0.15s,
+        color 0.15s;
 }
 
-.bottombar__btn:hover {
+.titlebar__settings-btn:hover {
     background: #ede7d9;
     color: var(--walnut);
 }
+
+/* Bottom Bar — removed, settings moved to titlebar */
 
 @keyframes spin {
     to {
@@ -790,8 +772,12 @@ body {
 }
 
 @keyframes drag-overlay-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
 }
 
 .drag-overlay__icon {
@@ -837,8 +823,14 @@ body {
 }
 
 @keyframes ingest-toast-in {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .ingest-toast--complete {
@@ -860,7 +852,9 @@ body {
 }
 
 @keyframes ingest-spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .ingest-toast__icon {
@@ -1291,7 +1285,9 @@ body {
     border: 1px solid #e5ddd0;
     border-radius: 6px;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    transition:
+        background 0.15s,
+        color 0.15s;
 }
 
 .settings-pick-btn:hover {
@@ -1388,7 +1384,9 @@ body {
     pointer-events: none;
     opacity: 0;
     transform: translateY(12px);
-    transition: opacity 0.8s ease, transform 0.8s ease;
+    transition:
+        opacity 0.8s ease,
+        transform 0.8s ease;
 }
 
 .welcome-step__ui--visible {
@@ -1412,7 +1410,10 @@ body {
 .welcome-step__ui .onboarding-btn {
     opacity: 0;
     transform: translateY(8px);
-    transition: opacity 0.6s ease 0.5s, transform 0.6s ease 0.5s, background 0.15s ease;
+    transition:
+        opacity 0.6s ease 0.5s,
+        transform 0.6s ease 0.5s,
+        background 0.15s ease;
 }
 
 .welcome-step__ui--visible .onboarding-btn {
@@ -1935,4 +1936,432 @@ body {
     display: flex;
     justify-content: center;
     gap: 12px;
+}
+
+/* Markdown Editor */
+.markdown-editor {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    position: relative;
+}
+
+.markdown-editor__close {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    z-index: 10;
+    background: #f5f0e6;
+    border: 1px solid #e5ddd0;
+    color: var(--patina);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    line-height: 1;
+    font-family: inherit;
+    transition: background 0.15s;
+}
+
+.markdown-editor__close:hover {
+    background: #ede7d9;
+    color: var(--walnut);
+}
+
+.markdown-editor__body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 0;
+}
+
+.markdown-editor__title-row {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 0 24px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.markdown-editor__title {
+    font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--leather);
+    margin: 0;
+}
+
+.markdown-editor__dirty-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--brass);
+    flex-shrink: 0;
+}
+
+.markdown-editor__content {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 0 24px;
+    outline: none;
+    font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--walnut);
+}
+
+.markdown-editor__content h1,
+.markdown-editor__content h2,
+.markdown-editor__content h3 {
+    margin: 12px 0 6px;
+    color: var(--leather);
+}
+
+.markdown-editor__content h1 {
+    font-size: 18px;
+}
+
+.markdown-editor__content h2 {
+    font-size: 16px;
+}
+
+.markdown-editor__content h3 {
+    font-size: 14px;
+}
+
+.markdown-editor__content p {
+    margin: 6px 0;
+}
+
+.markdown-editor__content code {
+    background: #f5f0e6;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: "IBM Plex Mono", "Fira Code", monospace;
+    font-size: 13px;
+}
+
+.markdown-editor__content pre {
+    background: var(--leather);
+    color: var(--text-white);
+    padding: 12px 16px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+
+.markdown-editor__content pre code {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+}
+
+.markdown-editor__content ul,
+.markdown-editor__content ol {
+    padding-left: 20px;
+    margin: 6px 0;
+}
+
+.markdown-editor__content blockquote {
+    border-left: 3px solid var(--lamp-green);
+    padding-left: 12px;
+    margin: 8px 0;
+    color: var(--walnut);
+}
+
+.markdown-editor__content hr {
+    border: none;
+    border-top: 1px solid #e5ddd0;
+    margin: 16px 0;
+}
+
+/* Tiptap placeholder */
+.tiptap p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    color: var(--patina);
+    pointer-events: none;
+    height: 0;
+    font-style: italic;
+}
+
+/* Floating slash menu */
+.slash-menu {
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+    border: 1px solid #e5ddd0;
+    border-radius: 8px;
+    padding: 4px 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    min-width: 160px;
+}
+
+.slash-menu__item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 6px 12px;
+    background: none;
+    border: none;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px;
+    color: var(--walnut);
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.slash-menu__item:hover {
+    background: #f5f0e6;
+}
+
+/* Conversation rail (editor mode) */
+.conv-rail {
+    position: absolute;
+    right: 12px;
+    top: 40px;
+    bottom: 0;
+    width: 36px;
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    gap: 0px;
+    padding: 8px 0;
+    align-items: center;
+}
+
+.conv-rail__bar {
+    width: 36px;
+    height: 14px;
+    border-radius: 3px;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+    flex-shrink: 0;
+}
+
+/* The visible mark is rendered via ::after so the hit area is the full bar box */
+.conv-rail__bar::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 30px;
+    height: 8px;
+    border-radius: 3px;
+    background: var(--patina);
+    opacity: 0.35;
+    transition: all 0.15s ease;
+}
+
+.conv-rail__bar:hover::after,
+.conv-rail__bar--hover::after {
+    opacity: 0.7;
+    height: 9px;
+}
+
+.conv-rail__bar--active::after {
+    width: 32px;
+    height: 10px;
+    background: var(--lamp-green);
+    opacity: 1;
+}
+
+.conv-rail__bar--streaming::after {
+    width: 32px;
+    height: 9px;
+    background: var(--lamp-green);
+    animation: rail-pulse 1.5s ease-in-out infinite;
+}
+
+.conv-rail__bar--unread::after {
+    width: 32px;
+    height: 9px;
+    background: var(--brass);
+    opacity: 0.8;
+    animation: rail-unread-pulse 0.6s ease-in-out 3;
+}
+
+@keyframes rail-pulse {
+    0%,
+    100% {
+        opacity: 0.3;
+    }
+    50% {
+        opacity: 0.8;
+    }
+}
+
+@keyframes rail-unread-pulse {
+    0%,
+    100% {
+        opacity: 0.6;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+/* Hover tooltip */
+.conv-rail__tooltip {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 240px;
+    padding: 8px 12px;
+    background: #ffffff;
+    border: 1px solid #e5ddd0;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    pointer-events: none;
+    z-index: 10;
+}
+
+.conv-rail__tooltip::after {
+    content: "";
+    position: absolute;
+    right: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 6px solid #ffffff;
+    filter: drop-shadow(1px 0 0 #e5ddd0);
+}
+
+.conv-rail__tooltip-text {
+    font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+    font-size: 12px;
+    color: var(--patina);
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+/* Expanded card */
+.conv-rail__card {
+    position: absolute;
+    right: 20px;
+    top: 0;
+    width: 320px;
+    max-height: 60vh;
+    overflow-y: auto;
+    background: #ffffff;
+    border: 1px solid #e5ddd0;
+    border-radius: 8px 0 0 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    padding: 16px;
+    z-index: 10;
+    animation: rail-card-in 200ms ease-out;
+}
+
+@keyframes rail-card-in {
+    from {
+        opacity: 0;
+        transform: translateX(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.conv-rail__card-response {
+    font-size: 13px;
+    color: var(--walnut);
+    line-height: 1.6;
+}
+
+.conv-rail__card-dismiss {
+    background: none;
+    border: none;
+    color: var(--patina);
+    font-size: 11px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 4px 0;
+    margin-top: 8px;
+    float: right;
+    font-family: inherit;
+    transition: color 0.15s;
+}
+
+.conv-rail__card-dismiss:hover {
+    color: var(--walnut);
+}
+
+.conv-rail__streaming-cursor {
+    display: inline-block;
+    width: 6px;
+    height: 14px;
+    background: var(--lamp-green);
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    animation: rail-cursor-blink 0.8s step-end infinite;
+}
+
+@keyframes rail-cursor-blink {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0;
+    }
+}
+
+/* Tool call indicators in rail card */
+.conv-rail__tools,
+.conv-rail__thinking {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e5ddd0;
+}
+
+.conv-rail__thinking {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+}
+
+.conv-rail__tool {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--patina);
+    font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+}
+
+.conv-rail__tool--pending {
+    color: var(--lamp-green);
+}
+
+.conv-rail__tool-spinner {
+    width: 10px;
+    height: 10px;
+    border: 1.5px solid #e5ddd0;
+    border-top-color: var(--lamp-green);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+.conv-rail__tool-name {
+    font-size: 12px;
+    font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
 }

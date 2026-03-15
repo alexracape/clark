@@ -4,9 +4,13 @@ import {
   applySlashCommandError,
   applySlashCommandResult,
   applyStreamEvent,
+  closeEditorFile,
   createInitialAppState,
   getMessages,
+  markEditorDirty,
+  openEditorFile,
   planSendInput,
+  updateEditorContent,
   type AppState,
 } from "../gui/src/app-controller.ts";
 
@@ -116,5 +120,54 @@ describe("gui app controller", () => {
       role: "system",
       text: "Command error: bad command",
     });
+  });
+
+  test("openEditorFile sets editorFile state", () => {
+    const state = createInitialAppState();
+    const opened = openEditorFile(state, "notes/test.md", "# Hello");
+
+    expect(opened.editorFile).toMatchObject({
+      path: "notes/test.md",
+      content: "# Hello",
+      dirty: false,
+    });
+  });
+
+  test("closeEditorFile clears editorFile", () => {
+    const state = openEditorFile(createInitialAppState(), "test.md", "content");
+    const closed = closeEditorFile(state);
+
+    expect(closed.editorFile).toBeNull();
+  });
+
+  test("markEditorDirty toggles dirty flag", () => {
+    const state = openEditorFile(createInitialAppState(), "test.md", "content");
+
+    const dirty = markEditorDirty(state, true);
+    expect(dirty.editorFile?.dirty).toBe(true);
+
+    const clean = markEditorDirty(dirty, false);
+    expect(clean.editorFile?.dirty).toBe(false);
+  });
+
+  test("markEditorDirty is no-op when no file open", () => {
+    const state = createInitialAppState();
+    const result = markEditorDirty(state, true);
+    expect(result.editorFile).toBeNull();
+  });
+
+  test("updateEditorContent sets content and clears dirty", () => {
+    let state = openEditorFile(createInitialAppState(), "test.md", "old");
+    state = markEditorDirty(state, true);
+
+    const updated = updateEditorContent(state, "new content");
+    expect(updated.editorFile?.content).toBe("new content");
+    expect(updated.editorFile?.dirty).toBe(false);
+  });
+
+  test("updateEditorContent is no-op when no file open", () => {
+    const state = createInitialAppState();
+    const result = updateEditorContent(state, "content");
+    expect(result.editorFile).toBeNull();
   });
 });

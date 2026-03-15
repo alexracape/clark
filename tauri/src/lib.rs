@@ -132,6 +132,8 @@ pub fn run() {
             commands::list_ollama_models,
             commands::get_settings,
             commands::update_settings,
+            commands::read_file_content,
+            commands::write_file_content,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

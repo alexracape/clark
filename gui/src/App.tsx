@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ChatWindow } from "./components/ChatWindow.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { Titlebar } from "./components/Titlebar.tsx";
-import { BottomBar } from "./components/BottomBar.tsx";
+
 import { Sidebar } from "./components/Sidebar.tsx";
 import { ModelPicker } from "./components/ModelPicker.tsx";
 import { CanvasPicker } from "./components/CanvasPicker.tsx";
@@ -10,17 +10,22 @@ import { ContextPanel } from "./components/ContextPanel.tsx";
 import { Settings } from "./components/Settings.tsx";
 import { Onboarding } from "./components/Onboarding.tsx";
 import { Tutorial } from "./components/Tutorial.tsx";
+import { MarkdownEditor } from "./components/MarkdownEditor.tsx";
 import { invokeCommand, listenEvent } from "./ipc.ts";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   applyFileDropError,
   applySendError,
+  closeEditorFile,
   dismissIngestion,
   applySlashCommandError,
   applySlashCommandResult,
   applyStreamEvent,
   completeOnboarding,
   createInitialAppState,
+  markEditorDirty,
+  openEditorFile,
+  updateEditorContent,
   onboardingNextStep,
   onboardingPrevStep,
   onCanvasOpened,
@@ -218,6 +223,34 @@ export function App() {
     [state],
   );
 
+  const handleFileSelect = useCallback(
+    async (path: string) => {
+      if (!path.endsWith(".md")) return;
+      try {
+        const data = (await invokeCommand("read_file_content", { path })) as {
+          path: string;
+          content: string;
+        };
+        setState((prev) => openEditorFile(prev, data.path, data.content));
+      } catch (err) {
+        setState((prev) => applySendError(prev, err));
+      }
+    },
+    [],
+  );
+
+  const handleEditorSave = useCallback(
+    async (path: string, content: string) => {
+      try {
+        await invokeCommand("write_file_content", { path, content });
+        setState((prev) => updateEditorContent(prev, content));
+      } catch (err) {
+        setState((prev) => applySendError(prev, err));
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     if (isTauri) {
       // Tauri v2: use native window drag-drop events (browser DOM events don't
@@ -401,25 +434,37 @@ export function App() {
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
         onModelClick={() => setState((prev) => setShowModelPicker(prev, true))}
         onCanvasClick={() => setState((prev) => setShowCanvasPicker(prev, true))}
+        onSettingsClick={() => setState((prev) => setShowSettings(prev, true))}
       />
 
       <div className="app-main">
-        <Sidebar open={sidebarOpen} invoke={invokeCommand} />
+        <Sidebar open={sidebarOpen} invoke={invokeCommand} onFileSelect={handleFileSelect} />
 
         <div className="chat-window">
-          <ChatWindow
-            chatItems={state.chatItems}
-            pendingToolCalls={state.pendingToolCalls}
-            streamingText={state.streamingText}
-            streamingThinking={state.streamingThinking}
-            isStreaming={state.isStreaming}
-          />
+          {state.editorFile ? (
+            <MarkdownEditor
+              file={state.editorFile}
+              onSave={handleEditorSave}
+              onClose={() => setState((prev) => closeEditorFile(prev))}
+              onDirtyChange={(dirty) => setState((prev) => markEditorDirty(prev, dirty))}
+              chatItems={state.chatItems}
+              streamingText={state.streamingText}
+              isStreaming={state.isStreaming}
+              pendingToolCalls={state.pendingToolCalls}
+            />
+          ) : (
+            <ChatWindow
+              chatItems={state.chatItems}
+              pendingToolCalls={state.pendingToolCalls}
+              streamingText={state.streamingText}
+              streamingThinking={state.streamingThinking}
+              isStreaming={state.isStreaming}
+            />
+          )}
 
           <Composer onSend={handleSend} disabled={state.isStreaming} />
         </div>
       </div>
-
-      <BottomBar onSettingsClick={() => setState((prev) => setShowSettings(prev, true))} />
 
       {isDragging && (
         <div className="drag-overlay">
@@ -438,6 +483,7 @@ export function App() {
         ingestions={state.activeIngestions}
         onDismiss={(fileName) => setState((prev) => dismissIngestion(prev, fileName))}
       />
+
 
       {state.showModelPicker && (
         <ModelPicker

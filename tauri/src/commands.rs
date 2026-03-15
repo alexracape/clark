@@ -280,6 +280,30 @@ pub async fn update_settings(
 }
 
 #[tauri::command]
+pub async fn read_file_content(
+    path: String,
+    sidecar: State<'_, Sidecar>,
+) -> Result<serde_json::Value, String> {
+    let encoded: String = url::form_urlencoded::byte_serialize(path.as_bytes()).collect();
+    let endpoint = format!("/api/file-content?path={}", encoded);
+    sidecar_get(&sidecar, &endpoint).await
+}
+
+#[tauri::command]
+pub async fn write_file_content(
+    path: String,
+    content: String,
+    sidecar: State<'_, Sidecar>,
+) -> Result<serde_json::Value, String> {
+    sidecar_post(
+        &sidecar,
+        "/api/file-content",
+        serde_json::json!({ "path": path, "content": content }),
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn write_clipboard_text(
     text: String,
     app: tauri::AppHandle,

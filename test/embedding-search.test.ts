@@ -91,11 +91,16 @@ describe("Semantic Search Integration", () => {
       const text = result.content[0]!;
       expect(text.type).toBe("text");
       if (text.type === "text") {
+        // Should be a numbered list of file paths with scores
+        expect(text.text).toMatch(/^1\. biology\/plants\.md \(score: [\d.]+, 1 chunk\)/);
+        expect(text.text).toContain("2. math/calculus.md");
         // Plant result should come first (higher similarity)
         const plantIdx = text.text.indexOf("plants.md");
         const mathIdx = text.text.indexOf("calculus.md");
         expect(plantIdx).toBeGreaterThan(-1);
         expect(plantIdx).toBeLessThan(mathIdx);
+        // Should NOT contain snippet content
+        expect(text.text).not.toContain("Photosynthesis is the process");
       }
     } finally {
       index.close();
@@ -116,7 +121,9 @@ describe("Semantic Search Integration", () => {
     const text = result.content[0]!;
     expect(text.type).toBe("text");
     if (text.type === "text") {
-      expect(text.text).toContain("notes.md");
+      // Should be a numbered list with match counts, no snippets
+      expect(text.text).toMatch(/^1\. notes\.md \(\d+ matches\)$/);
+      expect(text.text).not.toContain("quick brown fox");
     }
   });
 

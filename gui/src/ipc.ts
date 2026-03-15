@@ -24,6 +24,8 @@ const ROUTE_MAP: Record<string, Route> = {
   list_ollama_models: { method: "GET", path: "/api/ollama-models" },
   get_settings: { method: "GET", path: "/api/settings" },
   update_settings: { method: "POST", path: "/api/settings" },
+  read_file_content: { method: "GET", path: "/api/file-content" },
+  write_file_content: { method: "POST", path: "/api/file-content" },
 };
 
 function isTauriRuntime(): boolean {

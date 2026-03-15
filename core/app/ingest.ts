@@ -4,7 +4,7 @@
  */
 
 import { basename, join, resolve, extname } from "node:path";
-import { mkdir, stat, rename } from "node:fs/promises";
+import { mkdir, stat, rename, unlink } from "node:fs/promises";
 import { expandPath, clarkTranscriptsDirPath } from "../library.ts";
 import { isImageFile, isPDFFile } from "../mcp/vault.ts";
 import { extractPDFText } from "../mcp/pdf.ts";
@@ -176,7 +176,7 @@ const INGEST_PROMPT_FALLBACK = `A file has been added to the user's library. The
 
 ## Instructions
 
-1. **Find related notes** — use \`search_notes\` and \`list_files\` to find documents related to this file's content and the current conversation context.
+1. **Find related notes** — use \`search_notes\` and \`list_files\` to find documents related to this file's content and the current conversation context. Search returns ranked file paths — use \`read_file\` on promising results to check relevance before editing.
 
 2. **Link to related notes** — if a relevant class page, topic note, or structure file exists, use \`edit_file\` to add a wikilink (\`[[{{destPath}}]]\`) in the appropriate section (e.g., under ## Homework, ## Slides, ## Resources). If it makes sense to imbed the resource, use \`![[{{destPath}}]]\`.
 
@@ -238,14 +238,19 @@ async function cleanupTranscript(
   fileName: string,
   provider: LLMProvider,
 ): Promise<string> {
+  // Vision OCR output already has frontmatter and clean structure — skip cleanup
+  // entirely so the LLM doesn't strip frontmatter or reformat good content.
+  if (rawText.startsWith("---\n")) {
+    return rawText;
+  }
+
   // Only clean up if the text looks garbled (has excessive whitespace/tabs)
   const tabRatio = (rawText.match(/\t/g)?.length ?? 0) / rawText.length;
   const multiSpaceRatio =
     (rawText.match(/ {3,}/g)?.length ?? 0) / rawText.split("\n").length;
   const needsCleanup = tabRatio > 0.01 || multiSpaceRatio > 0.3;
 
-  if (!needsCleanup && rawText.startsWith("---\n")) {
-    // Already clean markdown (e.g. from vision OCR) — skip
+  if (!needsCleanup) {
     return rawText;
   }
 
@@ -393,6 +398,17 @@ export async function runIngestionPipeline(
   const finalTranscriptRelPath = `Clark/Transcripts/${finalBaseName}.md`;
   const finalTranscriptAbsPath = join(opts.workspaceDir, finalTranscriptRelPath);
   await Bun.write(finalTranscriptAbsPath, fileContent);
+
+  // Clean up any stale transcript from a prior run that used the original name
+  if (finalBaseName !== baseName) {
+    const staleTranscriptPath = join(opts.workspaceDir, `Clark/Transcripts/${baseName}.md`);
+    try {
+      await unlink(staleTranscriptPath);
+      console.log(`[ingest] Removed stale transcript Clark/Transcripts/${baseName}.md`);
+    } catch {
+      // File didn't exist — nothing to clean up
+    }
+  }
 
   // --- Step 5: Agentic linking ---
   opts.onProgress("linking", "Finding related notes...");

@@ -13,7 +13,7 @@ A file has been added to the user's library. The file has already been copied an
 
 ## Instructions
 
-1. **Find related notes** — use `search_notes` and `list_files` to find documents related to this file's content and the current conversation context.
+1. **Find related notes** — use `search_notes` and `list_files` to find documents related to this file's content and the current conversation context. Search returns ranked file paths — use `read_file` on promising results to check relevance before editing.
 
 2. **Link to related notes** — if a relevant class page, topic note, or structure file exists, use `edit_file` to add a wikilink (`[[{{destPath}}]]`) in the appropriate section (e.g., under ## Homework, ## Slides, ## Resources). If it makes sense to imbed the resource, use `![[{{destPath}}]]`.
 

@@ -123,6 +123,50 @@ describe("sidecar API contracts", () => {
     expect(Array.isArray(history.messages)).toBe(true);
   });
 
+  test("GET /api/file-content reads a file", async () => {
+    const testPath = join(workspaceDir, "test-read.md");
+    await Bun.write(testPath, "# Hello World");
+
+    const res = await callRoute("/api/file-content?path=test-read.md");
+    expect(res.status).toBe(200);
+    const data = await res.json() as { path: string; content: string };
+    expect(data.path).toBe("test-read.md");
+    expect(data.content).toBe("# Hello World");
+  });
+
+  test("POST /api/file-content writes a file", async () => {
+    const res = await callRoute("/api/file-content", "POST", {
+      path: "test-write.md",
+      content: "# Written",
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json() as { ok: boolean; path: string };
+    expect(data.ok).toBe(true);
+
+    const written = await Bun.file(join(workspaceDir, "test-write.md")).text();
+    expect(written).toBe("# Written");
+  });
+
+  test("GET /api/file-content rejects path traversal", async () => {
+    const res = await callRoute("/api/file-content?path=../etc/passwd");
+    expect(res.status).toBe(400);
+    const data = await res.json() as { error: string };
+    expect(data.error).toBe("Invalid path");
+  });
+
+  test("POST /api/file-content rejects path traversal", async () => {
+    const res = await callRoute("/api/file-content", "POST", {
+      path: "../evil.md",
+      content: "bad",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("GET /api/file-content returns 404 for missing file", async () => {
+    const res = await callRoute("/api/file-content?path=nonexistent.md");
+    expect(res.status).toBe(404);
+  });
+
   test("stream emits assistant_message and turn_complete for a valid chat turn", async () => {
     const switchRes = await callRoute("/api/provider", "POST", { provider: "mock", model: "test" });
     expect(switchRes.status).toBe(200);

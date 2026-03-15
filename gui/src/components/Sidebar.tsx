@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from "react";
 interface SidebarProps {
   open: boolean;
   invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
+  onFileSelect?: (path: string) => void;
 }
 
 interface FileEntry {
@@ -78,7 +79,7 @@ function TreeNodeRow({
   );
 }
 
-export function Sidebar({ open, invoke }: SidebarProps) {
+export function Sidebar({ open, invoke, onFileSelect }: SidebarProps) {
   const [nodes, setNodes] = useState<TreeNode[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
@@ -167,7 +168,24 @@ export function Sidebar({ open, invoke }: SidebarProps) {
             node={node}
             depth={0}
             selectedPath={selectedPath}
-            onSelect={setSelectedPath}
+            onSelect={(path) => {
+              setSelectedPath(path);
+              // Find the node to check if it's a file
+              const findNode = (nodes: TreeNode[], p: string): TreeNode | undefined => {
+                for (const n of nodes) {
+                  if (n.path === p) return n;
+                  if (n.children) {
+                    const found = findNode(n.children, p);
+                    if (found) return found;
+                  }
+                }
+                return undefined;
+              };
+              const target = findNode(nodes, path);
+              if (target && target.type === "file" && onFileSelect) {
+                onFileSelect(path);
+              }
+            }}
             onToggle={handleToggle}
           />
         ))}

@@ -268,7 +268,6 @@ describe("MCP Tools", () => {
       const tool = findTool("search_notes");
       const result = await tool.handler({ query: "reinforcement" });
       const text = (result.content[0] as { type: "text"; text: string }).text;
-      expect(text).toContain("<file_content path=");
       expect(text).toContain("RLHF.md");
     });
 
@@ -286,12 +285,14 @@ describe("MCP Tools", () => {
       expect(text).toContain("RLHF.md");
     });
 
-    test("search results are wrapped with file delimiters", async () => {
+    test("search results are ranked file paths without snippets", async () => {
       const tool = findTool("search_notes");
       const result = await tool.handler({ query: "reinforcement" });
       const text = (result.content[0] as { type: "text"; text: string }).text;
-      expect(text).toContain("<file_content path=");
-      expect(text).toContain("</file_content>");
+      // Numbered list format
+      expect(text).toMatch(/^1\. /m);
+      // No snippet wrappers
+      expect(text).not.toContain("<file_content");
     });
   });
 

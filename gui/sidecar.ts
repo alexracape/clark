@@ -441,7 +441,7 @@ function runIngestionInBackground(fileName: string, destPath: string): void {
     );
 
     // Show subtle system message in chat
-    broadcast({ type: "system_message", text: `Imported ${finalName} → ${finalDest}` });
+    broadcast({ type: "system_message", text: `Imported ${finalName} → ${finalDest}\n${result.summary}` });
 
     // Broadcast completion
     broadcast({ type: "ingest_complete", fileName, summary: result.summary });
@@ -449,6 +449,45 @@ function runIngestionInBackground(fileName: string, destPath: string): void {
     const msg = err instanceof Error ? err.message : String(err);
     broadcast({ type: "ingest_error", fileName, error: msg });
   });
+}
+
+/** GET /api/file-content — Read raw file text */
+async function handleFileContent(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const filePath = url.searchParams.get("path") ?? "";
+
+  if (!filePath || filePath.includes("..")) {
+    return jsonResponse({ error: "Invalid path" }, 400);
+  }
+
+  const absolutePath = join(workspaceDir, filePath);
+  try {
+    const content = await Bun.file(absolutePath).text();
+    return jsonResponse({ path: filePath, content });
+  } catch {
+    return jsonResponse({ error: "File not found" }, 404);
+  }
+}
+
+/** POST /api/file-content — Write file content */
+async function handleWriteFileContent(req: Request): Promise<Response> {
+  const body = await req.json() as { path: string; content: string };
+
+  if (!body.path || body.path.includes("..")) {
+    return jsonResponse({ error: "Invalid path" }, 400);
+  }
+  if (typeof body.content !== "string") {
+    return jsonResponse({ error: "Missing 'content' field" }, 400);
+  }
+
+  const absolutePath = join(workspaceDir, body.path);
+  try {
+    await Bun.write(absolutePath, body.content);
+    return jsonResponse({ ok: true, path: body.path });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return jsonResponse({ error: msg }, 500);
+  }
 }
 
 /** GET /api/status — Current provider/model info */
@@ -857,6 +896,12 @@ export async function createSidecarServer(): Promise<{
       }
       if (url.pathname === "/api/provider" && req.method === "POST") {
         return await handleProviderSwitch(req);
+      }
+      if (url.pathname === "/api/file-content" && req.method === "GET") {
+        return await handleFileContent(req);
+      }
+      if (url.pathname === "/api/file-content" && req.method === "POST") {
+        return await handleWriteFileContent(req);
       }
       if (url.pathname === "/api/status" && req.method === "GET") {
         return handleStatus();

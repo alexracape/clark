@@ -72,6 +72,12 @@ export interface IngestionStatus {
   message: string;
 }
 
+export interface EditorFile {
+  path: string;
+  content: string;
+  dirty: boolean;
+}
+
 export interface AppState {
   chatItems: ChatItem[];
   streamingText: string | null;
@@ -89,6 +95,7 @@ export interface AppState {
   onboarding: OnboardingState | null;
   tutorial: TutorialState | null;
   activeIngestions: Record<string, IngestionStatus>;
+  editorFile: EditorFile | null;
 }
 
 export type ControllerEffect = {
@@ -131,6 +138,7 @@ export function createInitialAppState(): AppState {
     onboarding: null,
     tutorial: null,
     activeIngestions: {},
+    editorFile: null,
   };
 }
 
@@ -286,6 +294,11 @@ export function planSendInput(state: AppState, text: string): ControllerPlan {
     };
   }
 
+  const textWithContext =
+    state.editorFile
+      ? `${trimmed}\n\n---\nOpen file: ${state.editorFile.path}\n\`\`\`markdown\n${state.editorFile.content}\n\`\`\``
+      : trimmed;
+
   const withUserMessage = appendMessage(state, "user", trimmed);
   return {
     state: {
@@ -296,7 +309,7 @@ export function planSendInput(state: AppState, text: string): ControllerPlan {
       currentTool: null,
       pendingToolCalls: [],
     },
-    effects: [{ type: "invoke", command: "send_message", args: { text: trimmed } }],
+    effects: [{ type: "invoke", command: "send_message", args: { text: textWithContext } }],
   };
 }
 
@@ -443,6 +456,26 @@ function applyIngestError(state: AppState, event: IngestErrorEvent): AppState {
 export function dismissIngestion(state: AppState, fileName: string): AppState {
   const { [fileName]: _, ...rest } = state.activeIngestions;
   return { ...state, activeIngestions: rest };
+}
+
+// --- Editor file pure functions ---
+
+export function openEditorFile(state: AppState, path: string, content: string): AppState {
+  return { ...state, editorFile: { path, content, dirty: false } };
+}
+
+export function closeEditorFile(state: AppState): AppState {
+  return { ...state, editorFile: null };
+}
+
+export function markEditorDirty(state: AppState, dirty: boolean): AppState {
+  if (!state.editorFile) return state;
+  return { ...state, editorFile: { ...state.editorFile, dirty } };
+}
+
+export function updateEditorContent(state: AppState, content: string): AppState {
+  if (!state.editorFile) return state;
+  return { ...state, editorFile: { ...state.editorFile, content, dirty: false } };
 }
 
 // --- Onboarding pure functions ---

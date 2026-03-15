@@ -231,7 +231,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
     {
       name: "search_notes",
       description:
-        "Search across markdown and text files in the notes vault. Uses semantic search when embeddings are configured, otherwise falls back to keyword matching. Returns matching file paths and text snippets.",
+        "Search for the most related files in the notes vault. Uses semantic search when embeddings are configured, otherwise falls back to keyword matching. Returns a ranked list of the top 10 most related files. If multiple chunks from the same file match, that file is ranked higher. Use read_file to get the full content of any result.",
       inputSchema: {
         type: "object",
         properties: {
@@ -270,17 +270,36 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           try {
             const [queryVec] = await embeddingProvider.embed([query]);
             if (queryVec && queryVec.length > 0) {
-              const results = searchIndex.searchSimilar(queryVec, embeddingProvider.modelId, 5);
+              const results = searchIndex.searchSimilar(queryVec, embeddingProvider.modelId, 30);
 
               if (results.length > 0) {
-                const text = results
-                  .map((r) => {
-                    const preview = r.chunkContent.length > 150
-                      ? r.chunkContent.slice(0, 150).trimEnd() + "…"
-                      : r.chunkContent;
-                    return `### ${r.path} (score: ${r.score.toFixed(3)})\n${preview}`;
-                  })
-                  .join("\n\n---\n\n");
+                // Aggregate by file path
+                const fileMap = new Map<string, { maxScore: number; count: number }>();
+                for (const r of results) {
+                  const existing = fileMap.get(r.path);
+                  if (existing) {
+                    existing.maxScore = Math.max(existing.maxScore, r.score);
+                    existing.count += 1;
+                  } else {
+                    fileMap.set(r.path, { maxScore: r.score, count: 1 });
+                  }
+                }
+
+                // Compute aggregated score and sort
+                const fileResults = Array.from(fileMap.entries())
+                  .map(([path, { maxScore, count }]) => ({
+                    path,
+                    score: maxScore + 0.05 * (count - 1),
+                    count,
+                  }))
+                  .sort((a, b) => b.score - a.score)
+                  .slice(0, 10);
+
+                const text = fileResults
+                  .map((r, i) =>
+                    `${i + 1}. ${r.path} (score: ${r.score.toFixed(3)}, ${r.count} chunk${r.count > 1 ? "s" : ""})`,
+                  )
+                  .join("\n");
 
                 return { content: [{ type: "text", text }], isError: false };
               }
@@ -305,10 +324,10 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           .sort((a, b) => b.matchCount - a.matchCount)
           .slice(0, 10)
           .map(
-            (r) =>
-              `### ${r.path} (${r.matchCount} matches)\n${wrapFileContent(r.path, r.snippets.join("\n...\n"))}`,
+            (r, i) =>
+              `${i + 1}. ${r.path} (${r.matchCount} matches)`,
           )
-          .join("\n\n---\n\n");
+          .join("\n");
 
         return { content: [{ type: "text", text }], isError: false };
       },

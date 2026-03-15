@@ -6,6 +6,10 @@ GUI
 - Context visualization missing tool definitions
 - Latex rendering
 - Minimal markdown editor
+- Editor
+  - Toasts are not formatted well for messaging in document
+  - Workspace line should align with file header
+- Get rid of bottom bar and move settings gear
 
 General
 - Add explore tool to start conversations and optimize token usage
@@ -15,6 +19,8 @@ General
 - Add lines to the pdf pages optionally
 - Fix windows tests (3)
 - Transition architecture to Rust
+- Inject open editor into user prompt if open
+- Graph view in bottom left of explorer
 
 Polish
 - Thinking indicator
