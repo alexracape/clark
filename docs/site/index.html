@@ -303,87 +303,296 @@
                 font-weight: 500;
             }
 
-            /* ===== TERMINAL ===== */
-            .tui {
-                background: var(--leather);
+            /* ===== GUI MOCKUP ===== */
+            .gui-window {
+                background: var(--parchment);
                 border-radius: 12px;
                 overflow: hidden;
                 font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
                 font-size: 13px;
-                line-height: 1.7;
+                line-height: 1.6;
                 box-shadow:
                     0 16px 48px rgba(28, 20, 8, 0.18),
-                    0 0 0 1px rgba(61, 122, 95, 0.1);
+                    0 0 0 1px rgba(214, 203, 175, 0.6);
+                border: 1px solid #e5ddd0;
             }
 
-            .tui-chrome {
-                background: var(--chrome);
-                padding: 12px 16px;
+            .gui-titlebar {
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                justify-content: space-between;
+                height: 38px;
+                padding: 0 16px;
+                background: var(--parchment);
+                border-bottom: 1px solid #e5ddd0;
+                font-size: 12px;
+                font-weight: 500;
+                user-select: none;
             }
 
-            .tui-dot {
+            .gui-titlebar__left {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .gui-dots {
+                display: flex;
+                gap: 6px;
+            }
+
+            .gui-dot {
                 width: 11px;
                 height: 11px;
                 border-radius: 50%;
             }
-            .tui-dot:nth-child(1) {
-                background: #c47a5a;
+            .gui-dot--red { background: #c47a5a; }
+            .gui-dot--yellow { background: #c4a85a; }
+            .gui-dot--green { background: #5aa47a; }
+
+            .gui-titlebar__model {
+                color: var(--walnut);
+                font-family: "IBM Plex Mono", monospace;
+                font-size: 12px;
             }
-            .tui-dot:nth-child(2) {
-                background: #c4a85a;
+            .gui-titlebar__model-provider {
+                font-weight: 500;
             }
-            .tui-dot:nth-child(3) {
-                background: #5aa47a;
+            .gui-titlebar__model-sep {
+                color: var(--patina);
+                opacity: 0.5;
+                margin: 0 2px;
+            }
+            .gui-titlebar__model-name {
+                opacity: 0.7;
             }
 
-            .tui-body {
-                padding: 0 24px 24px;
-                color: var(--text-base);
-            }
-            .tui-status {
+            .gui-titlebar__right {
                 display: flex;
+                align-items: center;
+                gap: 6px;
+                color: var(--walnut);
+                font-size: 12px;
+            }
+
+            .gui-titlebar__canvas-dot {
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                background: var(--sage);
+            }
+
+            .gui-app {
+                display: flex;
+                height: 380px;
+            }
+
+            @media (max-width: 768px) {
+                .gui-app {
+                    height: 320px;
+                }
+            }
+
+            /* GUI Sidebar */
+            .gui-sidebar {
+                width: 200px;
+                background: #ede7d9;
+                border-right: 1px solid #e5ddd0;
+                display: flex;
+                flex-direction: column;
+                flex-shrink: 0;
+                overflow: hidden;
+            }
+
+            @media (max-width: 768px) {
+                .gui-sidebar {
+                    display: none;
+                }
+            }
+
+            .gui-sidebar__header {
+                padding: 10px 14px;
+                font-size: 11px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                color: var(--walnut);
+                border-bottom: 1px solid #e5ddd0;
+            }
+
+            .gui-sidebar__tree {
+                flex: 1;
+                overflow-y: auto;
+                padding: 6px 0;
+            }
+
+            .gui-sidebar__node {
+                display: flex;
+                align-items: center;
+                padding: 3px 0 3px 12px;
+                font-size: 12px;
+                color: var(--walnut);
+                cursor: default;
+            }
+
+            .gui-sidebar__node--active {
+                border-left: 3px solid var(--lamp-green);
+                background: rgba(61, 122, 95, 0.06);
+                padding-left: 9px;
+            }
+
+            .gui-sidebar__chevron {
+                width: 14px;
+                flex-shrink: 0;
+                color: var(--patina);
+                font-size: 9px;
+            }
+
+            .gui-sidebar__name {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .gui-sidebar__ext {
+                color: var(--patina);
+                opacity: 0.6;
+                font-size: 10px;
+                margin-left: auto;
+                margin-right: 8px;
+            }
+
+            .gui-sidebar__indent-1 { padding-left: 26px; }
+            .gui-sidebar__indent-1.gui-sidebar__node--active { padding-left: 23px; }
+            .gui-sidebar__indent-2 { padding-left: 40px; }
+            .gui-sidebar__indent-2.gui-sidebar__node--active { padding-left: 37px; }
+
+            /* GUI Chat */
+            .gui-chat {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                min-width: 0;
+                background: var(--parchment);
+            }
+
+            .gui-messages {
+                flex: 1;
+                overflow-y: auto;
+                padding: 20px 24px;
+            }
+
+            .gui-msg {
+                margin-bottom: 14px;
+                font-size: 13px;
+                line-height: 1.6;
+                color: var(--walnut);
+            }
+
+            .gui-msg--user {
+                border-left: 3px solid var(--lamp-green);
+                padding: 10px 14px;
+                border-bottom: 1px solid #e5ddd0;
+                margin-bottom: 20px;
+            }
+
+            .gui-msg--assistant {
+                padding: 4px 0;
+            }
+
+            .gui-msg__content p {
+                margin: 4px 0;
+            }
+
+            .gui-msg__content strong {
+                color: #2c2417;
+            }
+
+            /* Tool card in GUI mockup */
+            .gui-tool-card {
+                margin: 8px 0;
+                border: 1px solid #e5ddd0;
+                border-radius: 8px;
+                overflow: hidden;
+                background: #faf8f3;
+            }
+
+            .gui-tool-card__header {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 7px 10px;
+                background: #f5f0e6;
+                font-size: 12px;
+                font-weight: 500;
+                color: var(--walnut);
+            }
+
+            .gui-tool-card__icon {
+                color: var(--lamp-green);
+                font-size: 13px;
+            }
+
+            .gui-tool-card__summary {
+                color: var(--patina);
+                font-weight: 400;
+                font-size: 11px;
+                margin-left: auto;
+            }
+
+            /* GUI Composer */
+            .gui-composer {
+                padding: 10px 16px 14px;
+                background: var(--parchment);
+            }
+
+            .gui-composer__inner {
+                position: relative;
+            }
+
+            .gui-composer__input {
+                width: 100%;
+                padding: 10px 40px 10px 14px;
+                border: 1px solid #e5ddd0;
+                border-radius: 10px;
+                background: #ffffff;
+                color: var(--patina);
+                font-family: "IBM Plex Mono", monospace;
+                font-size: 13px;
+                line-height: 1.5;
+                outline: none;
+            }
+
+            .gui-composer__send {
+                position: absolute;
+                right: 6px;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 28px;
+                height: 28px;
+                border: none;
+                border-radius: 7px;
+                background: var(--lamp-green);
+                color: var(--parchment);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 14px;
+                cursor: default;
+            }
+
+            /* GUI Bottom bar */
+            .gui-bottombar {
+                display: flex;
+                align-items: center;
                 justify-content: space-between;
-                padding: 8px 0;
-                flex-wrap: wrap;
-                gap: 8px;
-            }
-            .tui-divider {
-                color: var(--divider);
-                opacity: 0.25;
-                margin: 6px 0;
+                height: 26px;
+                padding: 0 14px;
+                background: var(--parchment);
+                border-top: 1px solid #e5ddd0;
+                font-size: 11px;
+                color: var(--patina);
                 user-select: none;
-            }
-
-            .t-green {
-                color: var(--text-green);
-            }
-            .t-blue {
-                color: var(--text-blue);
-            }
-            .t-gold {
-                color: var(--brass);
-            }
-            .t-dim {
-                color: var(--text-dim);
-            }
-            .t-white {
-                color: var(--text-white);
-            }
-            .t-cyan {
-                color: var(--text-cyan);
-            }
-
-            .tui-cursor {
-                display: inline-block;
-                width: 8px;
-                height: 15px;
-                background: var(--text-white);
-                vertical-align: text-bottom;
-                margin-left: 1px;
-                animation: blink 1s step-end infinite;
             }
 
             @keyframes blink {
@@ -393,32 +602,6 @@
                 }
                 50% {
                     opacity: 0;
-                }
-            }
-
-            .thinking-indicator {
-                display: none;
-                padding: 4px 0;
-            }
-            .thinking-dots::after {
-                content: "";
-                animation: dots 1.5s steps(4, end) infinite;
-            }
-            @keyframes dots {
-                0% {
-                    content: "";
-                }
-                25% {
-                    content: ".";
-                }
-                50% {
-                    content: "..";
-                }
-                75% {
-                    content: "...";
-                }
-                100% {
-                    content: "";
                 }
             }
 
@@ -503,130 +686,7 @@
                 line-height: 1.7;
             }
 
-            /* Terminal full width */
-            .showcase-terminal {
-                width: 100%;
-            }
-
-            /* Connector arrows */
-            .showcase-arrows {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 32px;
-                padding: 0;
-                margin: 0;
-            }
-
-            .showcase-arrow {
-                display: flex;
-                justify-content: center;
-                padding: 12px 0;
-            }
-
-            .showcase-arrow svg {
-                width: 28px;
-                height: 40px;
-                color: var(--patina);
-                opacity: 0.45;
-            }
-
-            /* Two-column: filesystem left, iPad right */
-            .showcase-panels {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 32px;
-                align-items: start;
-            }
-
-            /* ===== FILESYSTEM TREE ===== */
-            .filetree {
-                background: var(--leather);
-                border-radius: 12px;
-                overflow: hidden;
-                font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
-                font-size: 13px;
-                line-height: 1.8;
-                box-shadow:
-                    0 12px 36px rgba(28, 20, 8, 0.15),
-                    0 0 0 1px rgba(61, 122, 95, 0.1);
-            }
-
-            .filetree-header {
-                background: var(--chrome);
-                padding: 10px 16px;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                font-family: "DM Mono", monospace;
-                font-size: 11px;
-                letter-spacing: 0.06em;
-                text-transform: uppercase;
-                color: var(--text-dim);
-            }
-
-            .filetree-body {
-                padding: 12px 0 16px;
-                color: var(--text-base);
-            }
-
-            .ft-row {
-                padding: 1px 20px;
-                display: flex;
-                align-items: center;
-                gap: 6px;
-                cursor: default;
-            }
-
-            .ft-row:hover {
-                background: rgba(61, 122, 95, 0.06);
-            }
-
-            .ft-row.ft-active {
-                background: rgba(61, 122, 95, 0.12);
-            }
-
-            .ft-row.ft-active .ft-name {
-                color: var(--text-white);
-                font-weight: 500;
-            }
-
-            .ft-icon {
-                width: 14px;
-                flex-shrink: 0;
-                text-align: center;
-                font-size: 11px;
-            }
-
-            .ft-icon-folder {
-                color: var(--brass);
-            }
-            .ft-icon-file {
-                color: var(--text-dim);
-            }
-            .ft-icon-md {
-                color: var(--lamp-green);
-            }
-            .ft-icon-pdf {
-                color: #c47a5a;
-            }
-
-            .ft-name {
-                color: var(--text-base);
-            }
-
-            .ft-indent-1 {
-                padding-left: 36px;
-            }
-            .ft-indent-2 {
-                padding-left: 52px;
-            }
-
-            .ft-badge {
-                font-size: 10px;
-                color: var(--lamp-green);
-                margin-left: auto;
-                opacity: 0.7;
-            }
+            /* (showcase layout helpers removed — GUI mockup is self-contained) */
 
             /* ===== iPad MOCKUP ===== */
             .ipad-panel {
@@ -765,12 +825,6 @@
             }
 
             @media (max-width: 768px) {
-                .showcase-panels {
-                    grid-template-columns: 1fr;
-                }
-                .ipad-panel {
-                    justify-content: center;
-                }
                 .ipad-mockup {
                     max-width: 320px;
                 }
@@ -842,12 +896,6 @@
                 .showcase-section h2,
                 .features-section h2 {
                     font-size: 28px;
-                }
-                .tui {
-                    font-size: 11px;
-                }
-                .tui-body {
-                    padding: 0 16px 16px;
                 }
                 .footer-inner {
                     flex-direction: column;
@@ -961,7 +1009,7 @@
             </div>
         </section>
 
-        <!-- ===== SHOWCASE: Terminal + Filesystem + iPad ===== -->
+        <!-- ===== SHOWCASE: GUI App ===== -->
         <section class="showcase-section">
             <div class="container">
                 <div class="section-label">See it in action</div>
@@ -972,273 +1020,206 @@
                     the conversation.
                 </p>
 
-                <!-- Terminal: full width -->
-                <div class="showcase-terminal">
-                    <div class="tui" id="demo-terminal">
-                        <div class="tui-chrome">
-                            <div class="tui-dot"></div>
-                            <div class="tui-dot"></div>
-                            <div class="tui-dot"></div>
+                <!-- GUI App Mockup -->
+                <div class="gui-window">
+                    <!-- Titlebar -->
+                    <div class="gui-titlebar">
+                        <div class="gui-titlebar__left">
+                            <div class="gui-dots">
+                                <div class="gui-dot gui-dot--red"></div>
+                                <div class="gui-dot gui-dot--yellow"></div>
+                                <div class="gui-dot gui-dot--green"></div>
+                            </div>
+                            <div class="gui-titlebar__model">
+                                <span class="gui-titlebar__model-provider">anthropic</span>
+                                <span class="gui-titlebar__model-sep">/</span>
+                                <span class="gui-titlebar__model-name">claude-sonnet</span>
+                            </div>
                         </div>
-                        <div class="tui-body">
-                            <div class="tui-status">
-                                <span
-                                    ><span
-                                        class="t-blue"
-                                        style="font-weight: 500"
-                                        >anthropic</span
-                                    ><span class="t-dim"
-                                        >/claude-sonnet-4-5</span
-                                    ></span
-                                >
-                                <span
-                                    ><span class="t-green" style="opacity: 0.7"
-                                        >[canvas: notes connected]</span
-                                    ></span
-                                >
-                                <span></span>
-                            </div>
-                            <div class="tui-divider">
-                                ────────────────────────────────────────────────────────────
-                            </div>
+                        <div class="gui-titlebar__right">
+                            <div class="gui-titlebar__canvas-dot"></div>
+                            <span>Canvas: notes</span>
+                        </div>
+                    </div>
 
-                            <!-- User message (typed) -->
-                            <div style="padding: 6px 0" id="user-line">
-                                <span class="t-green" style="font-weight: 500"
-                                    >you</span
-                                >
-                                <span
-                                    class="t-white"
-                                    style="margin-left: 6px"
-                                    id="user-typed"
-                                ></span>
-                                <span
-                                    class="tui-cursor"
-                                    id="user-cursor"
-                                ></span>
-                            </div>
-
-                            <!-- Thinking indicator -->
-                            <div class="thinking-indicator" id="thinking">
-                                <span class="t-dim" style="font-style: italic"
-                                    >thinking<span class="thinking-dots"></span
-                                ></span>
-                            </div>
-
-                            <!-- Clark response (revealed progressively) -->
-                            <div id="clark-response" style="display: none">
-                                <div style="padding: 4px 0">
-                                    <span
-                                        class="t-blue"
-                                        style="font-weight: 500"
-                                        >clark</span
-                                    >
-                                    <span
-                                        class="t-white"
-                                        style="margin-left: 4px"
-                                        id="clark-line1"
-                                    ></span>
+                    <!-- App body: sidebar + chat -->
+                    <div class="gui-app">
+                        <!-- Sidebar -->
+                        <div class="gui-sidebar">
+                            <div class="gui-sidebar__header">Workspace</div>
+                            <div class="gui-sidebar__tree">
+                                <div class="gui-sidebar__node">
+                                    <span class="gui-sidebar__chevron">&#9662;</span>
+                                    <span class="gui-sidebar__name" style="font-weight:500">Notes/</span>
                                 </div>
-                                <div style="padding: 0 0 0 52px">
-                                    <span
-                                        class="t-white"
-                                        id="clark-line2"
-                                    ></span>
+                                <div class="gui-sidebar__node gui-sidebar__indent-1 gui-sidebar__node--active">
+                                    <span class="gui-sidebar__chevron" style="visibility:hidden">&#9656;</span>
+                                    <span class="gui-sidebar__name">linked-lists.md</span>
                                 </div>
-                                <div style="padding: 4px 0 0 52px">
-                                    <span class="t-dim" id="clark-line3"></span>
+                                <div class="gui-sidebar__node gui-sidebar__indent-1">
+                                    <span class="gui-sidebar__chevron" style="visibility:hidden">&#9656;</span>
+                                    <span class="gui-sidebar__name">recursion.md</span>
+                                </div>
+                                <div class="gui-sidebar__node gui-sidebar__indent-1">
+                                    <span class="gui-sidebar__chevron" style="visibility:hidden">&#9656;</span>
+                                    <span class="gui-sidebar__name">big-o-notation.md</span>
+                                </div>
+                                <div class="gui-sidebar__node">
+                                    <span class="gui-sidebar__chevron">&#9662;</span>
+                                    <span class="gui-sidebar__name" style="font-weight:500">Resources/</span>
+                                </div>
+                                <div class="gui-sidebar__node gui-sidebar__indent-1">
+                                    <span class="gui-sidebar__chevron">&#9656;</span>
+                                    <span class="gui-sidebar__name">Images/</span>
+                                </div>
+                                <div class="gui-sidebar__node gui-sidebar__indent-1">
+                                    <span class="gui-sidebar__chevron">&#9656;</span>
+                                    <span class="gui-sidebar__name">PDFs/</span>
+                                </div>
+                                <div class="gui-sidebar__node">
+                                    <span class="gui-sidebar__chevron">&#9656;</span>
+                                    <span class="gui-sidebar__name" style="font-weight:500">Templates/</span>
+                                </div>
+                                <div class="gui-sidebar__node">
+                                    <span class="gui-sidebar__chevron">&#9656;</span>
+                                    <span class="gui-sidebar__name" style="color:var(--brass)">Clark/</span>
                                 </div>
                             </div>
+                        </div>
 
-                            <div
-                                class="tui-divider"
-                                id="bottom-divider"
-                                style="display: none"
-                            >
-                                ────────────────────────────────────────────────────────────
+                        <!-- Chat area -->
+                        <div class="gui-chat">
+                            <div class="gui-messages">
+                                <!-- User message -->
+                                <div class="gui-msg gui-msg--user">
+                                    Can you check my linked list notes on the canvas?
+                                </div>
+
+                                <!-- Tool card -->
+                                <div class="gui-tool-card">
+                                    <div class="gui-tool-card__header">
+                                        <span class="gui-tool-card__icon">&#9724;</span>
+                                        <span>read_canvas</span>
+                                        <span class="gui-tool-card__summary">captured notes</span>
+                                    </div>
+                                </div>
+                                <div class="gui-tool-card">
+                                    <div class="gui-tool-card__header">
+                                        <span class="gui-tool-card__icon">&#9724;</span>
+                                        <span>read_file</span>
+                                        <span class="gui-tool-card__summary">linked-lists.md &mdash; 42 lines</span>
+                                    </div>
+                                </div>
+
+                                <!-- Assistant response -->
+                                <div class="gui-msg gui-msg--assistant">
+                                    <div class="gui-msg__content">
+                                        <p>I see your diagram and your notes from <strong>linked-lists.md</strong>.</p>
+                                        <p>Your nodes look right! Each one stores data and a pointer to the next. But the last node in your diagram needs something.</p>
+                                        <p>What value means "there's nothing after me"?</p>
+                                    </div>
+                                </div>
                             </div>
-                            <div
-                                id="input-row"
-                                style="display: none; padding: 8px 0 0"
-                            >
-                                <span class="t-green" style="font-weight: 500"
-                                    >&gt; </span
-                                ><span class="tui-cursor"></span>
+
+                            <!-- Composer -->
+                            <div class="gui-composer">
+                                <div class="gui-composer__inner">
+                                    <div class="gui-composer__input">Ask a question...</div>
+                                    <div class="gui-composer__send">
+                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                            <path d="M8 14V2M2 8l6-6 6 6"/>
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bottom bar -->
+                    <div class="gui-bottombar">
+                        <span></span>
+                        <span>context: 24%</span>
+                    </div>
+                </div>
+
+                <!-- iPad below -->
+                <div style="display:flex; justify-content:center; margin-top:40px;">
+                    <div class="ipad-mockup" style="max-width:480px">
+                        <div class="ipad-screen">
+                            <div class="ipad-toolbar">
+                                <div class="dot"></div>
+                                <span>notes</span>
+                                <span style="margin-left: auto; color: #aaa">connected</span>
+                            </div>
+                            <div class="ipad-canvas hw">
+                                <div class="hw-title">Linked Lists</div>
+                                <div class="hw-line">
+                                    Each node has
+                                    <span class="hw-emphasis">data</span> +
+                                    <span class="hw-emphasis">pointer</span>
+                                </div>
+                                <div class="hw-note">pointer = address of next node</div>
+                                <div class="hw-diagram">
+                                    <div class="hw-node-box">
+                                        <div class="hw-node-data">3</div>
+                                        <div class="hw-node-ptr">*</div>
+                                    </div>
+                                    <div class="hw-arrow-link">&rarr;</div>
+                                    <div class="hw-node-box">
+                                        <div class="hw-node-data">7</div>
+                                        <div class="hw-node-ptr">*</div>
+                                    </div>
+                                    <div class="hw-arrow-link">&rarr;</div>
+                                    <div class="hw-node-box">
+                                        <div class="hw-node-data">12</div>
+                                        <div class="hw-node-ptr">*</div>
+                                    </div>
+                                    <div class="hw-arrow-link">&rarr;</div>
+                                    <span style="color:#c47a5a;font-size:17px;font-weight:600">???</span>
+                                </div>
+                                <div class="hw-question">where does the last node point?</div>
+                                <div class="hw-note" style="margin-top: 4px">ask clark ^</div>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
+        </section>
 
-                <!-- Connector arrows -->
-                <div class="showcase-arrows">
-                    <div class="showcase-arrow">
-                        <svg
-                            viewBox="0 0 28 40"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                            stroke-linecap="round"
-                        >
-                            <path d="M14 38 L14 6" />
-                            <path d="M7 13 L14 6 L21 13" />
-                        </svg>
+        <!-- ===== DOCUMENT PROCESSING ===== -->
+        <section class="features-section">
+            <div class="container">
+                <div class="section-label">All your materials</div>
+                <h2>Drop it in, Clark handles the rest</h2>
+                <p class="section-sub">
+                    Lecture slides, textbook PDFs, photos of handwritten notes
+                    &mdash; drop any file into Clark and it reads, organizes, and
+                    makes it part of your study session.
+                </p>
+                <div class="feature-grid">
+                    <div class="feature-item">
+                        <h3>Reads Anything</h3>
+                        <p>
+                            PDFs, images, scanned notes, even photos of a
+                            whiteboard. Clark reads the content and turns it into
+                            searchable, usable text.
+                        </p>
                     </div>
-                    <div class="showcase-arrow">
-                        <svg
-                            viewBox="0 0 28 40"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.5"
-                            stroke-linecap="round"
-                        >
-                            <path d="M14 38 L14 6" />
-                            <path d="M7 13 L14 6 L21 13" />
-                        </svg>
+                    <div class="feature-item">
+                        <h3>Organized by Class</h3>
+                        <p>
+                            Files are automatically sorted into your workspace
+                            alongside your existing notes. No manual filing
+                            required.
+                        </p>
                     </div>
-                </div>
-
-                <!-- Filesystem + iPad side by side -->
-                <div class="showcase-panels">
-                    <!-- Filesystem tree -->
-                    <div class="filetree">
-                        <div class="filetree-header">
-                            <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 16 16"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="1.5"
-                            >
-                                <path d="M2 4h12M2 8h12M2 12h8" />
-                            </svg>
-                            Explorer
-                        </div>
-                        <div class="filetree-body">
-                            <div class="ft-row">
-                                <span class="ft-icon ft-icon-folder"
-                                    >&#9662;</span
-                                >
-                                <span
-                                    class="ft-name"
-                                    style="
-                                        font-weight: 500;
-                                        color: var(--text-white);
-                                    "
-                                    >cs161/</span
-                                >
-                            </div>
-                            <div class="ft-row ft-indent-1">
-                                <span class="ft-icon ft-icon-folder"
-                                    >&#9662;</span
-                                >
-                                <span class="ft-name">notes/</span>
-                            </div>
-                            <div class="ft-row ft-indent-2 ft-active">
-                                <span class="ft-icon ft-icon-md">&#9724;</span>
-                                <span class="ft-name">linked-lists.md</span>
-                                <span class="ft-badge">in context</span>
-                            </div>
-                            <div class="ft-row ft-indent-2">
-                                <span class="ft-icon ft-icon-md">&#9724;</span>
-                                <span class="ft-name">recursion.md</span>
-                            </div>
-                            <div class="ft-row ft-indent-2">
-                                <span class="ft-icon ft-icon-md">&#9724;</span>
-                                <span class="ft-name">big-o-notation.md</span>
-                            </div>
-                            <div class="ft-row ft-indent-1">
-                                <span class="ft-icon ft-icon-folder"
-                                    >&#9656;</span
-                                >
-                                <span class="ft-name">problem-sets/</span>
-                            </div>
-                            <div class="ft-row ft-indent-1">
-                                <span class="ft-icon ft-icon-folder"
-                                    >&#9656;</span
-                                >
-                                <span class="ft-name">lectures/</span>
-                            </div>
-                            <div class="ft-row ft-indent-1">
-                                <span class="ft-icon ft-icon-file"
-                                    >&#9724;</span
-                                >
-                                <span
-                                    class="ft-name"
-                                    style="color: var(--brass)"
-                                    >CLARK.md</span
-                                >
-                                <span class="ft-badge">config</span>
-                            </div>
-                            <div class="ft-row">
-                                <span class="ft-icon ft-icon-folder"
-                                    >&#9656;</span
-                                >
-                                <span class="ft-name">math240/</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- iPad mockup (smaller, counter-clockwise Z rotation) -->
-                    <div class="ipad-panel">
-                        <div class="ipad-mockup">
-                            <div class="ipad-screen">
-                                <div class="ipad-toolbar">
-                                    <div class="dot"></div>
-                                    <span>notes</span>
-                                    <span style="margin-left: auto; color: #aaa"
-                                        >connected</span
-                                    >
-                                </div>
-                                <div class="ipad-canvas hw">
-                                    <div class="hw-title">Linked Lists</div>
-                                    <div class="hw-line">
-                                        Each node has
-                                        <span class="hw-emphasis">data</span> +
-                                        <span class="hw-emphasis">pointer</span>
-                                    </div>
-                                    <div class="hw-note">
-                                        pointer = address of next node
-                                    </div>
-
-                                    <div class="hw-diagram">
-                                        <div class="hw-node-box">
-                                            <div class="hw-node-data">3</div>
-                                            <div class="hw-node-ptr">*</div>
-                                        </div>
-                                        <div class="hw-arrow-link">&rarr;</div>
-                                        <div class="hw-node-box">
-                                            <div class="hw-node-data">7</div>
-                                            <div class="hw-node-ptr">*</div>
-                                        </div>
-                                        <div class="hw-arrow-link">&rarr;</div>
-                                        <div class="hw-node-box">
-                                            <div class="hw-node-data">12</div>
-                                            <div class="hw-node-ptr">*</div>
-                                        </div>
-                                        <div class="hw-arrow-link">&rarr;</div>
-                                        <span
-                                            style="
-                                                color: #c47a5a;
-                                                font-size: 17px;
-                                                font-weight: 600;
-                                            "
-                                            >???</span
-                                        >
-                                    </div>
-
-                                    <div class="hw-question">
-                                        where does the last node point?
-                                    </div>
-                                    <div
-                                        class="hw-note"
-                                        style="margin-top: 4px"
-                                    >
-                                        ask clark ^
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="feature-item">
+                        <h3>Always in Context</h3>
+                        <p>
+                            Once a document is processed, Clark can reference it
+                            in conversation. Ask about a lecture and your notes
+                            are already there.
+                        </p>
                     </div>
                 </div>
             </div>
@@ -1271,96 +1252,6 @@
                     setTimeout(() => btn.classList.remove("copied"), 2000);
                 });
             }
-
-            // ===== Typed terminal animation =====
-            const userMessage =
-                "can you check my linked list notes on the canvas?";
-            const clarkLine1 =
-                "I see your diagram and your notes from linked-lists.md.";
-            const clarkLine2 =
-                "Your nodes look right! But the last one needs something.";
-            const clarkLine3 = 'What value means "there\'s nothing after me"?';
-
-            let hasPlayed = false;
-
-            function typeText(element, text, speed, callback) {
-                let i = 0;
-                function type() {
-                    if (i < text.length) {
-                        element.textContent += text.charAt(i);
-                        i++;
-                        setTimeout(type, speed);
-                    } else if (callback) {
-                        callback();
-                    }
-                }
-                type();
-            }
-
-            function revealText(element, text, speed, callback) {
-                let i = 0;
-                function reveal() {
-                    if (i < text.length) {
-                        element.textContent = text.substring(0, i + 1);
-                        i++;
-                        setTimeout(reveal, speed);
-                    } else if (callback) {
-                        callback();
-                    }
-                }
-                reveal();
-            }
-
-            function runAnimation() {
-                if (hasPlayed) return;
-                hasPlayed = true;
-
-                const userTyped = document.getElementById("user-typed");
-                const userCursor = document.getElementById("user-cursor");
-                const thinking = document.getElementById("thinking");
-                const clarkResponse = document.getElementById("clark-response");
-                const cl1 = document.getElementById("clark-line1");
-                const cl2 = document.getElementById("clark-line2");
-                const cl3 = document.getElementById("clark-line3");
-                const bottomDivider = document.getElementById("bottom-divider");
-                const inputRow = document.getElementById("input-row");
-
-                typeText(userTyped, userMessage, 35, () => {
-                    userCursor.style.display = "none";
-                    setTimeout(() => {
-                        thinking.style.display = "block";
-                        setTimeout(() => {
-                            thinking.style.display = "none";
-                            clarkResponse.style.display = "block";
-                            revealText(cl1, clarkLine1, 18, () => {
-                                revealText(cl2, clarkLine2, 18, () => {
-                                    revealText(cl3, clarkLine3, 18, () => {
-                                        bottomDivider.style.display = "block";
-                                        inputRow.style.display = "block";
-                                    });
-                                });
-                            });
-                        }, 1500);
-                    }, 300);
-                });
-            }
-
-            const terminal = document.getElementById("demo-terminal");
-            const observer = new IntersectionObserver(
-                (entries) => {
-                    entries.forEach((entry) => {
-                        if (
-                            entry.isIntersecting &&
-                            entry.intersectionRatio > 0.3
-                        ) {
-                            runAnimation();
-                            observer.disconnect();
-                        }
-                    });
-                },
-                { threshold: 0.3 },
-            );
-            observer.observe(terminal);
         </script>
 
         <script>
