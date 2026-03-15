@@ -97,6 +97,7 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
           "  /export [path]     Export canvas as A4 PDF",
           "  /model             Switch model and provider",
           "  /context           Show context window usage",
+          "  /settings          Open settings panel",
           "  /compact           Summarize conversation to save context",
           "  /feedback <msg>    Send feedback on what we can improve",
           "  /clear             Clear conversation history",
@@ -161,6 +162,9 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
         return null;
 
       case "context":
+        return null;
+
+      case "settings":
         return null;
 
       case "compact": {

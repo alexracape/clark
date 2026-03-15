@@ -12,6 +12,7 @@ const SLASH_COMMANDS = [
   { name: "/export", desc: "Export canvas as PDF", takesArgs: true },
   { name: "/model", desc: "Switch provider/model", takesArgs: true },
   { name: "/context", desc: "Show context usage", takesArgs: false },
+  { name: "/settings", desc: "Open settings", takesArgs: false },
   { name: "/compact", desc: "Summarize conversation", takesArgs: false },
   { name: "/feedback", desc: "Send feedback", takesArgs: false },
   { name: "/clear", desc: "Clear history", takesArgs: false },

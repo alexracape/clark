@@ -232,6 +232,24 @@ body {
     align-items: center;
 }
 
+.bottombar__btn {
+    background: none;
+    border: none;
+    color: var(--patina);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    transition: background 0.15s, color 0.15s;
+}
+
+.bottombar__btn:hover {
+    background: #ede7d9;
+    color: var(--walnut);
+}
+
 @keyframes spin {
     to {
         transform: rotate(360deg);
@@ -1217,6 +1235,68 @@ body {
 .picker-item__create {
     color: var(--lamp-green);
     font-weight: 500;
+}
+
+/* Settings sections */
+.settings-section {
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #e5ddd0;
+}
+
+.settings-section__title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--patina);
+    margin-bottom: 8px;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+
+.settings-row__label {
+    font-size: 13px;
+    color: var(--walnut);
+    min-width: 70px;
+    flex-shrink: 0;
+}
+
+.settings-path {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px;
+    color: var(--walnut);
+    background: #f5f0e6;
+    padding: 4px 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.settings-pick-btn {
+    flex-shrink: 0;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--patina);
+    background: #f5f0e6;
+    border: 1px solid #e5ddd0;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.settings-pick-btn:hover {
+    background: #ede7d9;
+    color: var(--walnut);
 }
 
 /* Context panel */

@@ -22,6 +22,8 @@ const ROUTE_MAP: Record<string, Route> = {
   get_onboarding_status: { method: "GET", path: "/api/onboarding-status" },
   complete_onboarding: { method: "POST", path: "/api/complete-onboarding" },
   list_ollama_models: { method: "GET", path: "/api/ollama-models" },
+  get_settings: { method: "GET", path: "/api/settings" },
+  update_settings: { method: "POST", path: "/api/settings" },
 };
 
 function isTauriRuntime(): boolean {

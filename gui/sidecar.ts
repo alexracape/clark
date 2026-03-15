@@ -49,6 +49,8 @@ import { loadEffectiveSystemPrompt } from "../cli/bootstrap/system-prompt.ts";
 import { CanvasSessionManager } from "../core/app/canvas-session.ts";
 import { createSlashCommandHandler } from "../core/app/command-router.ts";
 import { VisionOCRProvider } from "../core/ocr/provider.ts";
+import { OllamaEmbeddingProvider, type EmbeddingProvider } from "../core/embedding/provider.ts";
+import { EmbeddingIndex } from "../core/embedding/index.ts";
 import { detectFilePath, copyFileToResources, runIngestionPipeline } from "../core/app/ingest.ts";
 import { getWorkspaceDir } from "../core/workspace.ts";
 import type { SidecarStreamEvent } from "./src/stream-events.ts";
@@ -74,6 +76,8 @@ let workspaceDir: string;
 let exportDir: string;
 let systemPromptText: string;
 let progressCallback: ((message: string) => void) | undefined;
+let embeddingProvider: EmbeddingProvider | null = null;
+let searchIndex: EmbeddingIndex | null = null;
 
 /** Connected WebSocket clients for streaming events */
 const streamClients = new Set<{ send(data: string): void }>();
@@ -177,6 +181,25 @@ async function resolveProviderFromConfig(cfg: ClarkConfig): Promise<{
   }
 }
 
+/** Set up embedding provider and search index from config. */
+function setupEmbedding(cfg: ClarkConfig, wsDir: string): void {
+  // Close previous index if any
+  searchIndex?.close();
+  embeddingProvider = null;
+  searchIndex = null;
+
+  if (cfg.embedding?.provider === "ollama" && cfg.embedding.model) {
+    try {
+      embeddingProvider = new OllamaEmbeddingProvider(cfg.embedding.model);
+      searchIndex = new EmbeddingIndex(join(wsDir, "Clark", "search.db"));
+    } catch {
+      // Embedding setup failed — fall back to keyword search
+      embeddingProvider = null;
+      searchIndex = null;
+    }
+  }
+}
+
 async function bootstrap(): Promise<void> {
   workspaceDir = getWorkspaceDir();
   config = await loadConfig();
@@ -193,6 +216,8 @@ async function bootstrap(): Promise<void> {
   provider = resolved.provider;
   providerName = resolved.providerName;
   modelName = resolved.modelName;
+
+  setupEmbedding(config, workspaceDir);
 
   systemPromptText = await loadEffectiveSystemPrompt(workspaceDir);
   const systemPrompt = systemPromptText;
@@ -229,6 +254,8 @@ async function bootstrap(): Promise<void> {
       if (!provider.supportsVision) return null;
       return new VisionOCRProvider(provider);
     },
+    getEmbeddingProvider: () => embeddingProvider,
+    getSearchIndex: () => searchIndex,
   });
 
   engine = new ConversationEngine({
@@ -503,7 +530,10 @@ async function handleProviderSwitch(req: Request): Promise<Response> {
     providerName = resolved.providerName;
     modelName = resolved.modelName;
 
-    // Rebuild tools with new OCR provider
+    // Re-setup embedding with potentially new config
+    setupEmbedding(newConfig, workspaceDir);
+
+    // Rebuild tools with new OCR/embedding providers
     tools = createTools({
       getBroker: () => canvas.broker,
       getVaultDir: () => workspaceDir,
@@ -517,6 +547,8 @@ async function handleProviderSwitch(req: Request): Promise<Response> {
         if (!provider.supportsVision) return null;
         return new VisionOCRProvider(provider);
       },
+      getEmbeddingProvider: () => embeddingProvider,
+      getSearchIndex: () => searchIndex,
     });
     engine.setTools(tools);
 
@@ -635,6 +667,82 @@ async function handleOllamaModels(): Promise<Response> {
     });
   } catch {
     return jsonResponse({ models: [], status: "not-running" });
+  }
+}
+
+/** GET /api/settings — Return current settings */
+function handleGetSettings(): Response {
+  return jsonResponse({
+    workspaceDir,
+    pdfExportDir: exportDir,
+    fileRouting: config.fileRouting ?? {},
+    embedding: config.embedding ?? {},
+  });
+}
+
+/** POST /api/settings — Update settings */
+async function handleUpdateSettings(req: Request): Promise<Response> {
+  const body = await req.json() as {
+    workspaceDir?: string;
+    pdfExportDir?: string;
+    fileRouting?: { pdf?: string; image?: string; other?: string };
+    embedding?: { provider?: string; model?: string };
+  };
+
+  try {
+    let newConfig = await loadConfig();
+
+    if (body.fileRouting !== undefined) {
+      newConfig.fileRouting = body.fileRouting;
+    }
+    if (body.embedding !== undefined) {
+      // Normalize: if provider is empty string, treat as undefined (off)
+      const embProvider = body.embedding.provider || undefined;
+      const embModel = embProvider ? (body.embedding.model || undefined) : undefined;
+      newConfig.embedding = embProvider ? { provider: embProvider as "ollama", model: embModel } : undefined;
+    }
+    if (body.pdfExportDir !== undefined) {
+      newConfig.pdfExportDir = body.pdfExportDir || undefined;
+    }
+    if (body.workspaceDir !== undefined && body.workspaceDir !== workspaceDir) {
+      newConfig.workspaceDir = body.workspaceDir;
+      workspaceDir = body.workspaceDir;
+      await scaffoldLibrary(workspaceDir);
+    }
+
+    await saveConfig(newConfig);
+    config = newConfig;
+
+    // Update module-level export dir
+    exportDir = newConfig.pdfExportDir ?? workspaceDir;
+
+    // Re-initialize embedding if changed
+    if (body.embedding !== undefined) {
+      setupEmbedding(newConfig, workspaceDir);
+      // Rebuild tools so search_notes picks up new embedding
+      tools = createTools({
+        getBroker: () => canvas.broker,
+        getVaultDir: () => workspaceDir,
+        getExportDir: () => exportDir,
+        getSaveCanvas: () => canvas.saveCanvas,
+        onProgress: (msg) => {
+          progressCallback?.(msg);
+          broadcast({ type: "system_message", text: msg });
+        },
+        getOCRProvider: () => {
+          if (!provider.supportsVision) return null;
+          return new VisionOCRProvider(provider);
+        },
+        getEmbeddingProvider: () => embeddingProvider,
+        getSearchIndex: () => searchIndex,
+      });
+      engine.setTools(tools);
+    }
+
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return jsonResponse({ error: msg }, 500);
   }
 }
 
@@ -773,6 +881,12 @@ export async function createSidecarServer(): Promise<{
       }
       if (url.pathname === "/api/ollama-models" && req.method === "GET") {
         return await handleOllamaModels();
+      }
+      if (url.pathname === "/api/settings" && req.method === "GET") {
+        return handleGetSettings();
+      }
+      if (url.pathname === "/api/settings" && req.method === "POST") {
+        return await handleUpdateSettings(req);
       }
       if (url.pathname === "/api/onboarding-status" && req.method === "GET") {
         return await handleOnboardingStatus();

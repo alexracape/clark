@@ -1,24 +1,25 @@
 Some future enhancements and things that need fixing, organized into parallel execution sessions.
 
-## GUI Design Restyle
-
 ## Backlog of future enhancements
 
 GUI
 - Context visualization missing tool definitions
-- Latex and Markdown output
-- Thinking indicator
+- Latex rendering
+- Minimal markdown editor
 
 General
 - Add explore tool to start conversations and optimize token usage
-- Semantic search!!!
 - Optimize small tasks with smaller model
-- Settings where you can change workspace and paths
-
 - Tavily option for websearch?
   - Seems like a good fit, but don't want users to worry about another setup step
 - Add lines to the pdf pages optionally
 - Fix windows tests (3)
+- Transition architecture to Rust
+
+Polish
+- Thinking indicator
+- Animations and micro interactions
+- QR code
 
 - **Office hours + class notes user stories**
   - Write concrete user journeys (student, TA/instructor) for office hours and notes workflows.
@@ -36,25 +37,12 @@ General
   - Document obligations (attribution, restrictions, paid terms if applicable).
   - Acceptance: legal/licensing go/no-go criteria documented.
 
-- **Work out kinks in resource upload**
-  - If file is drag and dropped first, it is read as a /command
-  - Can't drag in resources outside of library
-
 - **Consider using CLI tools instead of MCP**
   - Would the model do just as well with some bash commands instead of file tools?
 
 - **Known Testing Compromises:**
   - ink-testing-library stdin simulation unreliable for interactive flows.
   - tldraw sync error cannot be fully suppressed (library internals).
-
-## GUI
-
-- Tauri app
-- Add components like
-  - Canvas and Markdown Previews
-  - Resource Drag and Drop
-  - QR Code for Canvas Sessions
-  - Minimize user configurations?
 
 ## Telemetry & Feedback Infrastructure
 

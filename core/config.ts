@@ -55,6 +55,12 @@ export interface ClarkConfig {
     other?: string;  // default: "Resources"
   };
 
+  /** Embedding configuration for semantic search. */
+  embedding?: {
+    provider?: "ollama";
+    model?: string;
+  };
+
   /** Flag indicating user has completed initial onboarding. */
   hasCompletedOnboarding?: boolean;
   /** Tutorial progress tracking. */
