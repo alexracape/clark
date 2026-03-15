@@ -13,6 +13,9 @@ import { exportPDFToFile } from "../canvas/pdf-export.ts";
 import { extractPDFText, getPDFInfo } from "./pdf.ts";
 import type { ToolInputSchema } from "../llm/provider.ts";
 import type { OCRProvider } from "../ocr/provider.ts";
+import type { EmbeddingProvider } from "../embedding/provider.ts";
+import type { EmbeddingIndex } from "../embedding/index.ts";
+import { SearchIndexer } from "../embedding/indexer.ts";
 import {
   checkPopplerAvailable,
   getPopplerInstallInstructions,
@@ -70,6 +73,10 @@ export interface ToolsConfig {
   onProgress?: (message: string) => void;
   /** Dynamic getter for the OCR provider. Returns null if vision is not available. */
   getOCRProvider?: () => OCRProvider | null;
+  /** Dynamic getter for the embedding provider. Returns null if not configured. */
+  getEmbeddingProvider?: () => EmbeddingProvider | null;
+  /** Dynamic getter for the embedding search index. Returns null if not configured. */
+  getSearchIndex?: () => EmbeddingIndex | null;
 }
 
 /**
@@ -224,7 +231,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
     {
       name: "search_notes",
       description:
-        "Keyword search across markdown and text files in the notes vault. Returns matching file paths and text snippets ranked by match density.",
+        "Search across markdown and text files in the notes vault. Uses semantic search when embeddings are configured, otherwise falls back to keyword matching. Returns matching file paths and text snippets.",
       inputSchema: {
         type: "object",
         properties: {
@@ -241,9 +248,51 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
       },
       handler: async (input) => {
         const vaultDir = currentVaultDir();
-        const query = (input.query as string).toLowerCase();
-        const results = await searchDirectory(vaultDir, query);
-        if (results.length === 0) {
+        const query = input.query as string;
+        const embeddingProvider = config.getEmbeddingProvider?.() ?? null;
+        const searchIndex = config.getSearchIndex?.() ?? null;
+
+        // Try semantic search if provider + index are available
+        if (embeddingProvider && searchIndex) {
+          const indexEmpty = searchIndex.isEmpty(embeddingProvider.modelId);
+
+          if (indexEmpty) {
+            // First search ever — build the index now and wait for it so this
+            // query gets real semantic results instead of falling through to
+            // keyword search on an empty index.
+            config.onProgress?.("Building semantic search index...");
+            await triggerBackgroundIndexing(vaultDir, searchIndex, embeddingProvider);
+          } else {
+            // Index populated — kick off a background refresh for stale files
+            triggerBackgroundIndexing(vaultDir, searchIndex, embeddingProvider);
+          }
+
+          try {
+            const [queryVec] = await embeddingProvider.embed([query]);
+            if (queryVec && queryVec.length > 0) {
+              const results = searchIndex.searchSimilar(queryVec, embeddingProvider.modelId, 5);
+
+              if (results.length > 0) {
+                const text = results
+                  .map((r) => {
+                    const preview = r.chunkContent.length > 150
+                      ? r.chunkContent.slice(0, 150).trimEnd() + "…"
+                      : r.chunkContent;
+                    return `### ${r.path} (score: ${r.score.toFixed(3)})\n${preview}`;
+                  })
+                  .join("\n\n---\n\n");
+
+                return { content: [{ type: "text", text }], isError: false };
+              }
+            }
+          } catch {
+            // Embedding failed — fall through to keyword search
+          }
+        }
+
+        // Keyword search fallback
+        const keywordResults = await searchDirectory(vaultDir, query.toLowerCase());
+        if (keywordResults.length === 0) {
           return {
             content: [
               { type: "text", text: `No results found for "${query}"` },
@@ -252,7 +301,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           };
         }
 
-        const text = results
+        const text = keywordResults
           .sort((a, b) => b.matchCount - a.matchCount)
           .slice(0, 10)
           .map(
@@ -388,6 +437,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           await mkdir(dirname(absolutePath), { recursive: true });
           await Bun.write(absolutePath, input.content as string);
           invalidateFileIndex();
+          queueFileReindex(inputPath, config);
           return {
             content: [{ type: "text", text: `Created: ${inputPath}` }],
             isError: false,
@@ -461,6 +511,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
 
           const updated = content.replace(oldText, newText);
           await Bun.write(absolutePath, updated);
+          queueFileReindex(inputPath, config);
           return {
             content: [{ type: "text", text: `Updated: ${inputPath}` }],
             isError: false,
@@ -1318,6 +1369,48 @@ async function searchFile(
     // Skip unreadable files (directories, binary, etc.)
   }
   return null;
+}
+
+/** In-flight indexing promise — prevents concurrent runs and allows callers to await. */
+let activeIndexingPromise: Promise<void> | null = null;
+
+/**
+ * Trigger background indexing of stale files.
+ * Deduplicates: if indexing is already running, returns the existing promise.
+ * The returned promise resolves when indexing completes (or fails silently).
+ */
+function triggerBackgroundIndexing(
+  vaultDir: string,
+  index: EmbeddingIndex,
+  provider: EmbeddingProvider,
+): Promise<void> {
+  if (activeIndexingPromise) return activeIndexingPromise;
+
+  const indexer = new SearchIndexer(index, provider);
+  activeIndexingPromise = indexer.indexStaleFiles(vaultDir)
+    .catch(() => {
+      // Best-effort — silently ignore indexing errors
+    })
+    .finally(() => {
+      activeIndexingPromise = null;
+    });
+
+  return activeIndexingPromise;
+}
+
+/** Opportunistically re-index a single file after a write operation. */
+function queueFileReindex(relativePath: string, toolsConfig: ToolsConfig): void {
+  const provider = toolsConfig.getEmbeddingProvider?.() ?? null;
+  const index = toolsConfig.getSearchIndex?.() ?? null;
+  if (!provider || !index) return;
+
+  const vaultDir = toolsConfig.getVaultDir?.() ?? toolsConfig.vaultDir;
+  if (!vaultDir) return;
+
+  const indexer = new SearchIndexer(index, provider);
+  indexer.indexFile(vaultDir, relativePath).catch(() => {
+    // Best-effort — silently ignore indexing errors
+  });
 }
 
 async function searchDirectory(

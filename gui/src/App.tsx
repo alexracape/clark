@@ -7,6 +7,7 @@ import { Sidebar } from "./components/Sidebar.tsx";
 import { ModelPicker } from "./components/ModelPicker.tsx";
 import { CanvasPicker } from "./components/CanvasPicker.tsx";
 import { ContextPanel } from "./components/ContextPanel.tsx";
+import { Settings } from "./components/Settings.tsx";
 import { Onboarding } from "./components/Onboarding.tsx";
 import { Tutorial } from "./components/Tutorial.tsx";
 import { invokeCommand, listenEvent } from "./ipc.ts";
@@ -38,6 +39,7 @@ import {
   setShowCanvasPicker,
   setShowContextPanel,
   setShowModelPicker,
+  setShowSettings,
   startOnboarding,
   tutorialNextStep,
   completeTutorial,
@@ -417,7 +419,7 @@ export function App() {
         </div>
       </div>
 
-      <BottomBar />
+      <BottomBar onSettingsClick={() => setState((prev) => setShowSettings(prev, true))} />
 
       {isDragging && (
         <div className="drag-overlay">
@@ -470,6 +472,21 @@ export function App() {
         <ContextPanel
           invoke={invokeCommand}
           onClose={() => setState((prev) => setShowContextPanel(prev, false))}
+        />
+      )}
+
+      {state.showSettings && (
+        <Settings
+          invoke={invokeCommand}
+          onClose={() => setState((prev) => setShowSettings(prev, false))}
+          onSaved={() => {
+            invokeCommand("get_status", {})
+              .then((data) => {
+                const status = data as { provider: string; model: string };
+                setState((prev) => setProviderInfo(prev, { provider: status.provider, model: status.model }));
+              })
+              .catch(() => {});
+          }}
         />
       )}
 

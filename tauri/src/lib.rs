@@ -130,6 +130,8 @@ pub fn run() {
             commands::get_onboarding_status,
             commands::complete_onboarding,
             commands::list_ollama_models,
+            commands::get_settings,
+            commands::update_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

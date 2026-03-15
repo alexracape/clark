@@ -82,6 +82,7 @@ export interface AppState {
   showModelPicker: boolean;
   showCanvasPicker: boolean;
   showContextPanel: boolean;
+  showSettings: boolean;
   canvasStatus: CanvasStatus | null;
   pendingToolCalls: ToolCall[];
   nextMessageId: number;
@@ -123,6 +124,7 @@ export function createInitialAppState(): AppState {
     showModelPicker: false,
     showCanvasPicker: false,
     showContextPanel: false,
+    showSettings: false,
     canvasStatus: null,
     pendingToolCalls: [],
     nextMessageId: 0,
@@ -176,6 +178,10 @@ export function setShowCanvasPicker(state: AppState, open: boolean): AppState {
 
 export function setShowContextPanel(state: AppState, open: boolean): AppState {
   return { ...state, showContextPanel: open };
+}
+
+export function setShowSettings(state: AppState, open: boolean): AppState {
+  return { ...state, showSettings: open };
 }
 
 export function onCanvasOpened(
@@ -320,6 +326,9 @@ export function applySlashCommandResult(state: AppState, result: SlashCommandRes
   }
   if (result.uiAction === "context") {
     return { ...state, showContextPanel: true };
+  }
+  if (result.uiAction === "settings") {
+    return { ...state, showSettings: true };
   }
   if (result.uiAction === "tutorial") {
     return startTutorial(state);

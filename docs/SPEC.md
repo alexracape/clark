@@ -91,6 +91,7 @@ This is the simplest approach and always works during active tutoring sessions (
 - `/feedback <message>` — Send feedback to the developer via Discord webhook (includes system context: Clark version, platform, Bun version, LLM provider)
 - `/clear` — Clear conversation history
 - `/exit` or `/quit` — Exit Clark (same as Ctrl+C)
+- `/settings` — Open the Settings panel (GUI only — workspace, file routing, embedding, PDF export)
 
 **Structures (via NLU):**
 - Structure definitions live in `Clark/Structures/` as `.md` files (user-editable)
@@ -228,7 +229,7 @@ The tldraw Agent SDK defines a pattern for giving AI models rich context about c
 | Tool | Description | Annotations |
 |------|-------------|-------------|
 | `read_file` | Read a file from the vault (markdown with wikilink resolution, PDF text extraction, images as base64) | readOnly |
-| `search_notes` | Keyword search across markdown/text files, ranked by match density | readOnly |
+| `search_notes` | Semantic search (cosine similarity via embeddings) with keyword fallback across markdown/text files | readOnly |
 | `list_files` | List vault directory contents with optional extension filter | readOnly |
 | `create_file` | Create a new file in the vault (fails if exists) | write |
 | `edit_file` | Find-and-replace editing in vault files | write, destructive |
@@ -251,11 +252,95 @@ This keeps the MCP server decoupled from tldraw internals. It doesn't import tld
 - **PDF (.pdf):** Text extracted via `pdf-parse` for search and reading. `read_file` hints when a PDF has sparse text (likely scanned). `transcribe_pdf` provides full OCR via poppler + vision API.
 - **Images (.png, .jpg, .gif, etc.):** Returned as base64-encoded data for the LLM's vision API.
 
-**Search (v1):** Keyword/substring search over file contents. Results ranked by relevance (match density).
+**Search:** `search_notes` uses semantic search when an embedding provider is configured, falling back to keyword/substring search otherwise. Semantic results are ranked by cosine similarity; keyword results are ranked by match density. On the first call with an empty index, `search_notes` awaits index completion before returning results (blocking, with a progress message). On subsequent calls it triggers a background index refresh non-blocking. See the Semantic Search section for details.
 
 **Standalone mode:** The MCP server can also run as a standalone stdio process (`core/mcp/standalone.ts`) for testing with the MCP Inspector or external clients.
 
-### 5. LLM Layer
+### 5. Semantic Search
+
+Semantic search allows `search_notes` to find notes by meaning rather than literal keyword matches. It is optional and disabled by default; enabling it requires configuring an embedding provider (currently Ollama only).
+
+#### Architecture
+
+```
+search_notes tool call
+  → check if EmbeddingProvider + EmbeddingIndex are initialized
+  → if not configured → keyword fallback
+  → embed the query text via OllamaEmbeddingProvider
+  → if index is empty → await SearchIndexer.indexStaleFiles() (blocking, with progress)
+  → if index is non-empty → trigger indexStaleFiles() in background (non-blocking)
+  → EmbeddingIndex.searchSimilar(queryVec, modelId, limit) → cosine similarity results
+  → format and return top results
+```
+
+#### Components
+
+**`EmbeddingProvider` (`core/embedding/provider.ts`):**
+
+Pluggable interface:
+```ts
+interface EmbeddingProvider {
+  readonly name: string;
+  readonly modelId: string;
+  readonly dimensions: number;
+  embed(texts: string[]): Promise<number[][]>;
+}
+```
+
+- `OllamaEmbeddingProvider` — calls the Ollama HTTP API (`/api/embed`). Reads `OLLAMA_HOST` env var (default `http://localhost:11434`). Discovers vector dimensions from the first response.
+- `NoopEmbeddingProvider` — returns empty arrays; used when embeddings aren't configured.
+
+**`EmbeddingIndex` (`core/embedding/index.ts`):**
+
+SQLite-backed store (`~/.clark/embeddings.db`) using `bun:sqlite`. Schema:
+
+```sql
+chunks (id, path, chunk_idx, content, hash, model_id, embedding BLOB, updated_at)
+UNIQUE(path, chunk_idx, model_id)
+```
+
+Embeddings are stored as raw `Float32Array` blobs. Search is brute-force cosine similarity computed in JavaScript — sufficient for vaults up to ~1,000 chunks.
+
+Key methods:
+- `isEmpty(modelId)` — used by `search_notes` to decide whether to await or background-index
+- `searchSimilar(queryVec, modelId, limit)` — returns top results sorted by cosine similarity
+- `upsertChunks(path, chunks, modelId)` — batch insert/replace in a transaction
+- `getIndexedHashes(modelId)` — returns `Map<path, Map<chunkIdx, sha256>>` for staleness detection
+
+**`SearchIndexer` (`core/embedding/indexer.ts`):**
+
+Orchestrates scanning, chunking, and embedding:
+- `indexStaleFiles(vaultDir)` — walks all `.md`/`.txt` files, chunks via `chunkMarkdown()`, computes SHA-256 content hashes, embeds only stale chunks in batch, upserts results.
+- `indexFile(vaultDir, relativePath)` — single-file version for targeted re-indexing.
+
+Staleness detection avoids re-embedding unchanged content: if a chunk's SHA-256 matches the stored hash, it is skipped.
+
+**`chunkMarkdown` (`core/embedding/chunker.ts`):**
+
+Splits markdown into semantically meaningful chunks for embedding. Each chunk carries an index and text content.
+
+#### Background Indexing
+
+`search_notes` maintains a module-level `activeIndexingPromise` to prevent concurrent indexing runs:
+
+- **Empty index:** await the promise (blocking) before searching, showing "Building semantic search index..." progress to the user.
+- **Non-empty index:** fire-and-forget background refresh so results are always available immediately while the index stays fresh.
+
+#### Configuration
+
+Embedding is configured in `~/.clark/config.json`:
+```json
+{
+  "embedding": {
+    "provider": "ollama",
+    "model": "nomic-embed-text"
+  }
+}
+```
+
+In the GUI, this is managed via the Settings panel (Semantic Search section). In the CLI, it must currently be set manually or via onboarding.
+
+### 6. LLM Layer
 
 **Design:** Pluggable provider interface with a registry pattern
 
@@ -296,7 +381,98 @@ interface LLMProvider {
 - API keys via standard env vars: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`
 - Keys can also be saved during onboarding to `~/.clark/config.json` and are applied to the environment at startup
 
-### 6. Socratic System Prompt
+### 7. GUI (Tauri Desktop App)
+
+The GUI is a Tauri desktop app wrapping a React frontend. It provides the same core functionality as the TUI in a graphical environment — chat, canvas integration, file ingestion, model switching — with additions like the Settings panel and a richer visual design.
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Tauri Desktop App (macOS)                                  │
+│                                                             │
+│  ┌──────────────────────┐   ┌──────────────────────────┐   │
+│  │  React Frontend      │   │  Rust Tauri Backend       │   │
+│  │  (gui/src/)          │◄──│  (tauri/src/)             │   │
+│  │                      │   │                           │   │
+│  │  App.tsx             │   │  commands.rs              │   │
+│  │  app-controller.ts   │   │  (IPC command proxies)    │   │
+│  │  ipc.ts              │   │                           │   │
+│  └──────────┬───────────┘   └──────────────────────────┘   │
+│             │ HTTP / SSE                  │ spawn            │
+│             ▼                             ▼                  │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  Bun Sidecar (gui/sidecar.ts)                        │   │
+│  │  Bun.serve() HTTP API on a random port               │   │
+│  │  Routes: /api/chat, /api/settings, /api/files, ...   │   │
+│  │  Holds module-level state: config, embeddingProvider,│   │
+│  │  searchIndex, workspaceDir, exportDir                │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**IPC flow (Tauri mode):** React calls `invokeCommand(name, args)` → `tauriInvoke(name, args)` → Rust `commands.rs` handler → HTTP request to sidecar → response bubbles back.
+
+**IPC flow (browser/dev mode):** `invokeCommand` maps command names to `{ method, path }` pairs and sends HTTP directly to the sidecar dev server.
+
+#### Sidecar (`gui/sidecar.ts`)
+
+The sidecar is a plain `Bun.serve()` HTTP server that holds all runtime state:
+
+| Module-level var | Description |
+|-----------------|-------------|
+| `config` | Current `ClarkConfig` loaded from `~/.clark/config.json` |
+| `workspaceDir` | Active workspace root directory |
+| `exportDir` | PDF export directory |
+| `embeddingProvider` | `OllamaEmbeddingProvider` or `null` |
+| `searchIndex` | `EmbeddingIndex` SQLite instance or `null` |
+
+Key API endpoints:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/chat` | POST | Send a message; returns streaming AI response |
+| `/api/settings` | GET | Returns current config (workspace, file routing, embedding, export) |
+| `/api/settings` | POST | Partial-update config, save to disk, reinitialize affected subsystems |
+| `/api/files` | GET | List workspace files (optional `?path=` param) |
+| `/api/ingest` | POST | Ingest a file into the workspace |
+| `/api/canvases` | GET | List available canvas files |
+| `/api/provider` | POST | Switch LLM provider/model |
+| `/api/ollama-models` | GET | List locally available Ollama models |
+| `/api/onboarding-status` | GET | Check if onboarding is complete |
+| `/api/complete-onboarding` | POST | Finalize onboarding with provider and workspace |
+
+When `embedding` config changes via `POST /api/settings`, the sidecar calls `setupEmbedding()` to reinitialize `embeddingProvider` and `searchIndex` and rebuilds the MCP tool list.
+
+#### Settings Panel
+
+The Settings modal (`gui/src/components/Settings.tsx`) provides a GUI for configuring:
+
+- **Workspace** — workspace root directory (OS native folder picker in Tauri, text input in browser)
+- **File Routing** — relative paths for PDFs, images, and other dropped files
+- **Semantic Search** — embedding provider (Off / Ollama) and model (dropdown populated from `list_ollama_models`, falls back to text input if Ollama unreachable)
+- **PDF Export** — export directory for `/export` and `export_pdf`
+
+The modal tracks dirty state via JSON comparison and only enables Save when there are changes.
+
+#### App State Management
+
+`app-controller.ts` uses a pure reducer pattern:
+
+```ts
+interface AppState {
+  showSettings: boolean;
+  showContext: boolean;
+  showModelPicker: boolean;
+  // ... other UI state
+}
+
+function setShowSettings(state: AppState, open: boolean): AppState
+```
+
+Slash command results with `uiAction` strings (e.g., `"settings"`, `"context"`, `"model"`) are mapped to state transitions in `applySlashCommandResult`.
+
+### 8. Socratic System Prompt
 
 The system prompt is the sole guardrail mechanism. It instructs the LLM to:
 
@@ -380,6 +556,12 @@ clark/
 │   │   ├── catalog.ts         # Provider/model catalog
 │   │   └── index.ts           # LLM module exports (+ side-effect provider registration)
 │   │
+│   ├── embedding/             # Semantic search embedding system
+│   │   ├── provider.ts        # EmbeddingProvider interface + OllamaEmbeddingProvider
+│   │   ├── index.ts           # EmbeddingIndex (SQLite-backed, cosine similarity search)
+│   │   ├── indexer.ts         # SearchIndexer (scan, chunk, hash, embed, upsert)
+│   │   └── chunker.ts         # chunkMarkdown (splits markdown for embedding)
+│   │
 │   ├── ocr/                   # OCR pipeline (pluggable provider + PDF rendering)
 │   │   ├── provider.ts        # OCRProvider interface + VisionOCRProvider (LLM vision)
 │   │   ├── pdf-renderer.ts    # PDF-to-image rendering via poppler (pdftoppm)
@@ -415,8 +597,38 @@ clark/
 │           ├── use-line-editor.ts    # Single-line text input state
 │           └── use-selectable-list.ts # Up/down list selection state
 │
-├── gui/                       # Placeholder for React web frontend
-├── tauri/                     # Placeholder for Rust backend
+├── gui/                       # React GUI frontend + Bun sidecar HTTP server
+│   ├── sidecar.ts             # Bun HTTP sidecar (routes, settings, embedding init)
+│   ├── index.html             # GUI entry HTML (loaded by Tauri or dev server)
+│   └── src/
+│       ├── App.tsx            # Root React component (state wiring, modal rendering)
+│       ├── app-controller.ts  # Pure reducer AppState (showSettings, showContext, etc.)
+│       ├── ipc.ts             # IPC bridge: Tauri invoke or HTTP to sidecar
+│       ├── stream-events.ts   # SSE/stream event types
+│       ├── markdown.ts        # Markdown rendering utilities
+│       ├── theme.ts           # Color theme constants
+│       └── components/
+│           ├── BottomBar.tsx  # Bottom toolbar (gear icon → settings)
+│           ├── Composer.tsx   # Message input with slash command autocomplete
+│           ├── ChatWindow.tsx # Chat message list
+│           ├── MessageBubble.tsx # Individual message rendering
+│           ├── ToolCard.tsx   # Tool call/result display
+│           ├── Sidebar.tsx    # Left panel (file browser)
+│           ├── Titlebar.tsx   # Window titlebar
+│           ├── ContextPanel.tsx # Context window usage modal
+│           ├── ModelPicker.tsx  # Provider/model selection modal
+│           ├── CanvasPicker.tsx # Canvas file selection modal
+│           ├── Settings.tsx   # Settings modal (workspace, embedding, export)
+│           ├── Onboarding.tsx # First-run onboarding flow
+│           ├── Tutorial.tsx   # Interactive tutorial
+│           └── ParticleGraph.tsx # Decorative particle animation
+│
+├── tauri/                     # Tauri Rust backend
+│   └── src/
+│       ├── lib.rs             # Tauri setup, sidecar spawn, invoke_handler registration
+│       ├── commands.rs        # Tauri IPC commands (proxy to sidecar HTTP)
+│       ├── sidecar.rs         # Sidecar process management (spawn, port discovery)
+│       └── stream.rs          # SSE stream forwarder (sidecar → Tauri frontend events)
 │
 ├── test/                      # Tests (bun test)
 │   ├── mcp.test.ts            # MCP tool unit tests
@@ -430,7 +642,10 @@ clark/
 │   ├── canvas-page-autocreate.test.ts # Frame auto-creation logic tests
 │   ├── command-router.test.ts # Slash command dispatch tests
 │   ├── ingest.test.ts         # File ingestion tests
-│   └── library.test.ts        # Library scaffolding tests
+│   ├── library.test.ts        # Library scaffolding tests
+│   ├── chunker.test.ts        # Markdown chunking tests
+│   ├── embedding-index.test.ts # EmbeddingIndex SQLite tests
+│   └── embedding-search.test.ts # Semantic search integration tests
 │
 └── test/test_vault/           # Sample library for tests
     ├── Notes/                  # Markdown notes with wikilinks
@@ -454,6 +669,7 @@ clark/
 | `@anthropic-ai/sdk` | Claude API client |
 | `openai` | OpenAI API client |
 | `@google/genai` | Google Gemini API client |
+| `ollama` | Ollama client (chat + embedding API) |
 | `pdf-parse` | PDF text extraction (reading vault PDFs) |
 | `pdf-lib` | PDF generation (exporting canvas pages to A4 PDF) |
 | `yargs` | CLI argument parsing |
@@ -493,7 +709,21 @@ interface ClarkConfig {
   provider?: string;
   model?: string;
   ollamaBaseUrl?: string;
-  pdfExportDir?: string;  // Default PDF export directory
+  /** Workspace root directory (set during onboarding or via Settings). */
+  workspaceDir?: string;
+  /** Default directory for PDF exports from /export and export_pdf. */
+  pdfExportDir?: string;
+  /** Destination subfolders for drag-and-drop file routing (relative to workspace). */
+  fileRouting?: {
+    pdf?: string;    // default: "Resources/PDFs"
+    image?: string;  // default: "Resources/Images"
+    other?: string;  // default: "Resources"
+  };
+  /** Embedding provider for semantic search. */
+  embedding?: {
+    provider?: "ollama";
+    model?: string;  // e.g. "nomic-embed-text"
+  };
   secretStoreBackend?: "macos-keychain" | "linux-libsecret" | "windows-credential" | "fallback";
   hasCompletedOnboarding?: boolean;  // Tracks first-run completion
   tutorialProgress?: {

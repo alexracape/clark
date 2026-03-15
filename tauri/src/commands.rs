@@ -254,6 +254,32 @@ pub async fn list_ollama_models(
 }
 
 #[tauri::command]
+pub async fn get_settings(sidecar: State<'_, Sidecar>) -> Result<serde_json::Value, String> {
+    sidecar_get(&sidecar, "/api/settings").await
+}
+
+#[tauri::command]
+pub async fn update_settings(
+    sidecar: State<'_, Sidecar>,
+    workspace_dir: Option<String>,
+    pdf_export_dir: Option<String>,
+    file_routing: Option<serde_json::Value>,
+    embedding: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    sidecar_post(
+        &sidecar,
+        "/api/settings",
+        serde_json::json!({
+            "workspaceDir": workspace_dir,
+            "pdfExportDir": pdf_export_dir,
+            "fileRouting": file_routing,
+            "embedding": embedding,
+        }),
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn write_clipboard_text(
     text: String,
     app: tauri::AppHandle,
