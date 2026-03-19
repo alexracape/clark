@@ -2076,6 +2076,56 @@ body {
     margin: 16px 0;
 }
 
+/* Wiki links */
+.wiki-link {
+    color: var(--terracotta, #c0694a);
+    cursor: pointer;
+    border-bottom: 1px solid currentColor;
+    transition: opacity 0.1s;
+}
+
+.wiki-link:hover {
+    opacity: 0.75;
+}
+
+/* Embedded assets (![[image.png]], ![[doc.pdf]]) */
+.embedded-image-wrapper {
+    margin: 8px 0;
+    max-width: 100%;
+}
+
+.embedded-image {
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    display: block;
+}
+
+.embedded-image-warning {
+    padding: 10px 12px;
+    border: 1px solid #d7b889;
+    border-radius: 6px;
+    background: #fff2dd;
+    color: #8b4c22;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: normal;
+    word-break: break-word;
+}
+
+.embedded-image--pdf {
+    width: 100%;
+    height: 600px;
+    border: 1px solid var(--divider);
+}
+
+.embedded-image[src=""],
+.embedded-image:not([src]) {
+    opacity: 0.5;
+}
+
 /* Tiptap placeholder */
 .tiptap p.is-editor-empty:first-child::before {
     content: attr(data-placeholder);
@@ -2088,21 +2138,28 @@ body {
 
 /* Floating slash menu */
 .slash-menu {
+    position: fixed;
+    z-index: 1000;
     display: flex;
     flex-direction: column;
     background: #ffffff;
     border: 1px solid #e5ddd0;
     border-radius: 8px;
     padding: 4px 0;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    min-width: 160px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    min-width: 220px;
+    max-width: 300px;
+    max-height: 320px;
+    overflow-y: auto;
 }
 
 .slash-menu__item {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 10px;
     width: 100%;
     text-align: left;
-    padding: 6px 12px;
+    padding: 8px 12px;
     background: none;
     border: none;
     font-family: "IBM Plex Mono", monospace;
@@ -2112,8 +2169,34 @@ body {
     transition: background 0.1s;
 }
 
-.slash-menu__item:hover {
+.slash-menu__item:hover,
+.slash-menu__item--selected {
     background: #f5f0e6;
+}
+
+.slash-menu__item-icon {
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+    font-size: 14px;
+    opacity: 0.7;
+}
+
+.slash-menu__item-label {
+    font-weight: 500;
+}
+
+.slash-menu__item-desc {
+    font-size: 11px;
+    color: var(--patina);
+    margin-left: auto;
+}
+
+.slash-menu__empty {
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--patina);
+    font-style: italic;
 }
 
 /* Conversation rail (editor mode) */
@@ -2282,6 +2365,15 @@ body {
     line-height: 1.6;
 }
 
+.conv-rail__card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.conv-rail__card-expand,
 .conv-rail__card-dismiss {
     background: none;
     border: none;
@@ -2291,12 +2383,11 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.08em;
     padding: 4px 0;
-    margin-top: 8px;
-    float: right;
     font-family: inherit;
     transition: color 0.15s;
 }
 
+.conv-rail__card-expand:hover,
 .conv-rail__card-dismiss:hover {
     color: var(--walnut);
 }

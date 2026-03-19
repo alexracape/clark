@@ -26,6 +26,8 @@ const ROUTE_MAP: Record<string, Route> = {
   update_settings: { method: "POST", path: "/api/settings" },
   read_file_content: { method: "GET", path: "/api/file-content" },
   write_file_content: { method: "POST", path: "/api/file-content" },
+  get_asset: { method: "GET", path: "/api/asset" },
+  resolve_note: { method: "GET", path: "/api/resolve-note" },
 };
 
 function isTauriRuntime(): boolean {
@@ -63,6 +65,14 @@ export async function invokeCommand(cmd: string, args: InvokeArgs = {}): Promise
   }
 
   return resp.json();
+}
+
+export async function getSidecarBaseUrl(): Promise<string> {
+  if (isTauriRuntime()) {
+    return tauriInvoke("get_sidecar_base_url");
+  }
+
+  return SIDECAR_URL;
 }
 
 export async function listenEvent(

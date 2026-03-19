@@ -223,7 +223,6 @@ Do not use ANY additionaly or nested tags unless explicitly asked.
 ### File Processing Conventions
 
 When processing PDFs and images:
-- Save transcripts to \`Clark/Transcripts/<source-name>.md\`
 - Include YAML frontmatter with source path, timestamp, and page range
 - For scanned/handwritten PDFs, use OCR via \`transcribe_pdf\`
 - For text-based PDFs, extract text directly via \`read_file\`
@@ -237,6 +236,8 @@ When processing PDFs and images:
 - Use \`[[wikilinks]]\` to connect related notes
 - Use \`![[embeds]]\` to embed images or other files inline
 - When creating new files, link them to relevant classes or topics
+- For files in the user's library link using only the base filename with no extension
+- Ex. Resources/PDFs/example.pdf -> [[example]]
 `;
 }
 

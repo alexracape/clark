@@ -4,25 +4,62 @@ import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { ChatItem, EditorFile, ToolCall } from "../app-controller.ts";
+import type { WikilinkTarget } from "../note-paths.ts";
 import { ConversationRail } from "./ConversationRail.tsx";
+import { WikiLink } from "../extensions/WikiLink.ts";
+import { WikiLinkSuggestion } from "../extensions/WikiLinkSuggestion.ts";
+import { SmartPairs } from "../extensions/SmartPairs.ts";
+import { SlashCommands } from "../extensions/SlashCommands.ts";
+import { EmbeddedImage } from "../extensions/EmbeddedImage.ts";
+import { getSidecarBaseUrl } from "../ipc.ts";
 
 interface MarkdownEditorProps {
   file: EditorFile;
   onSave: (path: string, content: string) => void;
   onClose: () => void;
   onDirtyChange: (dirty: boolean) => void;
+  onOpenNote: (noteName: string) => void;
+  noteNames: WikilinkTarget[];
   chatItems: ChatItem[];
   streamingText: string | null;
   isStreaming: boolean;
   pendingToolCalls: ToolCall[];
 }
 
-export function MarkdownEditor({ file, onSave, onClose, onDirtyChange, chatItems, streamingText, isStreaming, pendingToolCalls }: MarkdownEditorProps) {
+export function MarkdownEditor({ file, onSave, onClose, onDirtyChange, onOpenNote, noteNames, chatItems, streamingText, isStreaming, pendingToolCalls }: MarkdownEditorProps) {
+  const [assetBaseUrl, setAssetBaseUrl] = React.useState<string>(
+    "http://localhost:3456",
+  );
+  const lastLoadedKeyRef = React.useRef<string>("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getSidecarBaseUrl()
+      .then((url) => {
+        if (!cancelled) setAssetBaseUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setAssetBaseUrl("http://localhost:3456");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
       Markdown,
       Placeholder.configure({ placeholder: "Start writing..." }),
+      WikiLink.configure({ onOpen: onOpenNote }),
+      WikiLinkSuggestion.configure({ noteNames }),
+      SmartPairs,
+      SlashCommands.configure({ noteNames }),
+      EmbeddedImage.configure({
+        assetBaseUrl,
+      }),
     ],
     content: file.content,
     contentType: "markdown",
@@ -30,15 +67,20 @@ export function MarkdownEditor({ file, onSave, onClose, onDirtyChange, chatItems
     editorProps: {
       attributes: { class: "markdown-editor__content" },
     },
-  });
+  }, [assetBaseUrl, noteNames, onOpenNote]);
 
-  // Re-open different file
+  // Re-open the current file when the file changes or when the asset base URL
+  // changes, so embedded image nodes can be normalized against the right sidecar.
   useEffect(() => {
     if (editor && !editor.isDestroyed) {
+      const loadKey = `${file.path}::${assetBaseUrl}`;
+      if (lastLoadedKeyRef.current === loadKey) return;
+
       editor.commands.setContent(file.content, { contentType: "markdown" });
       onDirtyChange(false);
+      lastLoadedKeyRef.current = loadKey;
     }
-  }, [file.path]);
+  }, [assetBaseUrl, editor, file.content, file.path, onDirtyChange]);
 
   // Cmd+S save
   const handleSave = useCallback(() => {
@@ -78,7 +120,13 @@ export function MarkdownEditor({ file, onSave, onClose, onDirtyChange, chatItems
         <EditorContent editor={editor} />
       </div>
 
-      <ConversationRail chatItems={chatItems} streamingText={streamingText} isStreaming={isStreaming} pendingToolCalls={pendingToolCalls} />
+      <ConversationRail
+        chatItems={chatItems}
+        streamingText={streamingText}
+        isStreaming={isStreaming}
+        pendingToolCalls={pendingToolCalls}
+        onExpandToChat={onClose}
+      />
     </div>
   );
 }

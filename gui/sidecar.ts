@@ -17,8 +17,8 @@
  *   WS   /api/stream      — Streaming events (text, thinking, tool_start, etc.)
  */
 
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { readdir, mkdir } from "node:fs/promises";
+import { join, dirname } from "node:path";
 import { networkInterfaces } from "node:os";
 
 // macOS GUI apps get a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin).
@@ -53,6 +53,7 @@ import { OllamaEmbeddingProvider, type EmbeddingProvider } from "../core/embeddi
 import { EmbeddingIndex } from "../core/embedding/index.ts";
 import { detectFilePath, copyFileToResources, runIngestionPipeline } from "../core/app/ingest.ts";
 import { getWorkspaceDir } from "../core/workspace.ts";
+import { resolveWikilink } from "../core/mcp/vault.ts";
 import type { SidecarStreamEvent } from "./src/stream-events.ts";
 
 // --- Types ---
@@ -451,6 +452,63 @@ function runIngestionInBackground(fileName: string, destPath: string): void {
   });
 }
 
+/** GET /api/resolve-note — Resolve a note name to its workspace-relative path */
+async function handleResolveNote(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const name = url.searchParams.get("name") ?? "";
+
+  if (!name) {
+    return jsonResponse({ error: "Missing 'name' parameter" }, 400);
+  }
+
+  const resolved = await resolveWikilink(name, workspaceDir);
+  return jsonResponse({ name, path: resolved });
+}
+
+/** GET /api/asset — Serve workspace binary files (images, etc.) with correct MIME types */
+async function handleAsset(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const filePath = url.searchParams.get("path") ?? "";
+
+  if (!filePath || filePath.includes("..")) {
+    return jsonResponse({ error: "Invalid path" }, 400);
+  }
+
+  let resolvedPath = filePath;
+  let absolutePath = join(workspaceDir, resolvedPath);
+  try {
+    let file = Bun.file(absolutePath);
+    let exists = await file.exists();
+
+    // Support Obsidian-style embeds that use a bare filename instead of a
+    // workspace-relative path by resolving against the vault index.
+    if (!exists) {
+      const wikilinkResolved = await resolveWikilink(filePath, workspaceDir);
+      if (!wikilinkResolved) {
+        return new Response("Not Found", { status: 404, headers: corsHeaders() });
+      }
+
+      resolvedPath = wikilinkResolved;
+      absolutePath = join(workspaceDir, resolvedPath);
+      file = Bun.file(absolutePath);
+      exists = await file.exists();
+      if (!exists) {
+        return new Response("Not Found", { status: 404, headers: corsHeaders() });
+      }
+    }
+
+    return new Response(file, {
+      headers: {
+        "Content-Type": file.type,
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "max-age=3600",
+      },
+    });
+  } catch {
+    return new Response("Not Found", { status: 404, headers: corsHeaders() });
+  }
+}
+
 /** GET /api/file-content — Read raw file text */
 async function handleFileContent(req: Request): Promise<Response> {
   const url = new URL(req.url);
@@ -482,6 +540,7 @@ async function handleWriteFileContent(req: Request): Promise<Response> {
 
   const absolutePath = join(workspaceDir, body.path);
   try {
+    await mkdir(dirname(absolutePath), { recursive: true });
     await Bun.write(absolutePath, body.content);
     return jsonResponse({ ok: true, path: body.path });
   } catch (err) {
@@ -724,7 +783,7 @@ async function handleUpdateSettings(req: Request): Promise<Response> {
   const body = await req.json() as {
     workspaceDir?: string;
     pdfExportDir?: string;
-    fileRouting?: { pdf?: string; image?: string; other?: string };
+    fileRouting?: { pdf?: string; image?: string; other?: string; notes?: string };
     embedding?: { provider?: string; model?: string };
   };
 
@@ -896,6 +955,12 @@ export async function createSidecarServer(): Promise<{
       }
       if (url.pathname === "/api/provider" && req.method === "POST") {
         return await handleProviderSwitch(req);
+      }
+      if (url.pathname === "/api/resolve-note" && req.method === "GET") {
+        return await handleResolveNote(req);
+      }
+      if (url.pathname === "/api/asset" && req.method === "GET") {
+        return await handleAsset(req);
       }
       if (url.pathname === "/api/file-content" && req.method === "GET") {
         return await handleFileContent(req);

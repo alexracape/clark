@@ -5,11 +5,6 @@ Some future enhancements and things that need fixing, organized into parallel ex
 GUI
 - Context visualization missing tool definitions
 - Latex rendering
-- Minimal markdown editor
-- Editor
-  - Toasts are not formatted well for messaging in document
-  - Workspace line should align with file header
-- Get rid of bottom bar and move settings gear
 
 General
 - Add explore tool to start conversations and optimize token usage
@@ -19,8 +14,13 @@ General
 - Add lines to the pdf pages optionally
 - Fix windows tests (3)
 - Transition architecture to Rust
-- Inject open editor into user prompt if open
 - Graph view in bottom left of explorer
+- Support for linking notes and opening in the editor
+- Clark Cloud service for OCR, Embeddings, Model provider, usage data.
+- Add recommended endorsement for new folder or model?
+- Debug document drag and drop - what if you miss a dependency
+- Option to create new notes
+- Autosave
 
 Polish
 - Thinking indicator
@@ -45,10 +45,6 @@ Polish
 
 - **Consider using CLI tools instead of MCP**
   - Would the model do just as well with some bash commands instead of file tools?
-
-- **Known Testing Compromises:**
-  - ink-testing-library stdin simulation unreliable for interactive flows.
-  - tldraw sync error cannot be fully suppressed (library internals).
 
 ## Telemetry & Feedback Infrastructure
 

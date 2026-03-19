@@ -7,6 +7,7 @@ interface ConversationRailProps {
   streamingText: string | null;
   isStreaming: boolean;
   pendingToolCalls: ToolCall[];
+  onExpandToChat: () => void;
 }
 
 interface QAPair {
@@ -68,7 +69,13 @@ function hasStreamingPair(chatItems: ChatItem[]): { streaming: boolean; question
   return { streaming: false, question: "", id: "" };
 }
 
-export function ConversationRail({ chatItems, streamingText, isStreaming, pendingToolCalls }: ConversationRailProps) {
+export function ConversationRail({
+  chatItems,
+  streamingText,
+  isStreaming,
+  pendingToolCalls,
+  onExpandToChat,
+}: ConversationRailProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [unreadIds, setUnreadIds] = useState<Set<string>>(new Set());
@@ -142,6 +149,11 @@ export function ConversationRail({ chatItems, streamingText, isStreaming, pendin
     setHoveredId(null);
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
   }, []);
+
+  const handleExpand = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onExpandToChat();
+  }, [onExpandToChat]);
 
   const allBars = [
     ...pairs.map((p) => ({ ...p, type: "complete" as const })),
@@ -230,9 +242,14 @@ export function ConversationRail({ chatItems, streamingText, isStreaming, pendin
                 )}
                 {isStreamingBar && bar.answer && <span className="conv-rail__streaming-cursor" />}
                 {!isStreamingBar && (
-                  <button className="conv-rail__card-dismiss" onClick={handleDismiss}>
-                    Dismiss
-                  </button>
+                  <div className="conv-rail__card-actions">
+                    <button className="conv-rail__card-expand" onClick={handleExpand}>
+                      Expand
+                    </button>
+                    <button className="conv-rail__card-dismiss" onClick={handleDismiss}>
+                      Dismiss
+                    </button>
+                  </div>
                 )}
               </div>
             )}

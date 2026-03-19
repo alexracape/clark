@@ -126,6 +126,11 @@ pub async fn get_status(sidecar: State<'_, Sidecar>) -> Result<serde_json::Value
 }
 
 #[tauri::command]
+pub async fn get_sidecar_base_url(sidecar: State<'_, Sidecar>) -> Result<String, String> {
+    sidecar.base_url().await
+}
+
+#[tauri::command]
 pub async fn list_files(sidecar: State<'_, Sidecar>) -> Result<serde_json::Value, String> {
     sidecar_get(&sidecar, "/api/files").await
 }
@@ -277,6 +282,26 @@ pub async fn update_settings(
         }),
     )
     .await
+}
+
+#[tauri::command]
+pub async fn resolve_note(
+    name: String,
+    sidecar: State<'_, Sidecar>,
+) -> Result<serde_json::Value, String> {
+    let encoded: String = url::form_urlencoded::byte_serialize(name.as_bytes()).collect();
+    let endpoint = format!("/api/resolve-note?name={}", encoded);
+    sidecar_get(&sidecar, &endpoint).await
+}
+
+#[tauri::command]
+pub async fn get_asset(
+    path: String,
+    sidecar: State<'_, Sidecar>,
+) -> Result<serde_json::Value, String> {
+    let encoded: String = url::form_urlencoded::byte_serialize(path.as_bytes()).collect();
+    let endpoint = format!("/api/asset?path={}", encoded);
+    sidecar_get(&sidecar, &endpoint).await
 }
 
 #[tauri::command]

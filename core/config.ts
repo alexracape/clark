@@ -48,11 +48,12 @@ export interface ClarkConfig {
   /** Secret backend used for API keys. */
   secretStoreBackend?: "macos-keychain" | "linux-libsecret" | "windows-credential" | "fallback";
 
-  /** Destination folders for drag-and-drop file routing (relative to workspace). */
+  /** Destination folders for file routing (relative to workspace). */
   fileRouting?: {
     pdf?: string;    // default: "Resources/PDFs"
     image?: string;  // default: "Resources/Images"
     other?: string;  // default: "Resources"
+    notes?: string;  // default: "Notes"
   };
 
   /** Embedding configuration for semantic search. */

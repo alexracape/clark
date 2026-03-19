@@ -116,6 +116,7 @@ pub fn run() {
             commands::slash_command,
             commands::ingest_file,
             commands::get_status,
+            commands::get_sidecar_base_url,
             commands::list_files,
             commands::list_files_at,
             commands::switch_provider,
@@ -132,6 +133,8 @@ pub fn run() {
             commands::list_ollama_models,
             commands::get_settings,
             commands::update_settings,
+            commands::resolve_note,
+            commands::get_asset,
             commands::read_file_content,
             commands::write_file_content,
         ])

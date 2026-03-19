@@ -24,6 +24,7 @@
     "test:refactor-fast": "bun run test:core && bun run test:sidecar-contract && bun run test:gui-controller && bun run test:rust-contract",
     "test:desktop-smoke": "CLARK_WORKSPACE_DIR=./test/test_vault bun test ./test/desktop-smoke.test.ts --timeout 30000",
     "bench:pdf-ocr": "bun scripts/benchmark-pdf-transcription.ts",
+    "eval": "bun scripts/eval-prompts.ts",
     "mcp": "bun core/mcp/standalone.ts",
     "inspect": "bunx @modelcontextprotocol/inspector bun core/mcp/standalone.ts"
   },
@@ -32,8 +33,10 @@
     "@google/genai": "^1.40.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@tauri-apps/api": "^2.10.1",
+    "@tiptap/extension-image": "^3.20.4",
     "@tiptap/extension-placeholder": "^3.20.1",
     "@tiptap/markdown": "^3.20.1",
+    "@tiptap/suggestion": "^3.20.3",
     "@tldraw/sync": "^4.1.2",
     "@tldraw/sync-core": "^4.3.1",
     "chalk": "^5.4.1",

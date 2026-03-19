@@ -114,7 +114,75 @@ All three sections above are combined into one string.
 
 Sections are separated by `\n\n---\n` and only included if non-empty.
 
-### 5. Tool Definitions
+## Auxiliary Prompts
+
+Beyond the main system prompt, Clark uses several smaller LLM prompts for specific tasks. These are single-turn calls (no tools) that handle file processing, naming, and conversation management.
+
+### 5. Ingestion / Linking Prompt
+
+When a file is dropped into the workspace, Clark runs the ingestion pipeline and then uses this prompt to link the new file into existing notes.
+
+**Defined in:** [`core/prompts/ingest.md`](../core/prompts/ingest.md) (with fallback copy in [`core/app/ingest.ts`](../core/app/ingest.ts))
+
+**Template variables:** `{{fileName}}`, `{{destPath}}`, `{{baseName}}`, `{{fileContent}}`, `{{conversationContext}}`
+
+**Behavior:**
+1. Uses `search_notes` and `list_files` to find related documents
+2. Adds wikilinks (`[[path]]` or `![[path]]`) to relevant class pages or topic notes
+3. Returns a brief summary of what was linked
+
+This prompt is sent as a user message to `ConversationEngine.runTurn()` with the full tool set available, so the LLM can call file tools to explore and edit the workspace.
+
+**Called from:** `runIngestionPipeline()` in [`core/app/ingest.ts`](../core/app/ingest.ts)
+
+### 6. OCR Transcription Prompts
+
+Used when transcribing scanned PDFs or images via the LLM's vision API.
+
+**Defined in:** [`core/ocr/provider.ts`](../core/ocr/provider.ts)
+
+**a) Page Transcription** — transcribes a single page image to markdown:
+- System: `"You are a document transcription assistant. Output only the transcribed content in markdown format."`
+- User: Instructs to preserve structure (headings, bullets), format math as LaTeX, describe diagrams in italics, skip page numbers.
+
+**b) Multi-Page Consolidation** — merges page-by-page transcripts into one document:
+- System: `"You are a document consolidation assistant. Your task is to merge multi-page transcriptions into a single coherent document."`
+- User: Instructs to remove duplicate headers/footers, merge into cohesive flow, preserve unique content and markdown formatting.
+
+**Called from:** `VisionOCRProvider.transcribeImage()` and `VisionOCRProvider.consolidateTranscript()`
+
+### 7. File Naming Prompt
+
+Suggests a descriptive filename for an ingested document based on its content.
+
+**Defined in:** [`core/app/ingest.ts`](../core/app/ingest.ts) — `suggestFileName()`
+
+- System: `"You suggest concise, descriptive filenames for documents. Output ONLY the filename (no extension, no path, no quotes, no explanation). Use Title Case. Keep it under 60 characters."`
+- User: Receives the original filename and first ~2000 characters of content.
+
+### 8. Transcript Cleanup Prompt
+
+Reformats garbled raw text extraction (e.g., from `pdf-parse`) into clean markdown. Only triggered when heuristics detect the extracted text has formatting issues (high tab density or high whitespace ratio).
+
+**Defined in:** [`core/app/ingest.ts`](../core/app/ingest.ts) — `cleanupTranscript()`
+
+- System: `"You are a document formatting assistant. Reformat the raw extracted text into clean, well-structured Markdown. Preserve ALL content — do not summarize or omit anything. Fix spacing/tab issues, add proper heading hierarchy, format lists and tables correctly. Format math as LaTeX. Output ONLY the formatted markdown, no preamble."`
+- User: Receives the document filename and raw extracted text (truncated to ~100k chars).
+
+### 9. Conversation Compaction Prompt
+
+Used by the `/compact` slash command to summarize the conversation history before truncating older messages.
+
+**Defined in:** [`core/app/command-router.ts`](../core/app/command-router.ts) — `case "compact"`
+
+- System: `"You are a helpful assistant that summarizes conversations concisely."`
+- User: `"Summarize this tutoring conversation in 2-3 concise paragraphs. Focus on the topics discussed, key concepts, and where the student left off:"` followed by up to 8000 characters of conversation text.
+
+The summary is then passed to `Conversation.compact()` which replaces all but the 4 most recent messages with a single summary message.
+
+## Context Window Components
+
+### 10. Tool Definitions
 
 Clark exposes 13 tools to the LLM via JSON schemas. These are serialized and sent alongside each request.
 
@@ -140,7 +208,7 @@ Clark exposes 13 tools to the LLM via JSON schemas. These are serialized and sen
 
 Each tool definition includes a `name`, `description`, `inputSchema` (JSON Schema), and a `handler` function. Only the schema is sent to the LLM; the handler runs locally.
 
-### 6. Conversation Messages
+### 11. Conversation Messages
 
 The running message history managed by the `Conversation` class.
 
@@ -156,7 +224,7 @@ Message types in the conversation:
 
 Images are estimated at 1,600 tokens each. Text tokens are estimated at 4 characters per token.
 
-### 7. Conversation Turn Loop
+### 12. Conversation Turn Loop
 
 The agentic loop that handles multi-step tool use.
 
@@ -176,7 +244,7 @@ User sends message
                            (up to maxToolCallsPerTurn, default 8)
 ```
 
-### 8. Provider-Specific Prompt Handling
+### 13. Provider-Specific Prompt Handling
 
 Each LLM provider receives the system prompt differently.
 
@@ -189,7 +257,7 @@ Each LLM provider receives the system prompt differently.
 | Gemini | `systemInstruction` parameter | [`core/llm/gemini.ts`](../core/llm/gemini.ts) |
 | Ollama | Prepended as system message | [`core/llm/ollama.ts`](../core/llm/ollama.ts) |
 
-### 9. Context Window Visualization
+### 14. Context Window Visualization
 
 The `/context` slash command renders a 10x10 grid showing token usage by category.
 
@@ -213,9 +281,13 @@ All files involved in prompt and context management:
 | File | Role |
 |------|------|
 | [`core/prompts/system.md`](../core/prompts/system.md) | Base system prompt text |
+| [`core/prompts/ingest.md`](../core/prompts/ingest.md) | Ingestion/linking prompt template |
 | [`cli/bootstrap/system-prompt.ts`](../cli/bootstrap/system-prompt.ts) | Assembles system prompt from parts |
 | [`core/library.ts`](../core/library.ts) | CLARK.md loading, structure templates, workspace scaffolding |
 | [`core/mcp/tools.ts`](../core/mcp/tools.ts) | Tool definitions and handlers |
+| [`core/app/ingest.ts`](../core/app/ingest.ts) | Ingestion pipeline, file naming, transcript cleanup prompts |
+| [`core/ocr/provider.ts`](../core/ocr/provider.ts) | OCR transcription and consolidation prompts |
+| [`core/app/command-router.ts`](../core/app/command-router.ts) | Conversation compaction prompt (`/compact`) |
 | [`core/llm/messages.ts`](../core/llm/messages.ts) | Conversation state and message management |
 | [`core/llm/provider.ts`](../core/llm/provider.ts) | Provider interface |
 | [`core/llm/anthropic.ts`](../core/llm/anthropic.ts) | Anthropic provider (Claude) |
@@ -225,3 +297,73 @@ All files involved in prompt and context management:
 | [`core/engine.ts`](../core/engine.ts) | Conversation turn loop and tool dispatch (UI-agnostic) |
 | [`cli/tui/app.tsx`](../cli/tui/app.tsx) | TUI shell — wires engine callbacks to React state |
 | [`cli/tui/context.ts`](../cli/tui/context.ts) | Context window visualization |
+
+## Prompt Evaluation Framework
+
+A repeatable eval system for testing how prompt changes affect Clark's behavior on known scenarios.
+
+### Architecture
+
+The eval uses **real LLM calls** (not mocks) because prompt evaluation needs to test how models *interpret* the prompt. A separate **LLM-as-judge** call grades each response against defined criteria.
+
+**Files:**
+
+| File | Role |
+|------|------|
+| [`eval/cases.ts`](../eval/cases.ts) | Type definitions (EvalCase, EvalCriterion, EvalResult) |
+| [`eval/cases/basic-questions.ts`](../eval/cases/basic-questions.ts) | Factual question tests (Socratic vs direct) |
+| [`eval/cases/ingestion.ts`](../eval/cases/ingestion.ts) | File organization tests |
+| [`eval/cases/help.ts`](../eval/cases/help.ts) | Onboarding/capabilities tests |
+| [`eval/cases/tool-use.ts`](../eval/cases/tool-use.ts) | Proactive tool use tests |
+| [`eval/harness.ts`](../eval/harness.ts) | Core runner — scaffolds workspace, runs engine, judges |
+| [`eval/judge.ts`](../eval/judge.ts) | LLM-as-judge logic |
+| [`scripts/eval-prompts.ts`](../scripts/eval-prompts.ts) | CLI entry point |
+
+### Running Evals
+
+```bash
+# Run all cases
+bun eval
+
+# Filter by category or case ID
+bun eval --category basic-question
+bun eval --case quadratic-formula
+
+# Use different provider/model
+bun eval --provider anthropic --model claude-sonnet-4-6
+
+# A/B test a different system prompt
+bun eval --prompt-file core/prompts/system-v2.md
+
+# Machine-readable output
+bun eval --json
+
+# Verbose mode (shows tool calls, response snippets, judge reasoning)
+bun eval --verbose
+```
+
+### Writing New Test Cases
+
+Each eval case specifies:
+1. **setup** — user message, optional editor file, optional workspace files to scaffold
+2. **criteria** — each with a `judgingPrompt` sent to the judge LLM and a `weight` (0-1)
+
+The harness creates a real temp workspace with the specified files, so tools like `search_notes` and `read_file` return real results. This tests whether the model actually calls tools and uses the results.
+
+```ts
+const myCase: EvalCase = {
+  id: "my-test",
+  name: "Description of what's being tested",
+  category: "basic-question",
+  setup: {
+    userMessage: "The student's question",
+    workspaceFiles: { "Notes/example.md": "# Content" },
+  },
+  criteria: [{
+    id: "criterion-id",
+    description: "Human-readable description",
+    judgingPrompt: "Does the response ...?",
+    weight: 1.0,
+  }],
+};
+```

@@ -54,8 +54,43 @@ import {
   type SlashCommandResponse,
 } from "./app-controller.ts";
 import { parseSidecarStreamEvent } from "./stream-events.ts";
+import {
+  collectWikilinkTargets,
+  type FileListEntry,
+  type WikilinkTarget,
+} from "./note-paths.ts";
 
 export type { Message } from "./app-controller.ts";
+
+type FileListResponse = {
+  files?: FileListEntry[];
+};
+
+async function loadWikiLinkTargets(rootPath = ""): Promise<WikilinkTarget[]> {
+  const seen = new Map<string, FileListEntry>();
+
+  async function visit(path: string): Promise<void> {
+    const command = path ? "list_files_at" : "list_files";
+    const args = path ? { path } : {};
+    const res = (await invokeCommand(command, args)) as FileListResponse;
+    const files = res.files ?? [];
+
+    for (const file of files) {
+      if (file.type === "file") {
+        seen.set(file.path, file);
+      }
+    }
+
+    for (const file of files) {
+      if (file.type === "directory") {
+        await visit(file.path);
+      }
+    }
+  }
+
+  await visit(rootPath);
+  return collectWikilinkTargets(Array.from(seen.values()));
+}
 
 async function runEffects(
   effects: ControllerEffect[],
@@ -171,6 +206,7 @@ export function App() {
     kind: "success" | "error";
     text: string;
   } | null>(null);
+  const [noteNames, setNoteNames] = useState<WikilinkTarget[]>([]);
 
   // Check onboarding + status on mount before revealing the UI
   useEffect(() => {
@@ -237,6 +273,48 @@ export function App() {
       }
     },
     [],
+  );
+
+  // Load flat list of note names for wiki-link autocomplete whenever the editor opens
+  useEffect(() => {
+    if (!state.editorFile) return;
+    loadWikiLinkTargets()
+      .then(setNoteNames)
+      .catch(() => {});
+  }, [state.editorFile?.path]);
+
+  // Open a note by name from a wiki link click.
+  // Resolves the bare name to a full workspace-relative path via the server,
+  // falling back to creating a new note in the notes directory.
+  const handleOpenNote = useCallback(
+    async (noteName: string) => {
+      // Don't handle non-markdown file references (e.g. PDFs, images)
+      // — those are embedded assets, not notes to open
+      if (/\.(pdf|png|jpe?g|gif|svg|webp|bmp|tiff?)$/i.test(noteName)) return;
+
+      try {
+        const res = (await invokeCommand("resolve_note", { name: noteName })) as {
+          name: string;
+          path: string | null;
+        };
+        if (res.path) {
+          handleFileSelect(res.path);
+          return;
+        }
+      } catch {
+        // Resolution failed — fall through to create
+      }
+
+      // Note doesn't exist — create in the notes directory
+      const newPath = `Notes/${noteName}.md`;
+      try {
+        await invokeCommand("write_file_content", { path: newPath, content: "" });
+        setState((prev) => openEditorFile(prev, newPath, ""));
+      } catch (err) {
+        setState((prev) => applySendError(prev, err));
+      }
+    },
+    [handleFileSelect],
   );
 
   const handleEditorSave = useCallback(
@@ -447,6 +525,8 @@ export function App() {
               onSave={handleEditorSave}
               onClose={() => setState((prev) => closeEditorFile(prev))}
               onDirtyChange={(dirty) => setState((prev) => markEditorDirty(prev, dirty))}
+              onOpenNote={handleOpenNote}
+              noteNames={noteNames}
               chatItems={state.chatItems}
               streamingText={state.streamingText}
               isStreaming={state.isStreaming}
