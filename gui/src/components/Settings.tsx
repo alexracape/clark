@@ -5,7 +5,7 @@ const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 interface SettingsData {
   workspaceDir: string;
   pdfExportDir: string;
-  fileRouting: { pdf?: string; image?: string; other?: string };
+  fileRouting: { pdf?: string; image?: string; other?: string; notes?: string };
   embedding: { provider?: string; model?: string };
 }
 

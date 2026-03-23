@@ -16,6 +16,7 @@ export interface SlashCommandItem {
 
 export interface SlashCommandsOptions {
   noteNames: WikilinkTarget[];
+  onNewNote?: () => void;
 }
 
 export function insertWikiLinkScaffold(editor: Editor, range: Range) {
@@ -24,8 +25,17 @@ export function insertWikiLinkScaffold(editor: Editor, range: Range) {
   editor.view.dispatch(tr);
 }
 
-export function createSlashCommands(_noteNames: WikilinkTarget[]): SlashCommandItem[] {
+export function createSlashCommands(_noteNames: WikilinkTarget[], onNewNote?: () => void): SlashCommandItem[] {
   return [
+  ...(onNewNote ? [{
+    label: "New Note",
+    icon: "+",
+    description: "Create a new note",
+    command: (editor: Editor, range: Range) => {
+      editor.chain().focus().deleteRange(range).run();
+      onNewNote();
+    },
+  }] : []),
   {
     label: "Heading 1",
     icon: "H1",
@@ -138,11 +148,11 @@ export const SlashCommands = Extension.create<SlashCommandsOptions>({
   name: "slashCommands",
 
   addOptions() {
-    return { noteNames: [] };
+    return { noteNames: [], onNewNote: undefined };
   },
 
   addProseMirrorPlugins() {
-    const commands = createSlashCommands(this.options.noteNames);
+    const commands = createSlashCommands(this.options.noteNames, this.options.onNewNote);
 
     return [
       Suggestion({

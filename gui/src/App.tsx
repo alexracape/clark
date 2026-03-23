@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ChatWindow } from "./components/ChatWindow.tsx";
 import { Composer } from "./components/Composer.tsx";
 import { Titlebar } from "./components/Titlebar.tsx";
@@ -25,6 +25,8 @@ import {
   createInitialAppState,
   markEditorDirty,
   openEditorFile,
+  renameEditorFile,
+  updateEditorDraft,
   updateEditorContent,
   onboardingNextStep,
   onboardingPrevStep,
@@ -180,19 +182,30 @@ function IngestToastItem({
 
   return (
     <div className={className}>
-      {ingestion.stage === "complete" ? (
-        <span className="ingest-toast__icon">&#10003;</span>
-      ) : ingestion.stage === "error" ? (
-        <span className="ingest-toast__icon">&#10007;</span>
-      ) : (
-        <span className="ingest-toast__spinner" />
-      )}
+      <div className="ingest-toast__status" aria-hidden="true">
+        {ingestion.stage === "complete" ? (
+          <span className="ingest-toast__icon">&#10003;</span>
+        ) : ingestion.stage === "error" ? (
+          <span className="ingest-toast__icon">&#10007;</span>
+        ) : (
+          <span className="ingest-toast__spinner" />
+        )}
+      </div>
       <div className="ingest-toast__body">
         <span className="ingest-toast__filename">{ingestion.fileName}</span>
         <span className="ingest-toast__stage">
           {ingestion.stage === "error" ? ingestion.message : stageLabel}
         </span>
       </div>
+      <button
+        type="button"
+        className="ingest-toast__close"
+        onClick={() => onDismiss(ingestion.fileName)}
+        aria-label={`Dismiss ${ingestion.fileName} notification`}
+        title="Dismiss notification"
+      >
+        &#10005;
+      </button>
     </div>
   );
 }
@@ -207,6 +220,12 @@ export function App() {
     text: string;
   } | null>(null);
   const [noteNames, setNoteNames] = useState<WikilinkTarget[]>([]);
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+  const stateRef = useRef(state);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // Check onboarding + status on mount before revealing the UI
   useEffect(() => {
@@ -252,11 +271,11 @@ export function App() {
 
   const handleFileDrop = useCallback(
     async (path: string) => {
-      const plan = planFileDrop(state, path);
+      const plan = planFileDrop(stateRef.current, path);
       setState(plan.state);
       await runEffects(plan.effects, setState);
     },
-    [state],
+    [],
   );
 
   const handleFileSelect = useCallback(
@@ -305,8 +324,15 @@ export function App() {
         // Resolution failed — fall through to create
       }
 
-      // Note doesn't exist — create in the notes directory
-      const newPath = `Notes/${noteName}.md`;
+      // Note doesn't exist — create in the notes directory (use config)
+      let notesDir = "Notes";
+      try {
+        const settings = (await invokeCommand("get_settings", {})) as {
+          fileRouting: { notes?: string };
+        };
+        notesDir = settings.fileRouting?.notes || "Notes";
+      } catch { /* use default */ }
+      const newPath = `${notesDir}/${noteName}.md`;
       try {
         await invokeCommand("write_file_content", { path: newPath, content: "" });
         setState((prev) => openEditorFile(prev, newPath, ""));
@@ -328,6 +354,61 @@ export function App() {
     },
     [],
   );
+
+  const handleRenameFile = useCallback(
+    async (oldPath: string, newPath: string) => {
+      try {
+        await invokeCommand("rename_file", { oldPath, newPath });
+        setState((prev) => renameEditorFile(prev, newPath));
+        setSidebarRefreshKey((k) => k + 1);
+        loadWikiLinkTargets().then(setNoteNames).catch(() => {});
+        return true;
+      } catch (err) {
+        setState((prev) => applySendError(prev, err));
+        return false;
+      }
+    },
+    [],
+  );
+
+  const handleNewNote = useCallback(async () => {
+    try {
+      // Fetch settings to get the notes directory from fileRouting config
+      const settings = (await invokeCommand("get_settings", {})) as {
+        fileRouting: { notes?: string };
+      };
+      const notesDir = settings.fileRouting?.notes || "Notes";
+
+      // List existing files in the notes directory to find next counter
+      let existingFiles: string[] = [];
+      try {
+        const res = (await invokeCommand("list_files_at", { path: notesDir })) as {
+          files?: { name: string }[];
+        };
+        existingFiles = (res.files ?? []).map((f) => f.name);
+      } catch {
+        // Directory may not exist yet — that's fine
+      }
+
+      // Find next available "Untitled N" name
+      let newName = "Untitled";
+      if (existingFiles.includes("Untitled.md")) {
+        let counter = 2;
+        while (existingFiles.includes(`Untitled ${counter}.md`)) {
+          counter++;
+        }
+        newName = `Untitled ${counter}`;
+      }
+
+      const newPath = `${notesDir}/${newName}.md`;
+      await invokeCommand("write_file_content", { path: newPath, content: "" });
+      setState((prev) => openEditorFile(prev, newPath, ""));
+      setSidebarRefreshKey((k) => k + 1);
+      loadWikiLinkTargets().then(setNoteNames).catch(() => {});
+    } catch (err) {
+      setState((prev) => applySendError(prev, err));
+    }
+  }, []);
 
   useEffect(() => {
     if (isTauri) {
@@ -516,7 +597,7 @@ export function App() {
       />
 
       <div className="app-main">
-        <Sidebar open={sidebarOpen} invoke={invokeCommand} onFileSelect={handleFileSelect} />
+        <Sidebar open={sidebarOpen} invoke={invokeCommand} onFileSelect={handleFileSelect} onNewNote={handleNewNote} refreshKey={sidebarRefreshKey} />
 
         <div className="chat-window">
           {state.editorFile ? (
@@ -524,8 +605,18 @@ export function App() {
               file={state.editorFile}
               onSave={handleEditorSave}
               onClose={() => setState((prev) => closeEditorFile(prev))}
-              onDirtyChange={(dirty) => setState((prev) => markEditorDirty(prev, dirty))}
+              onDirtyChange={(dirty, content) => setState((prev) => {
+                if (typeof content === "string") {
+                  if (!dirty) {
+                    return updateEditorContent(prev, content);
+                  }
+                  return updateEditorDraft(prev, content);
+                }
+                return markEditorDirty(prev, dirty);
+              })}
               onOpenNote={handleOpenNote}
+              onRename={handleRenameFile}
+              onNewNote={handleNewNote}
               noteNames={noteNames}
               chatItems={state.chatItems}
               streamingText={state.streamingText}
@@ -541,6 +632,11 @@ export function App() {
               isStreaming={state.isStreaming}
             />
           )}
+
+          <IngestToastStack
+            ingestions={state.activeIngestions}
+            onDismiss={(fileName) => setState((prev) => dismissIngestion(prev, fileName))}
+          />
 
           <Composer onSend={handleSend} disabled={state.isStreaming} />
         </div>
@@ -558,12 +654,6 @@ export function App() {
           <div className="drag-overlay__text">Drop to import</div>
         </div>
       )}
-
-      <IngestToastStack
-        ingestions={state.activeIngestions}
-        onDismiss={(fileName) => setState((prev) => dismissIngestion(prev, fileName))}
-      />
-
 
       {state.showModelPicker && (
         <ModelPicker

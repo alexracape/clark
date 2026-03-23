@@ -329,6 +329,20 @@ pub async fn write_file_content(
 }
 
 #[tauri::command]
+pub async fn rename_file(
+    old_path: String,
+    new_path: String,
+    sidecar: State<'_, Sidecar>,
+) -> Result<serde_json::Value, String> {
+    sidecar_post(
+        &sidecar,
+        "/api/rename-file",
+        serde_json::json!({ "oldPath": old_path, "newPath": new_path }),
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn write_clipboard_text(
     text: String,
     app: tauri::AppHandle,

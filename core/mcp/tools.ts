@@ -10,17 +10,13 @@ import { join, extname, dirname, relative, basename } from "node:path";
 import { homedir } from "node:os";
 import type { CanvasBroker } from "../canvas/server.ts";
 import { exportPDFToFile } from "../canvas/pdf-export.ts";
-import { extractPDFText, getPDFInfo } from "./pdf.ts";
+import { extractPDFText, getPDFInfo, POPPLER_DOCS_URL } from "./pdf.ts";
 import type { ToolInputSchema } from "../llm/provider.ts";
 import type { OCRProvider } from "../ocr/provider.ts";
 import type { EmbeddingProvider } from "../embedding/provider.ts";
 import type { EmbeddingIndex } from "../embedding/index.ts";
 import { SearchIndexer } from "../embedding/indexer.ts";
-import {
-  checkPopplerAvailable,
-  getPopplerInstallInstructions,
-} from "../ocr/pdf-renderer.ts";
-import { transcribePDFToMarkdown } from "../ocr/transcribe.ts";
+import { transcribePDF } from "../ocr/transcribe.ts";
 import {
   extractWikilinks,
   buildLinkFooter,
@@ -196,17 +192,29 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           }
 
           if (isPDFFile(absolutePath)) {
-            const text = await extractPDFText(absolutePath);
-            const info = await getPDFInfo(absolutePath);
-            const avgCharsPerPage = text.length / Math.max(info.pages, 1);
-            let content = wrapFileContent(inputPath, text);
-            if (avgCharsPerPage < 50) {
-              content += `\n\n[Note: This PDF has very little extractable text (~${Math.round(avgCharsPerPage)} chars/page across ${info.pages} page${info.pages === 1 ? "" : "s"}). It may be scanned or image-based. Use transcribe_pdf to OCR it if you need the full content.]`;
+            try {
+              const text = await extractPDFText(absolutePath);
+              const info = await getPDFInfo(absolutePath);
+              const avgCharsPerPage = text.length / Math.max(info.pages, 1);
+              let content = wrapFileContent(inputPath, text);
+              if (avgCharsPerPage < 50) {
+                content += `\n\n[Note: This PDF has very little extractable text (~${Math.round(avgCharsPerPage)} chars/page across ${info.pages} page${info.pages === 1 ? "" : "s"}). It may be scanned or image-based. Use transcribe_pdf to OCR it if you need the full content.]`;
+              }
+              return {
+                content: [{ type: "text", text: content }],
+                isError: false,
+              };
+            } catch {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Error: PDF reading requires poppler to be installed.\nSee: ${POPPLER_DOCS_URL}`,
+                  },
+                ],
+                isError: true,
+              };
             }
-            return {
-              content: [{ type: "text", text: content }],
-              isError: false,
-            };
           }
 
           // Markdown / text file
@@ -1174,34 +1182,6 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           };
         }
 
-        // Check poppler
-        const hasPop = await checkPopplerAvailable();
-        if (!hasPop) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Error: pdftoppm (poppler) is not installed. PDF OCR requires poppler to render pages to images.\n${getPopplerInstallInstructions()}`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        // Check OCR provider
-        const ocrProvider = config.getOCRProvider?.();
-        if (!ocrProvider) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: "Error: No OCR provider available. The current LLM provider may not support vision. Switch to a vision-capable provider to use OCR.",
-              },
-            ],
-            isError: true,
-          };
-        }
-
         // Parse page range
         let pageRange: { start: number; end: number } | undefined;
         if (pageRangeStr) {
@@ -1223,42 +1203,41 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         }
 
         try {
-          progress?.(`Rendering PDF pages from ${inputPath}...`);
-          const transcription = await transcribePDFToMarkdown(
-            absolutePdfPath,
+          progress?.(`Transcribing PDF pages from ${inputPath}...`);
+          const ocrProvider = config.getOCRProvider?.() ?? null;
+          const result = await transcribePDF({
+            pdfPath: absolutePdfPath,
             ocrProvider,
-            {
-              sourcePath: inputPath,
-              pageRange,
-              consolidate,
-              onProgress: (event) => {
-                if (event.phase === "render") {
-                  progress?.(
-                    `Rendered page ${event.pageNumber} (${event.completed}/${event.total})`,
-                  );
-                  return;
-                }
+            sourcePath: inputPath,
+            pageRange,
+            consolidate,
+            onProgress: (event) => {
+              if (event.phase === "render") {
                 progress?.(
-                  `Transcribing page ${event.pageNumber} (${event.completed}/${event.total})...`,
+                  `Rendered page ${event.pageNumber} (${event.completed}/${event.total})`,
                 );
-              },
+                return;
+              }
+              progress?.(
+                `Transcribing page ${event.pageNumber} (${event.completed}/${event.total})...`,
+              );
             },
-          );
+          });
 
           // Write output file
           await mkdir(dirname(absoluteOutputPath), { recursive: true });
-          await Bun.write(absoluteOutputPath, transcription.markdown);
+          await Bun.write(absoluteOutputPath, result.markdown);
           invalidateFileIndex();
 
           progress?.(
-            `OCR complete: ${transcription.pageCount} page${transcription.pageCount === 1 ? "" : "s"} transcribed.`,
+            `Transcription complete: ${result.pageCount} page${result.pageCount === 1 ? "" : "s"} (${result.method}).`,
           );
 
           return {
             content: [
               {
                 type: "text",
-                text: `Transcription saved to ${outputPath} (${transcription.pageCount} page${transcription.pageCount === 1 ? "" : "s"}).`,
+                text: `Transcription saved to ${outputPath} (${result.pageCount} page${result.pageCount === 1 ? "" : "s"}, method: ${result.method}).`,
               },
             ],
             isError: false,
@@ -1266,7 +1245,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           return {
-            content: [{ type: "text", text: `Error during PDF OCR: ${msg}` }],
+            content: [{ type: "text", text: `Error: ${msg}` }],
             isError: true,
           };
         }

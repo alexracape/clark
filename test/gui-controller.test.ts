@@ -9,6 +9,7 @@ import {
   getMessages,
   markEditorDirty,
   openEditorFile,
+  updateEditorDraft,
   planSendInput,
   updateEditorContent,
   type AppState,
@@ -163,6 +164,14 @@ describe("gui app controller", () => {
     const updated = updateEditorContent(state, "new content");
     expect(updated.editorFile?.content).toBe("new content");
     expect(updated.editorFile?.dirty).toBe(false);
+  });
+
+  test("updateEditorDraft sets content and keeps editor dirty", () => {
+    const state = openEditorFile(createInitialAppState(), "test.md", "old");
+
+    const updated = updateEditorDraft(state, "new draft");
+    expect(updated.editorFile?.content).toBe("new draft");
+    expect(updated.editorFile?.dirty).toBe(true);
   });
 
   test("updateEditorContent is no-op when no file open", () => {

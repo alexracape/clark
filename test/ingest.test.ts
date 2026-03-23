@@ -6,7 +6,8 @@ import { test, expect, describe } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detectFilePath, copyFileToResources } from "../core/app/ingest.ts";
+import { detectFilePath, copyFileToResources, runIngestionPipeline } from "../core/app/ingest.ts";
+import { MockProvider } from "../core/llm/mock.ts";
 
 describe("detectFilePath", () => {
   test("returns null for regular text", async () => {
@@ -153,6 +154,47 @@ describe("copyFileToResources", () => {
       expect(result.destPath).toBe("Resources/PDFs/doc.pdf");
     } finally {
       await rm(sourceDir, { recursive: true, force: true });
+      await rm(workspaceDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("runIngestionPipeline", () => {
+  test("chooses a unique AI-generated filename when the suggested resource already exists", async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), "clark-ingest-pipeline-"));
+    const provider = new MockProvider([
+      { text: "Existing Name" },
+      { text: "Linked to related notes." },
+    ], false);
+
+    try {
+      await mkdir(join(workspaceDir, "Resources"), { recursive: true });
+      await writeFile(join(workspaceDir, "Resources", "original.txt"), "Class notes");
+      await writeFile(join(workspaceDir, "Resources", "Existing Name.txt"), "already here");
+      await mkdir(join(workspaceDir, "Clark", "Transcripts"), { recursive: true });
+      await writeFile(join(workspaceDir, "Clark", "Transcripts", "Existing Name.md"), "existing transcript");
+
+      const result = await runIngestionPipeline({
+        filePath: join(workspaceDir, "Resources", "original.txt"),
+        destPath: "Resources/original.txt",
+        fileName: "original.txt",
+        workspaceDir,
+        provider,
+        tools: [],
+        systemPrompt: "test prompt",
+        conversationContext: "",
+        ocrProvider: null,
+        onProgress: () => {},
+      });
+
+      expect(result.finalFileName).toBe("Existing Name 2.txt");
+      expect(result.finalDestPath).toBe("Resources/Existing Name 2.txt");
+      expect(result.transcriptPath).toBe("Clark/Transcripts/Existing Name 2.md");
+      expect(await Bun.file(join(workspaceDir, "Resources", "Existing Name.txt")).text()).toBe("already here");
+      expect(await Bun.file(join(workspaceDir, "Resources", "Existing Name 2.txt")).text()).toBe("Class notes");
+      expect(await Bun.file(join(workspaceDir, "Clark", "Transcripts", "Existing Name.md")).text()).toBe("existing transcript");
+      expect(await Bun.file(join(workspaceDir, "Clark", "Transcripts", "Existing Name 2.md")).text()).toBe("Class notes");
+    } finally {
       await rm(workspaceDir, { recursive: true, force: true });
     }
   });

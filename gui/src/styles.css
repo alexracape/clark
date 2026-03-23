@@ -271,6 +271,24 @@ body {
     justify-content: space-between;
 }
 
+.sidebar__new-note {
+    background: none;
+    border: none;
+    color: var(--patina);
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+
+.sidebar__new-note:hover {
+    color: var(--leather);
+    background: rgba(0, 0, 0, 0.05);
+}
+
 .sidebar__toggle {
     background: none;
     border: none;
@@ -796,30 +814,30 @@ body {
 
 /* Ingestion toast stack */
 .ingest-toast-stack {
-    position: fixed;
-    bottom: 16px;
-    right: 16px;
     display: flex;
     flex-direction: column-reverse;
     gap: 8px;
-    z-index: 260;
-    pointer-events: none;
+    width: min(100%, 360px);
+    margin: 0 24px 8px auto;
+    padding: 0;
+    flex-shrink: 0;
+    pointer-events: auto;
 }
 
 .ingest-toast {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
-    padding: 10px 16px;
+    padding: 10px 12px 10px 16px;
     background: var(--sidebar-bg, #2c2c2c);
     color: var(--parchment, #f5f0e8);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     font-size: 13px;
-    min-width: 240px;
-    max-width: 360px;
+    width: 100%;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     animation: ingest-toast-in 200ms ease-out;
+    pointer-events: auto;
 }
 
 @keyframes ingest-toast-in {
@@ -851,6 +869,15 @@ body {
     flex-shrink: 0;
 }
 
+.ingest-toast__status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 18px;
+    padding-top: 1px;
+    flex-shrink: 0;
+}
+
 @keyframes ingest-spin {
     to {
         transform: rotate(360deg);
@@ -867,6 +894,7 @@ body {
     flex-direction: column;
     gap: 2px;
     min-width: 0;
+    flex: 1;
 }
 
 .ingest-toast__filename {
@@ -879,6 +907,35 @@ body {
 .ingest-toast__stage {
     font-size: 12px;
     opacity: 0.7;
+}
+
+.ingest-toast__close {
+    border: none;
+    background: transparent;
+    color: inherit;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition:
+        opacity 0.15s ease,
+        background 0.15s ease;
+    flex-shrink: 0;
+}
+
+.ingest-toast:hover .ingest-toast__close,
+.ingest-toast:focus-within .ingest-toast__close {
+    opacity: 0.7;
+    pointer-events: auto;
+}
+
+.ingest-toast__close:hover,
+.ingest-toast__close:focus-visible {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.12);
+    outline: none;
 }
 
 /* Modal */
@@ -1971,6 +2028,8 @@ body {
 
 .markdown-editor__body {
     flex: 1;
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
     padding: 24px 0;
 }
@@ -1984,12 +2043,49 @@ body {
     gap: 8px;
 }
 
+.markdown-editor__title-block {
+    padding: 0 24px;
+}
+
+.markdown-editor__title-block .markdown-editor__title-row {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+}
+
 .markdown-editor__title {
     font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
     font-size: 18px;
     font-weight: 600;
     color: var(--leather);
     margin: 0;
+    cursor: pointer;
+}
+
+.markdown-editor__title:hover {
+    color: var(--walnut);
+}
+
+.markdown-editor__title-input {
+    font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--leather);
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--brass);
+    outline: none;
+    padding: 0;
+    margin: 0;
+    min-width: 120px;
+}
+
+.markdown-editor__title-error {
+    margin-top: 6px;
+    font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #b42318;
 }
 
 .markdown-editor__dirty-dot {
@@ -2009,6 +2105,16 @@ body {
     font-size: 14px;
     line-height: 1.6;
     color: var(--walnut);
+    width: 100%;
+    min-height: 280px;
+    cursor: text;
+}
+
+.markdown-editor__content-shell {
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+    padding: 6px 0 120px;
 }
 
 .markdown-editor__content h1,
@@ -2127,7 +2233,7 @@ body {
 }
 
 /* Tiptap placeholder */
-.tiptap p.is-editor-empty:first-child::before {
+.markdown-editor__content .is-editor-empty:first-child::before {
     content: attr(data-placeholder);
     float: left;
     color: var(--patina);
@@ -2455,4 +2561,49 @@ body {
 .conv-rail__tool-name {
     font-size: 12px;
     font-family: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+}
+
+/* ── KaTeX Math Rendering ─────────────────────────────────────────────────── */
+
+/* Override KaTeX default font color */
+.katex {
+    color: #000000;
+    font-size: 1em;
+}
+
+.math-block {
+    display: block;
+    overflow-x: auto;
+    padding: 0.75em 0;
+    text-align: center;
+}
+
+/* Tiptap editor math node wrapper */
+[data-math-block] {
+    display: block;
+    overflow-x: auto;
+    padding: 0.75em 1em;
+    margin: 0.5em 0;
+    border-radius: 4px;
+    background: var(--code-bg);
+    cursor: default;
+    user-select: none;
+    text-align: center;
+}
+
+[data-math-block]:hover {
+    outline: 1px solid var(--divider);
+}
+
+[data-math-inline] {
+    display: inline;
+    cursor: default;
+    user-select: none;
+}
+
+/* Selected math nodes in editor */
+.ProseMirror-selectednode[data-math-block],
+.ProseMirror-selectednode[data-math-inline] {
+    outline: 2px solid var(--lamp-green);
+    border-radius: 3px;
 }

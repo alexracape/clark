@@ -473,9 +473,19 @@ export function markEditorDirty(state: AppState, dirty: boolean): AppState {
   return { ...state, editorFile: { ...state.editorFile, dirty } };
 }
 
+export function updateEditorDraft(state: AppState, content: string): AppState {
+  if (!state.editorFile) return state;
+  return { ...state, editorFile: { ...state.editorFile, content, dirty: true } };
+}
+
 export function updateEditorContent(state: AppState, content: string): AppState {
   if (!state.editorFile) return state;
   return { ...state, editorFile: { ...state.editorFile, content, dirty: false } };
+}
+
+export function renameEditorFile(state: AppState, newPath: string): AppState {
+  if (!state.editorFile) return state;
+  return { ...state, editorFile: { ...state.editorFile, path: newPath } };
 }
 
 // --- Onboarding pure functions ---

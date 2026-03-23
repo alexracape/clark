@@ -45,11 +45,11 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
     bindHost: "0.0.0.0",
   });
 
-  // Non-blocking poppler check — warn early if PDF OCR won't work
+  // Non-blocking poppler check — warn early if PDF features won't work
   checkPopplerAvailable().then((available) => {
     if (!available) {
       console.error(
-        `\n⚠  pdftoppm (poppler) not found — PDF OCR will not be available.\n   ${getPopplerInstallInstructions()}\n`,
+        `\n⚠  poppler not found — PDF processing will not be available.\n   ${getPopplerInstallInstructions()}\n   See: https://alex.racape.com/clark/dependencies.html#pdf-processing-with-popp\n`,
       );
     }
   });

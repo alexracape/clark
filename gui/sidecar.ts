@@ -17,8 +17,8 @@
  *   WS   /api/stream      — Streaming events (text, thinking, tool_start, etc.)
  */
 
-import { readdir, mkdir } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { readdir, mkdir, rename } from "node:fs/promises";
+import { basename, join, dirname, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 
 // macOS GUI apps get a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin).
@@ -83,6 +83,7 @@ let searchIndex: EmbeddingIndex | null = null;
 /** Connected WebSocket clients for streaming events */
 const streamClients = new Set<{ send(data: string): void }>();
 const streamListeners = new Set<(event: SidecarStreamEvent) => void>();
+const activeIngestions = new Set<string>();
 
 /** Broadcast an event to all connected stream clients */
 function broadcast(event: SidecarStreamEvent): void {
@@ -379,7 +380,17 @@ async function handleIngest(req: Request): Promise<Response> {
     return jsonResponse({ error: "Missing 'path' field" }, 400);
   }
 
+  const ingestKey = resolve(body.path);
+  if (activeIngestions.has(ingestKey)) {
+    return jsonResponse({
+      fileName: basename(ingestKey),
+      summary: `Already importing ${basename(ingestKey)}.`,
+      deduped: true,
+    });
+  }
+
   try {
+    activeIngestions.add(ingestKey);
     const routing = config.fileRouting;
     const result = await copyFileToResources(body.path, workspaceDir, routing);
 
@@ -388,17 +399,18 @@ async function handleIngest(req: Request): Promise<Response> {
     console.log(`[ingest] Starting pipeline for ${result.fileName}`);
 
     // Kick off background pipeline (non-blocking)
-    runIngestionInBackground(result.fileName, result.destPath);
+    runIngestionInBackground(result.fileName, result.destPath, ingestKey);
 
     return jsonResponse(result);
   } catch (err) {
+    activeIngestions.delete(ingestKey);
     const msg = err instanceof Error ? err.message : String(err);
     return jsonResponse({ error: msg }, 500);
   }
 }
 
 /** Run the ingestion pipeline in the background (transcribe + link). */
-function runIngestionInBackground(fileName: string, destPath: string): void {
+function runIngestionInBackground(fileName: string, destPath: string, ingestKey: string): void {
   // Gather conversation context from recent messages
   const recentMessages = conversation.getMessages();
   const contextMessages = recentMessages
@@ -449,6 +461,8 @@ function runIngestionInBackground(fileName: string, destPath: string): void {
   }).catch((err) => {
     const msg = err instanceof Error ? err.message : String(err);
     broadcast({ type: "ingest_error", fileName, error: msg });
+  }).finally(() => {
+    activeIngestions.delete(ingestKey);
   });
 }
 
@@ -543,6 +557,26 @@ async function handleWriteFileContent(req: Request): Promise<Response> {
     await mkdir(dirname(absolutePath), { recursive: true });
     await Bun.write(absolutePath, body.content);
     return jsonResponse({ ok: true, path: body.path });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return jsonResponse({ error: msg }, 500);
+  }
+}
+
+/** POST /api/rename-file — Rename/move a file within the workspace */
+async function handleRenameFile(req: Request): Promise<Response> {
+  const body = await req.json() as { oldPath: string; newPath: string };
+
+  if (!body.oldPath || !body.newPath || body.oldPath.includes("..") || body.newPath.includes("..")) {
+    return jsonResponse({ error: "Invalid path" }, 400);
+  }
+
+  const absoluteOld = join(workspaceDir, body.oldPath);
+  const absoluteNew = join(workspaceDir, body.newPath);
+  try {
+    await mkdir(dirname(absoluteNew), { recursive: true });
+    await rename(absoluteOld, absoluteNew);
+    return jsonResponse({ ok: true, oldPath: body.oldPath, newPath: body.newPath });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return jsonResponse({ error: msg }, 500);
@@ -967,6 +1001,9 @@ export async function createSidecarServer(): Promise<{
       }
       if (url.pathname === "/api/file-content" && req.method === "POST") {
         return await handleWriteFileContent(req);
+      }
+      if (url.pathname === "/api/rename-file" && req.method === "POST") {
+        return await handleRenameFile(req);
       }
       if (url.pathname === "/api/status" && req.method === "GET") {
         return handleStatus();

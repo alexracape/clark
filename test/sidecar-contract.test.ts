@@ -111,6 +111,41 @@ describe("sidecar API contracts", () => {
     expect(data.destPath).toContain("Resources");
   });
 
+  test("POST /api/ingest suppresses duplicate in-flight ingests for the same source path", async () => {
+    await callRoute("/api/provider", "POST", { provider: "mock", model: "test" });
+
+    const dir = await mkdtemp(join(tmpdir(), "clark-ingest-dup-"));
+    const path = join(dir, "duplicate-note.txt");
+    await Bun.write(path, "duplicate test file");
+
+    const eventsPromise = waitForEventSequence((events) => {
+      return events.some((event) => {
+        return (
+          (event.type === "ingest_complete" || event.type === "ingest_error")
+          && event.fileName === "duplicate-note.txt"
+        );
+      });
+    });
+
+    const [firstRes, secondRes] = await Promise.all([
+      callRoute("/api/ingest", "POST", { path }),
+      callRoute("/api/ingest", "POST", { path }),
+    ]);
+
+    expect(firstRes.status).toBe(200);
+    expect(secondRes.status).toBe(200);
+
+    const secondData = await secondRes.json() as { summary?: string; deduped?: boolean };
+    expect(secondData.deduped).toBe(true);
+    expect(secondData.summary).toContain("Already importing duplicate-note.txt.");
+
+    const events = await eventsPromise;
+    const startEvents = events.filter((event) => {
+      return event.type === "ingest_start" && event.fileName === "duplicate-note.txt";
+    });
+    expect(startEvents).toHaveLength(1);
+  });
+
   test("GET /api/context and /api/history are reachable", async () => {
     const contextRes = await callRoute("/api/context");
     expect(contextRes.status).toBe(200);

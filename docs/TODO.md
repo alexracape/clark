@@ -4,7 +4,6 @@ Some future enhancements and things that need fixing, organized into parallel ex
 
 GUI
 - Context visualization missing tool definitions
-- Latex rendering
 
 General
 - Add explore tool to start conversations and optimize token usage
@@ -15,12 +14,14 @@ General
 - Fix windows tests (3)
 - Transition architecture to Rust
 - Graph view in bottom left of explorer
-- Support for linking notes and opening in the editor
 - Clark Cloud service for OCR, Embeddings, Model provider, usage data.
 - Add recommended endorsement for new folder or model?
 - Debug document drag and drop - what if you miss a dependency
-- Option to create new notes
-- Autosave
+- Move transcribing / linking loader to bottom left where it doesn't block
+- Package Deepseek OCR and Embedding models in some sort of configuration
+- Inline PDF rendering
+- Delete file
+- Keep only most recent canavs screenshot in context
 
 Polish
 - Thinking indicator

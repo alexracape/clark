@@ -5,6 +5,7 @@ import { Markdown } from "@tiptap/markdown";
 import { WikiLink } from "../gui/src/extensions/WikiLink.ts";
 import { SmartPairs } from "../gui/src/extensions/SmartPairs.ts";
 import { EmbeddedImage } from "../gui/src/extensions/EmbeddedImage.ts";
+import { normalizeMarkdownEditorContent } from "../gui/src/editor-content.ts";
 import {
   getWikiLinkSuggestionItems,
   insertWikiLinkSuggestion,
@@ -74,6 +75,23 @@ function findTextRange(editor: Editor, target: string) {
 }
 
 describe("wikilink autocomplete helpers", () => {
+  test("normalizes blank markdown into an empty paragraph for editor placeholders", () => {
+    const editor = new Editor({
+      extensions: [
+        StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+        Markdown,
+      ],
+      content: normalizeMarkdownEditorContent(""),
+      contentType: "markdown",
+    });
+
+    expect(editor.getJSON()).toEqual({
+      type: "doc",
+      content: [{ type: "paragraph" }],
+    });
+    expect(editor.getMarkdown()).toBe("");
+  });
+
   test("filters note names by query", () => {
     const items = getWikiLinkSuggestionItems(
       [

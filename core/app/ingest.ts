@@ -3,12 +3,11 @@
  * processing (transcription + agentic linking).
  */
 
-import { basename, join, resolve, extname } from "node:path";
+import { basename, dirname, join, resolve, extname } from "node:path";
 import { mkdir, stat, rename, unlink } from "node:fs/promises";
 import { expandPath, clarkTranscriptsDirPath } from "../library.ts";
 import { isImageFile, isPDFFile } from "../mcp/vault.ts";
-import { extractPDFText } from "../mcp/pdf.ts";
-import { transcribePDFToMarkdown } from "../ocr/transcribe.ts";
+import { transcribePDF } from "../ocr/transcribe.ts";
 import { Conversation } from "../llm/messages.ts";
 import { ConversationEngine } from "../engine.ts";
 import type { LLMProvider, Message } from "../llm/provider.ts";
@@ -184,22 +183,6 @@ const INGEST_PROMPT_FALLBACK = `A file has been added to the user's library. The
 
 Be conservative with edits — only link where the relationship is obvious. Do not create new structure files unless the user has explicitly asked.`;
 
-/** Extract PDF text via the `pdftotext` CLI (poppler). */
-async function extractPDFTextViaPdftotext(filePath: string): Promise<string> {
-  const proc = Bun.spawn(["pdftotext", "-layout", filePath, "-"], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [exitCode, text, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  if (exitCode !== 0) throw new Error(`pdftotext failed: ${stderr.trim()}`);
-  if (!text.trim()) throw new Error("pdftotext returned empty output");
-  return text;
-}
-
 /** Simple text-in/text-out LLM call for naming and cleanup tasks. */
 async function simpleLLMCall(
   provider: LLMProvider,
@@ -271,6 +254,26 @@ function sanitizeFileName(name: string): string {
     .substring(0, 80);
 }
 
+/** Find an available sibling path by appending a numeric suffix when needed. */
+async function ensureUniqueSiblingPath(targetPath: string): Promise<string> {
+  const extension = extname(targetPath);
+  const stem = basename(targetPath, extension);
+  const parentDir = dirname(targetPath);
+
+  if (!(await Bun.file(targetPath).exists())) {
+    return targetPath;
+  }
+
+  for (let index = 2; index < 10_000; index += 1) {
+    const candidate = join(parentDir, `${stem} ${index}${extension}`);
+    if (!(await Bun.file(candidate).exists())) {
+      return candidate;
+    }
+  }
+
+  throw new Error(`Could not find an available filename for ${targetPath}`);
+}
+
 /** Load the ingestion prompt template and fill in variables. */
 async function loadIngestionPrompt(vars: {
   fileName: string;
@@ -300,7 +303,7 @@ async function loadIngestionPrompt(vars: {
 
 /**
  * Run the full ingestion pipeline for a dropped file:
- * 1. Extract raw text deterministically (vision OCR → pdftotext → pdf-parse)
+ * 1. Extract raw text (vision OCR → pdftotext → error)
  * 2. Clean up transcript formatting via LLM
  * 3. Rename file based on LLM-suggested name
  * 4. Save transcript to Clark/Transcripts/
@@ -313,8 +316,6 @@ export async function runIngestionPipeline(
   const baseName = basename(opts.fileName, getExtension(opts.fileName));
   const transcriptsDir = clarkTranscriptsDirPath(opts.workspaceDir);
   await mkdir(transcriptsDir, { recursive: true });
-  const transcriptRelPath = `Clark/Transcripts/${baseName}.md`;
-  const transcriptAbsPath = join(opts.workspaceDir, transcriptRelPath);
 
   // --- Step 1: Read and transcribe file content ---
   opts.onProgress("transcribing", `Transcribing ${opts.fileName}...`);
@@ -322,29 +323,17 @@ export async function runIngestionPipeline(
   let fileContent = "";
 
   if (isPDFFile(opts.fileName)) {
-    // Fallback chain: Vision OCR → pdftotext CLI → pdf-parse → placeholder
-    if (opts.ocrProvider) {
-      try {
-        const result = await transcribePDFToMarkdown(absFilePath, opts.ocrProvider, {
-          sourcePath: opts.destPath,
-        });
-        fileContent = result.markdown;
-      } catch (err) {
-        console.error(`[ingest] Vision OCR failed for ${opts.fileName}:`, err);
-      }
-    }
-    if (!fileContent) {
-      try {
-        fileContent = await extractPDFTextViaPdftotext(absFilePath);
-      } catch (err) {
-        console.error(`[ingest] pdftotext failed for ${opts.fileName}:`, err);
-        try {
-          fileContent = await extractPDFText(absFilePath);
-        } catch (err2) {
-          console.error(`[ingest] pdf-parse failed for ${opts.fileName}:`, err2);
-          fileContent = `[Could not extract text from ${opts.fileName}]`;
-        }
-      }
+    try {
+      const result = await transcribePDF({
+        pdfPath: absFilePath,
+        ocrProvider: opts.ocrProvider,
+        sourcePath: opts.destPath,
+      });
+      fileContent = result.text;
+    } catch (err) {
+      console.error(`[ingest] PDF transcription failed for ${opts.fileName}:`, err);
+      const msg = err instanceof Error ? err.message : String(err);
+      fileContent = `[Could not extract text from ${opts.fileName}. ${msg}]`;
     }
   } else if (isImageFile(opts.fileName)) {
     // For images, we can't extract text without vision — store a placeholder
@@ -381,26 +370,27 @@ export async function runIngestionPipeline(
   if (suggested && suggested !== baseName) {
     const ext = extname(opts.fileName);
     const newFileName = `${suggested}${ext}`;
-    const newAbsPath = join(absFilePath, "..", newFileName);
+    const newAbsPath = await ensureUniqueSiblingPath(join(dirname(absFilePath), newFileName));
     try {
       await rename(absFilePath, newAbsPath);
-      finalFileName = newFileName;
-      finalDestPath = opts.destPath.replace(opts.fileName, newFileName);
+      finalFileName = basename(newAbsPath);
+      finalDestPath = opts.destPath.replace(opts.fileName, finalFileName);
       finalAbsFilePath = newAbsPath;
-      finalBaseName = suggested;
-      console.log(`[ingest] Renamed ${opts.fileName} → ${newFileName}`);
+      finalBaseName = basename(finalFileName, ext);
+      console.log(`[ingest] Renamed ${opts.fileName} → ${finalFileName}`);
     } catch (err) {
       console.error(`[ingest] Could not rename ${opts.fileName}:`, err);
     }
   }
 
   // --- Step 4: Save transcript ---
-  const finalTranscriptRelPath = `Clark/Transcripts/${finalBaseName}.md`;
-  const finalTranscriptAbsPath = join(opts.workspaceDir, finalTranscriptRelPath);
+  const desiredTranscriptAbsPath = join(opts.workspaceDir, "Clark", "Transcripts", `${finalBaseName}.md`);
+  const finalTranscriptAbsPath = await ensureUniqueSiblingPath(desiredTranscriptAbsPath);
+  const finalTranscriptRelPath = `Clark/Transcripts/${basename(finalTranscriptAbsPath)}`;
   await Bun.write(finalTranscriptAbsPath, fileContent);
 
   // Clean up any stale transcript from a prior run that used the original name
-  if (finalBaseName !== baseName) {
+  if (basename(finalTranscriptAbsPath, ".md") === finalBaseName && finalBaseName !== baseName) {
     const staleTranscriptPath = join(opts.workspaceDir, `Clark/Transcripts/${baseName}.md`);
     try {
       await unlink(staleTranscriptPath);
