@@ -78,6 +78,16 @@ export interface EditorFile {
   dirty: boolean;
 }
 
+export interface SessionInfo {
+  path: string;
+  filename: string;
+  date: string;
+  sessionId: string;
+  provider: string;
+  model: string;
+  firstUserMessage: string;
+}
+
 export interface AppState {
   chatItems: ChatItem[];
   streamingText: string | null;
@@ -89,6 +99,8 @@ export interface AppState {
   showCanvasPicker: boolean;
   showContextPanel: boolean;
   showSettings: boolean;
+  showSessionPicker: boolean;
+  sessionList: SessionInfo[];
   canvasStatus: CanvasStatus | null;
   pendingToolCalls: ToolCall[];
   nextMessageId: number;
@@ -132,6 +144,8 @@ export function createInitialAppState(): AppState {
     showCanvasPicker: false,
     showContextPanel: false,
     showSettings: false,
+    showSessionPicker: false,
+    sessionList: [],
     canvasStatus: null,
     pendingToolCalls: [],
     nextMessageId: 0,
@@ -139,6 +153,117 @@ export function createInitialAppState(): AppState {
     tutorial: null,
     activeIngestions: {},
     editorFile: null,
+  };
+}
+
+export function setShowSessionPicker(state: AppState, open: boolean): AppState {
+  return { ...state, showSessionPicker: open };
+}
+
+export function setSessionList(state: AppState, sessions: SessionInfo[]): AppState {
+  return { ...state, sessionList: sessions };
+}
+
+// ---------------------------------------------------------------------------
+// Session resume: convert LLM messages → ChatItems
+// ---------------------------------------------------------------------------
+
+interface LLMMessagePart {
+  type: string;
+  text?: string;
+  id?: string;
+  name?: string;
+  toolUseId?: string;
+  content?: string;
+  isError?: boolean;
+}
+
+export interface LLMMessage {
+  role: "user" | "assistant" | "tool";
+  content: LLMMessagePart[];
+}
+
+/**
+ * Convert LLM messages (user/assistant/tool) returned by load_session into
+ * ChatItem[] for the React UI. Returns items and the next message ID to use.
+ */
+export function messagesToChatItems(
+  messages: LLMMessage[],
+  startId: number,
+): { items: ChatItem[]; nextId: number } {
+  // Pre-build tool result map so each tool_use can show its result inline
+  const toolResults = new Map<string, string>();
+  for (const msg of messages) {
+    if (msg.role === "tool") {
+      for (const part of msg.content) {
+        if (part.type === "tool_result" && part.toolUseId) {
+          toolResults.set(
+            part.toolUseId,
+            typeof part.content === "string" ? part.content : "[image]",
+          );
+        }
+      }
+    }
+  }
+
+  const items: ChatItem[] = [];
+  let id = startId;
+
+  for (const msg of messages) {
+    if (msg.role === "user") {
+      const text = msg.content
+        .filter((c) => c.type === "text" && c.text)
+        .map((c) => c.text!)
+        .join("\n")
+        .trim();
+      if (text) {
+        items.push({
+          type: "message",
+          message: { id: String(id++), role: "user", text },
+        });
+      }
+    } else if (msg.role === "assistant") {
+      // Tool calls appear before the assistant text (matches streaming order)
+      for (const part of msg.content) {
+        if (part.type === "tool_use" && part.id && part.name) {
+          items.push({
+            type: "tool",
+            toolCall: { name: part.name, result: toolResults.get(part.id) },
+          });
+        }
+      }
+      const textPart = msg.content.find((c) => c.type === "text" && c.text?.trim());
+      if (textPart?.text?.trim()) {
+        items.push({
+          type: "message",
+          message: { id: String(id++), role: "assistant", text: textPart.text },
+        });
+      }
+    }
+    // tool messages are consumed via toolResults map above
+  }
+
+  return { items, nextId: id };
+}
+
+export function applyRestoredSession(
+  state: AppState,
+  messages: LLMMessage[],
+  date: string,
+): AppState {
+  const { items, nextId } = messagesToChatItems(messages, state.nextMessageId + 1);
+  const systemMessage: ChatItem = {
+    type: "message",
+    message: {
+      id: String(nextId),
+      role: "system",
+      text: `Session from ${date} resumed. Continuing conversation below.`,
+    },
+  };
+  return {
+    ...state,
+    chatItems: [...items, systemMessage],
+    nextMessageId: nextId,
   };
 }
 

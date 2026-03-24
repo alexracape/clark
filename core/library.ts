@@ -22,6 +22,7 @@ export const CLARK_DIR_NAME = "Clark";
 export const CLARK_CANVAS_DIR_NAME = "Canvas";
 export const CLARK_STRUCTURES_DIR_NAME = "Structures";
 export const CLARK_TRANSCRIPTS_DIR_NAME = "Transcripts";
+export const CLARK_SESSIONS_DIR_NAME = "Sessions";
 export const CLARK_CONTEXT_FILE_NAME = "CLARK.md";
 
 const DEFAULT_ROOT_DIRS = [
@@ -55,6 +56,10 @@ export function clarkStructuresDirPath(workspaceDir: string): string {
 
 export function clarkTranscriptsDirPath(workspaceDir: string): string {
   return join(clarkDirPath(workspaceDir), CLARK_TRANSCRIPTS_DIR_NAME);
+}
+
+export function clarkSessionsDirPath(workspaceDir: string): string {
+  return join(clarkDirPath(workspaceDir), CLARK_SESSIONS_DIR_NAME);
 }
 
 export function clarkContextFilePath(workspaceDir: string): string {
@@ -250,6 +255,7 @@ async function ensureClarkCore(
     clarkCanvasDirPath(path),
     clarkStructuresDirPath(path),
     clarkTranscriptsDirPath(path),
+    clarkSessionsDirPath(path),
   ];
   for (const dir of dirs) {
     await mkdir(dir, { recursive: true });

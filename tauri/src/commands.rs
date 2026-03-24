@@ -352,6 +352,19 @@ pub async fn write_clipboard_text(
         .map_err(|e| format!("Failed to write clipboard text: {}", e))
 }
 
+#[tauri::command]
+pub async fn list_sessions(sidecar: State<'_, Sidecar>) -> Result<serde_json::Value, String> {
+    sidecar_get(&sidecar, "/api/sessions").await
+}
+
+#[tauri::command]
+pub async fn load_session(
+    path: String,
+    sidecar: State<'_, Sidecar>,
+) -> Result<serde_json::Value, String> {
+    sidecar_post(&sidecar, "/api/sessions/load", serde_json::json!({ "path": path })).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::parse_json_response;

@@ -129,6 +129,11 @@ export class Conversation {
     this.messages = [];
   }
 
+  /** Load a set of messages (e.g. from a resumed session). Replaces current history. */
+  loadMessages(messages: Message[]) {
+    this.messages = [...messages];
+  }
+
   /** Get message count */
   get length(): number {
     return this.messages.length;

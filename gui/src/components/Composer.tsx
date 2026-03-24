@@ -8,12 +8,14 @@ interface ComposerProps {
 const SLASH_COMMANDS = [
   { name: "/help", desc: "Show available commands", takesArgs: false },
   { name: "/tutorial", desc: "Interactive tutorial", takesArgs: false },
+  { name: "/note", desc: "Create a new note", takesArgs: false },
   { name: "/canvas", desc: "Open or switch canvas", takesArgs: true },
   { name: "/export", desc: "Export canvas as PDF", takesArgs: true },
   { name: "/model", desc: "Switch provider/model", takesArgs: true },
   { name: "/context", desc: "Show context usage", takesArgs: false },
   { name: "/settings", desc: "Open settings", takesArgs: false },
   { name: "/compact", desc: "Summarize conversation", takesArgs: false },
+  { name: "/resume", desc: "Resume a previous session", takesArgs: false },
   { name: "/feedback", desc: "Send feedback", takesArgs: false },
   { name: "/clear", desc: "Clear history", takesArgs: false },
 ];

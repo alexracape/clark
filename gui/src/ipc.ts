@@ -29,6 +29,8 @@ const ROUTE_MAP: Record<string, Route> = {
   get_asset: { method: "GET", path: "/api/asset" },
   resolve_note: { method: "GET", path: "/api/resolve-note" },
   rename_file: { method: "POST", path: "/api/rename-file" },
+  list_sessions: { method: "GET", path: "/api/sessions" },
+  load_session: { method: "POST", path: "/api/sessions/load" },
 };
 
 function isTauriRuntime(): boolean {

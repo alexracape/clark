@@ -31,6 +31,9 @@ import { detectFilePath, copyFileToResources } from "../../core/app/ingest.ts";
 import type { CanvasConnectionStatus } from "../../core/app/canvas-session.ts";
 import { theme } from "./theme.ts";
 import { ConversationEngine, type TurnCallbacks } from "../../core/engine.ts";
+import { SessionPicker } from "./session-picker.tsx";
+import type { SessionInfo } from "../../core/sessions/index.ts";
+import type { Message } from "../../core/llm/provider.ts";
 
 export interface AppProps {
   provider: LLMProvider;
@@ -54,6 +57,12 @@ export interface AppProps {
   onSetProgressCallback?: (cb: (message: string) => void) => void;
   /** Called when the user switches providers, so OCR uses the current one. */
   onProviderChange?: (provider: LLMProvider) => void;
+  /** Called after each turn with the new messages, for session persistence. */
+  onAfterTurn?: (newMessages: Message[]) => void;
+  /** List available sessions for /resume. */
+  onListSessions?: () => Promise<SessionInfo[]>;
+  /** Load a session by file path — returns frontmatter and messages. */
+  onLoadSession?: (path: string) => Promise<{ messages: Message[] }>;
 }
 
 export function App({
@@ -74,6 +83,9 @@ export function App({
   workspaceDir,
   onSetProgressCallback,
   onProviderChange,
+  onAfterTurn,
+  onListSessions,
+  onLoadSession,
 }: AppProps) {
   const { exit } = useApp();
   const maxToolCallsPerTurn = resolveMaxToolCallsPerTurn(config);
@@ -106,6 +118,10 @@ export function App({
     useState<CanvasConnectionStatus | null>(
       getCanvasConnectionStatus ? getCanvasConnectionStatus() : null,
     );
+
+  // Session picker state — shown when user types /resume
+  const [showSessionPicker, setShowSessionPicker] = useState(false);
+  const [sessionList, setSessionList] = useState<SessionInfo[]>([]);
 
   // Conversation engine — shared turn loop logic
   const engine = useMemo(
@@ -166,17 +182,19 @@ export function App({
     [addMessage],
   );
 
-  /** Run a conversation turn via the engine */
+  /** Run a conversation turn via the engine, then persist new messages. */
   const runConversationTurn = useCallback(
-    async (promptOverride?: string) => {
+    async (promptOverride?: string, prevCount = conversation.getMessages().length) => {
       setIsThinking(true);
       try {
         await engine.runTurn(activeProvider, makeTurnCallbacks(), promptOverride);
+        const newMessages = conversation.getMessages().slice(prevCount);
+        if (newMessages.length > 0) onAfterTurn?.(newMessages);
       } finally {
         setIsThinking(false);
       }
     },
-    [engine, activeProvider, makeTurnCallbacks],
+    [engine, activeProvider, makeTurnCallbacks, conversation, onAfterTurn],
   );
 
   /** Handle model selection from the picker */
@@ -232,6 +250,26 @@ export function App({
     [addMessage],
   );
 
+  /** Handle session selection from the /resume picker */
+  const handleSessionSelect = useCallback(
+    async (session: SessionInfo) => {
+      setShowSessionPicker(false);
+      if (!onLoadSession) return;
+      try {
+        const { messages } = await onLoadSession(session.path);
+        conversation.loadMessages(messages);
+        addMessage(
+          "system",
+          `Resumed session from ${session.date} (${messages.length} messages loaded).`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        addMessage("system", `Failed to load session: ${msg}`);
+      }
+    },
+    [onLoadSession, conversation, addMessage],
+  );
+
   /** Handle canvas selection from the picker */
   const handleCanvasSelect = useCallback(
     async (name: string) => {
@@ -262,13 +300,14 @@ export function App({
           const result = await copyFileToResources(filePath, workspaceDir);
           addMessage("system", result.summary);
           // Let the model decide how to process the file using MCP tools
+          const prevCount = conversation.getMessages().length;
           conversation.addUserMessage(
             `I've added a file to my vault: ${result.fileName} (${result.fileSize}, saved to ${result.destPath}). ` +
               `Please check what type of file it is and process it appropriately — ` +
               `use read_file to inspect it, and if it's a scanned PDF with little extractable text, ` +
               `use transcribe_pdf to OCR it. Save any transcripts where they make sense based on my vault structure.`,
           );
-          await runConversationTurn();
+          await runConversationTurn(undefined, prevCount);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           addMessage("system", `Failed to copy file: ${msg}`);
@@ -292,6 +331,22 @@ export function App({
         // Intercept /model to show the picker
         if (command.name === "model") {
           setShowModelPicker(true);
+          return;
+        }
+
+        // Intercept /resume to show the session picker
+        if (command.name === "resume") {
+          if (!onListSessions) {
+            addMessage("system", "Session resumption is not available.");
+            return;
+          }
+          const sessions = await onListSessions();
+          if (sessions.length === 0) {
+            addMessage("system", "No saved sessions found.");
+            return;
+          }
+          setSessionList(sessions);
+          setShowSessionPicker(true);
           return;
         }
 
@@ -326,8 +381,9 @@ export function App({
       const canvasTag = activeCanvas
         ? `Canvas state: ${canvasState} (${activeCanvas.name})`
         : `Canvas state: ${canvasState}`;
+      const prevCount = conversation.getMessages().length;
       conversation.addUserMessage(`${canvasTag}\n\n${text}`);
-      await runConversationTurn();
+      await runConversationTurn(undefined, prevCount);
     },
     [
       conversation,
@@ -341,6 +397,7 @@ export function App({
       listCanvases,
       workspaceDir,
       exit,
+      onListSessions,
     ],
   );
 
@@ -376,7 +433,13 @@ export function App({
         <Text>{theme.divider("─".repeat(60))}</Text>
       </Box>
 
-      {showTutorial ? (
+      {showSessionPicker ? (
+        <SessionPicker
+          sessions={sessionList}
+          onSelect={handleSessionSelect}
+          onCancel={() => setShowSessionPicker(false)}
+        />
+      ) : showTutorial ? (
         <Tutorial
           onComplete={() => {
             setShowTutorial(false);

@@ -6,7 +6,9 @@ import { createTools } from "../../core/mcp/index.ts";
 import { Conversation } from "../../core/llm/messages.ts";
 import { App } from "../tui/app.tsx";
 import { CommandHistory } from "../../core/history.ts";
-import { scaffoldLibrary, clarkCanvasDirPath } from "../../core/library.ts";
+import { scaffoldLibrary, clarkCanvasDirPath, clarkSessionsDirPath } from "../../core/library.ts";
+import { SessionManager } from "../../core/sessions/index.ts";
+import type { Message } from "../../core/llm/provider.ts";
 import { loadConfig, saveConfig } from "../../core/config.ts";
 import type { ClarkConfig } from "../../core/config.ts";
 import type { CliArgs } from "./args.ts";
@@ -55,6 +57,32 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
   });
 
   const conversation = new Conversation();
+
+  const sessionManager = new SessionManager(
+    clarkSessionsDirPath(workspaceDir),
+    workspaceDir,
+  );
+  let currentSessionPath: string | null = await sessionManager.createSession(
+    activeConfig.provider ?? "anthropic",
+    modelName,
+  ).catch(() => null);
+  let sessionHasMessages = false;
+
+  async function cleanupEmptySession(): Promise<void> {
+    if (sessionHasMessages || !currentSessionPath) return;
+    try {
+      const { unlink } = await import("node:fs/promises");
+      await unlink(currentSessionPath);
+    } catch { /* best-effort */ }
+  }
+
+  function onAfterTurn(newMessages: Message[]): void {
+    if (!currentSessionPath) return;
+    sessionManager.appendMessages(currentSessionPath, newMessages).catch((err) => {
+      console.error("[session] Failed to save messages:", err);
+    });
+    sessionHasMessages = true;
+  }
 
   // Mutable ref for progress callback — set by the App component once mounted
   let progressCallback: ((message: string) => void) | undefined;
@@ -116,6 +144,15 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
       },
       onProviderChange: (newProvider: typeof provider) => {
         currentProvider = newProvider;
+      },
+      onAfterTurn,
+      onListSessions: () => sessionManager.listSessions(),
+      onLoadSession: async (path: string) => {
+        const result = await sessionManager.loadSession(path);
+        await cleanupEmptySession();
+        currentSessionPath = path;
+        sessionHasMessages = true;
+        return result;
       },
     }),
   );

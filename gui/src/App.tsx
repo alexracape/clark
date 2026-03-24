@@ -11,6 +11,7 @@ import { Settings } from "./components/Settings.tsx";
 import { Onboarding } from "./components/Onboarding.tsx";
 import { Tutorial } from "./components/Tutorial.tsx";
 import { MarkdownEditor } from "./components/MarkdownEditor.tsx";
+import { SessionPicker } from "./components/SessionPicker.tsx";
 import { invokeCommand, listenEvent } from "./ipc.ts";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -47,6 +48,9 @@ import {
   setShowContextPanel,
   setShowModelPicker,
   setShowSettings,
+  setShowSessionPicker,
+  setSessionList,
+  applyRestoredSession,
   startOnboarding,
   tutorialNextStep,
   completeTutorial,
@@ -54,6 +58,8 @@ import {
   type ControllerEffect,
   type IngestionStatus,
   type SlashCommandResponse,
+  type SessionInfo,
+  type LLMMessage,
 } from "./app-controller.ts";
 import { parseSidecarStreamEvent } from "./stream-events.ts";
 import {
@@ -260,12 +266,74 @@ export function App() {
     return () => cleanup?.();
   }, []);
 
+  const handleResume = useCallback(async () => {
+    try {
+      const res = (await invokeCommand("list_sessions", {})) as { sessions: SessionInfo[] };
+      const sessions = res.sessions ?? [];
+      if (sessions.length === 0) {
+        setState((prev) => {
+          const id = String(prev.nextMessageId + 1);
+          return {
+            ...prev,
+            nextMessageId: prev.nextMessageId + 1,
+            chatItems: [...prev.chatItems, { type: "message", message: { id, role: "system", text: "No saved sessions found." } }],
+          };
+        });
+        return;
+      }
+      setState((prev) => {
+        let next = setSessionList(prev, sessions);
+        next = setShowSessionPicker(next, true);
+        return next;
+      });
+    } catch (err) {
+      setState((prev) => {
+        const id = String(prev.nextMessageId + 1);
+        return {
+          ...prev,
+          nextMessageId: prev.nextMessageId + 1,
+          chatItems: [...prev.chatItems, { type: "message", message: { id, role: "system", text: `Failed to list sessions: ${String(err)}` } }],
+        };
+      });
+    }
+  }, []);
+
+  const handleSessionSelect = useCallback(async (session: SessionInfo) => {
+    setState((prev) => setShowSessionPicker(prev, false));
+    try {
+      const res = (await invokeCommand("load_session", { path: session.path })) as {
+        messages: LLMMessage[];
+        date: string;
+      };
+      setState((prev) => applyRestoredSession(prev, res.messages, session.date));
+    } catch (err) {
+      setState((prev) => {
+        const id = String(prev.nextMessageId + 1);
+        return {
+          ...prev,
+          nextMessageId: prev.nextMessageId + 1,
+          chatItems: [...prev.chatItems, { type: "message", message: { id, role: "system", text: `Failed to load session: ${String(err)}` } }],
+        };
+      });
+    }
+  }, []);
+
   const handleSend = useCallback(
     async (text: string) => {
+      if (text.trim() === "/note") {
+        await handleNewNote();
+        return;
+      }
+      if (text.trim() === "/resume") {
+        await handleResume();
+        return;
+      }
       const plan = planSendInput(state, text);
       setState(plan.state);
       await runEffects(plan.effects, setState);
     },
+    // handleNewNote and handleResume are useCallback([]) — stable across renders, safe to omit
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [state],
   );
 
@@ -688,6 +756,14 @@ export function App() {
         <ContextPanel
           invoke={invokeCommand}
           onClose={() => setState((prev) => setShowContextPanel(prev, false))}
+        />
+      )}
+
+      {state.showSessionPicker && (
+        <SessionPicker
+          sessions={state.sessionList}
+          onSelect={handleSessionSelect}
+          onClose={() => setState((prev) => setShowSessionPicker(prev, false))}
         />
       )}
 

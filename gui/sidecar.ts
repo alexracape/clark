@@ -51,6 +51,8 @@ import { createSlashCommandHandler } from "../core/app/command-router.ts";
 import { VisionOCRProvider } from "../core/ocr/provider.ts";
 import { OllamaEmbeddingProvider, type EmbeddingProvider } from "../core/embedding/provider.ts";
 import { EmbeddingIndex } from "../core/embedding/index.ts";
+import { SessionManager } from "../core/sessions/index.ts";
+import { clarkSessionsDirPath } from "../core/library.ts";
 import { detectFilePath, copyFileToResources, runIngestionPipeline } from "../core/app/ingest.ts";
 import { getWorkspaceDir } from "../core/workspace.ts";
 import { resolveWikilink } from "../core/mcp/vault.ts";
@@ -79,6 +81,9 @@ let systemPromptText: string;
 let progressCallback: ((message: string) => void) | undefined;
 let embeddingProvider: EmbeddingProvider | null = null;
 let searchIndex: EmbeddingIndex | null = null;
+let sessionManager: SessionManager | null = null;
+let currentSessionPath: string | null = null;
+let sessionHasMessages = false;
 
 /** Connected WebSocket clients for streaming events */
 const streamClients = new Set<{ send(data: string): void }>();
@@ -221,6 +226,9 @@ async function bootstrap(): Promise<void> {
 
   setupEmbedding(config, workspaceDir);
 
+  sessionManager = new SessionManager(clarkSessionsDirPath(workspaceDir), workspaceDir);
+  currentSessionPath = await sessionManager.createSession(providerName, modelName).catch(() => null);
+
   systemPromptText = await loadEffectiveSystemPrompt(workspaceDir);
   const systemPrompt = systemPromptText;
   conversation = new Conversation();
@@ -322,6 +330,9 @@ async function handleChat(req: Request): Promise<Response> {
     return jsonResponse({ error: "Missing 'text' field" }, 400);
   }
 
+  // Capture count before adding user message so it's included in the session append
+  const prevCount = conversation.getMessages().length;
+
   // Check for file path (drag-and-drop or pasted path)
   const filePath = await detectFilePath(body.text);
   if (filePath) {
@@ -345,8 +356,15 @@ async function handleChat(req: Request): Promise<Response> {
 
   // Run the turn asynchronously — events stream over WebSocket
   const callbacks = makeStreamCallbacks();
-  engine.runTurn(provider, callbacks).then(() => {
+  engine.runTurn(provider, callbacks).then(async () => {
     broadcast({ type: "turn_complete" });
+    if (sessionManager && currentSessionPath) {
+      const newMessages = conversation.getMessages().slice(prevCount);
+      if (newMessages.length > 0) {
+        await sessionManager.appendMessages(currentSessionPath, newMessages).catch(() => {});
+        sessionHasMessages = true;
+      }
+    }
   });
 
   return jsonResponse({ ok: true });
@@ -878,6 +896,35 @@ async function handleUpdateSettings(req: Request): Promise<Response> {
   }
 }
 
+/** GET /api/sessions — List saved sessions */
+async function handleListSessions(): Promise<Response> {
+  if (!sessionManager) return jsonResponse({ sessions: [] });
+  const sessions = await sessionManager.listSessions();
+  return jsonResponse({ sessions });
+}
+
+/** POST /api/sessions/load — Load a session into the active conversation */
+async function handleLoadSession(req: Request): Promise<Response> {
+  if (!sessionManager) return jsonResponse({ error: "Session manager not initialized" }, 500);
+  const body = await req.json() as { path: string };
+  if (!body.path) return jsonResponse({ error: "Missing 'path' field" }, 400);
+  try {
+    const { frontmatter, messages } = await sessionManager.loadSession(body.path);
+    conversation.loadMessages(messages);
+
+    // Delete the orphaned startup session (if it has no messages) and
+    // redirect future appends to the resumed session file.
+    await cleanupEmptySession();
+    currentSessionPath = body.path;
+    sessionHasMessages = true;
+
+    return jsonResponse({ ok: true, messages, date: frontmatter.created });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return jsonResponse({ error: msg }, 500);
+  }
+}
+
 /** GET /api/onboarding-status — Check if onboarding is needed */
 async function handleOnboardingStatus(): Promise<Response> {
   const currentConfig = await loadConfig();
@@ -1041,6 +1088,12 @@ export async function createSidecarServer(): Promise<{
       if (url.pathname === "/api/complete-onboarding" && req.method === "POST") {
         return await handleCompleteOnboarding(req);
       }
+      if (url.pathname === "/api/sessions" && req.method === "GET") {
+        return await handleListSessions();
+      }
+      if (url.pathname === "/api/sessions/load" && req.method === "POST") {
+        return await handleLoadSession(req);
+      }
 
       return new Response("Not Found", { status: 404, headers: corsHeaders() });
     } catch (err) {
@@ -1062,6 +1115,16 @@ export async function createSidecarServer(): Promise<{
   };
 }
 
+async function cleanupEmptySession(): Promise<void> {
+  if (sessionHasMessages || !currentSessionPath) return;
+  try {
+    const { unlink } = await import("node:fs/promises");
+    await unlink(currentSessionPath);
+  } catch {
+    // Best-effort; ignore errors
+  }
+}
+
 export async function runSidecarServer(): Promise<void> {
   const port = Number(process.env.CLARK_SIDECAR_PORT ?? "3456");
   const serverConfig = await createSidecarServer();
@@ -1072,6 +1135,12 @@ export async function runSidecarServer(): Promise<void> {
   console.log(`Clark sidecar listening on http://localhost:${server.port}`);
   // Write port to stdout for the Tauri process to read
   console.log(`CLARK_SIDECAR_PORT=${server.port}`);
+
+  // Clean up empty session files when the process exits
+  const onExit = () => { void cleanupEmptySession(); };
+  process.on("exit", onExit);
+  process.on("SIGTERM", () => { void cleanupEmptySession().then(() => process.exit(0)); });
+  process.on("SIGINT", () => { void cleanupEmptySession().then(() => process.exit(0)); });
 }
 
 if (import.meta.main) {

@@ -99,6 +99,7 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
           "  /context           Show context window usage",
           "  /settings          Open settings panel",
           "  /compact           Summarize conversation to save context",
+          "  /resume            Resume a previous session",
           "  /feedback <msg>    Send feedback on what we can improve",
           "  /clear             Clear conversation history",
           "  /exit or /quit     Exit Clark",
@@ -159,6 +160,9 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
         return null;
 
       case "model":
+        return null;
+
+      case "resume":
         return null;
 
       case "context":
