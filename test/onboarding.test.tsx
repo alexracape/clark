@@ -33,21 +33,13 @@ describe("Onboarding", () => {
 			expect(lastFrame()).toContain("Socratic tutoring assistant");
 		});
 
-		test("shows step indicator [1/3]", () => {
+		test("shows what's included", () => {
 			const onComplete = mock(() => {});
 			const { lastFrame } = render(<Onboarding onComplete={onComplete} />);
 
-			expect(lastFrame()).toContain("[1/3]");
-			expect(lastFrame()).toContain("Welcome");
-		});
-
-		test("shows required items list", () => {
-			const onComplete = mock(() => {});
-			const { lastFrame } = render(<Onboarding onComplete={onComplete} />);
-
-			expect(lastFrame()).toContain("What you'll need:");
-			expect(lastFrame()).toContain("API key from an LLM provider");
-			expect(lastFrame()).toContain("Anthropic, OpenAI, or Google");
+			expect(lastFrame()).toContain("What's included:");
+			expect(lastFrame()).toContain("Claude Sonnet 4.6");
+			expect(lastFrame()).toContain("PDF and image processing");
 		});
 
 		test("shows keyboard hints", () => {
@@ -77,20 +69,7 @@ describe("Onboarding", () => {
 		});
 	});
 
-	describe("Provider List", () => {
-		test("component includes all provider names", () => {
-			// The providers are defined as constants in the component
-			// We can at least verify the component file contains them
-			const onComplete = mock(() => {});
-			const { lastFrame } = render(<Onboarding onComplete={onComplete} />);
-
-			// These should be part of the PROVIDERS constant
-			// (we can't easily test the provider screen without keyboard interaction)
-			expect(true).toBe(true); // Placeholder - provider testing requires navigation
-		});
-	});
-
-	// Note: Full navigation tests (welcome → provider → api-key → done) would require
+	// Note: Full navigation tests (welcome → done) would require
 	// either:
 	// 1. Integration tests that actually run the TUI
 	// 2. Direct testing of component logic extracted from Ink hooks

@@ -2,12 +2,14 @@
  * LLM module — re-exports provider interface and registers all built-in providers.
  *
  * Import this module to ensure all providers are registered.
+ *
+ * Cloud providers (Anthropic, OpenAI, Gemini) are routed through the
+ * Clark Cloud proxy — see core/llm/cloud.ts. Only Ollama (local) has
+ * a direct provider implementation.
  */
 
 // Register providers (side-effect imports)
-import "./anthropic.ts";
-import "./openai.ts";
-import "./gemini.ts";
+import "./cloud.ts";
 import "./ollama.ts";
 import "./mock.ts";
 

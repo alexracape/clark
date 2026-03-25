@@ -1,118 +1,25 @@
 import { test, expect, describe } from "bun:test";
 import { Conversation } from "../core/llm/messages.ts";
 import { listProviders } from "../core/llm/provider.ts";
-import { messagesToGeminiContents } from "../core/llm/gemini.ts";
 import { checkModelFits, listLocalModels } from "../core/llm/ollama.ts";
 import type { Message } from "../core/llm/provider.ts";
 
 // Import to trigger provider registration
-import "../core/llm/anthropic.ts";
-import "../core/llm/openai.ts";
-import "../core/llm/gemini.ts";
+import "../core/llm/cloud.ts";
 import "../core/llm/ollama.ts";
 
 describe("LLM Provider Registry", () => {
-  test("all providers are registered", () => {
+  test("cloud and ollama providers are registered", () => {
     const providers = listProviders();
-    expect(providers).toContain("anthropic");
-    expect(providers).toContain("openai");
-    expect(providers).toContain("gemini");
+    expect(providers).toContain("clark-cloud");
     expect(providers).toContain("ollama");
   });
-});
 
-describe("Gemini message mapping", () => {
-  test("maps user text message", () => {
-    const messages: Message[] = [
-      { role: "user", content: [{ type: "text", text: "hello" }] },
-    ];
-    const contents = messagesToGeminiContents(messages);
-    expect(contents).toHaveLength(1);
-    expect(contents[0]!.role).toBe("user");
-    expect(contents[0]!.parts).toEqual([{ text: "hello" }]);
-  });
-
-  test("maps user image message", () => {
-    const messages: Message[] = [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "describe this" },
-          { type: "image", data: "base64data", mediaType: "image/png" },
-        ],
-      },
-    ];
-    const contents = messagesToGeminiContents(messages);
-    expect(contents).toHaveLength(1);
-    expect(contents[0]!.parts).toHaveLength(2);
-    expect(contents[0]!.parts![0]).toEqual({ text: "describe this" });
-    expect(contents[0]!.parts![1]).toEqual({
-      inlineData: { data: "base64data", mimeType: "image/png" },
-    });
-  });
-
-  test("maps assistant role to model role", () => {
-    const messages: Message[] = [
-      { role: "assistant", content: [{ type: "text", text: "Hi there" }] },
-    ];
-    const contents = messagesToGeminiContents(messages);
-    expect(contents[0]!.role).toBe("model");
-  });
-
-  test("maps assistant tool_use to functionCall", () => {
-    const messages: Message[] = [
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "tool_use",
-            id: "t1",
-            name: "read_file",
-            input: { path: "notes.md" },
-          },
-        ],
-      },
-    ];
-    const contents = messagesToGeminiContents(messages);
-    expect(contents[0]!.parts![0]).toEqual({
-      functionCall: { name: "read_file", args: { path: "notes.md" } },
-    });
-  });
-
-  test("maps tool_result to functionResponse", () => {
-    const messages: Message[] = [
-      {
-        role: "tool",
-        content: [
-          {
-            type: "tool_result",
-            toolUseId: "read_file",
-            content: "file contents here",
-          },
-        ],
-      },
-    ];
-    const contents = messagesToGeminiContents(messages);
-    expect(contents[0]!.role).toBe("user");
-    expect(contents[0]!.parts![0]).toEqual({
-      functionResponse: {
-        name: "read_file",
-        response: { result: "file contents here" },
-      },
-    });
-  });
-
-  test("maps multi-turn conversation", () => {
-    const messages: Message[] = [
-      { role: "user", content: [{ type: "text", text: "help me" }] },
-      { role: "assistant", content: [{ type: "text", text: "sure" }] },
-      { role: "user", content: [{ type: "text", text: "thanks" }] },
-    ];
-    const contents = messagesToGeminiContents(messages);
-    expect(contents).toHaveLength(3);
-    expect(contents[0]!.role).toBe("user");
-    expect(contents[1]!.role).toBe("model");
-    expect(contents[2]!.role).toBe("user");
+  test("old providers are not registered", () => {
+    const providers = listProviders();
+    expect(providers).not.toContain("anthropic");
+    expect(providers).not.toContain("openai");
+    expect(providers).not.toContain("gemini");
   });
 });
 

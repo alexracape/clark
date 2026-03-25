@@ -1,12 +1,13 @@
 /**
  * Interactive model picker — shown when the user types /model.
+ *
+ * Lists Clark Cloud models and locally available Ollama models.
+ * No API key entry needed — cloud is managed server-side, Ollama is local.
  */
 
 import React, { useState, useEffect, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
-import { resolveApiKey, saveConfig, setProviderApiKey, type ClarkConfig } from "../../core/config.ts";
-import { getCloudModelEntries, getProviderCatalogEntry, isApiKeyProvider } from "../../core/llm/catalog.ts";
-import { useLineEditor } from "./primitives/use-line-editor.ts";
+import { getCloudModelEntries, getProviderCatalogEntry } from "../../core/llm/catalog.ts";
 import { useSelectableList } from "./primitives/use-selectable-list.ts";
 import { hex } from "./theme.ts";
 
@@ -22,20 +23,14 @@ const CLOUD_MODELS: ModelEntry[] = getCloudModelEntries();
 export interface ModelPickerProps {
   currentProvider: string;
   currentModel: string;
-  config: ClarkConfig;
+  config: unknown;
   onSelect: (provider: string, model: string) => void;
   onCancel: () => void;
 }
 
-type Step = "selecting" | "entering-key";
 type OllamaStatus = "loading" | "running" | "not-running" | "no-models";
 
-export function ModelPicker({ currentProvider, currentModel, config, onSelect, onCancel }: ModelPickerProps) {
-  const [step, setStep] = useState<Step>("selecting");
-  const [error, setError] = useState<string | null>(null);
-  const apiKey = useLineEditor("");
-  const [availableProviders, setAvailableProviders] = useState<Record<string, boolean>>({});
-
+export function ModelPicker({ currentProvider, currentModel, onSelect, onCancel }: ModelPickerProps) {
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus>("loading");
   const [ollamaModels, setOllamaModels] = useState<ModelEntry[]>([]);
 
@@ -70,164 +65,32 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
     }
   }, [allModels, currentProvider, currentModel]);
 
-  const isProviderAvailable = (provider: string): boolean => {
-    if (provider === "ollama") return true;
-    return availableProviders[provider] === true;
-  };
+  useInput((_input, key) => {
+    if (key.upArrow) {
+      list.moveUp();
+      return;
+    }
+    if (key.downArrow) {
+      list.moveDown();
+      return;
+    }
+    if (key.escape) {
+      onCancel();
+      return;
+    }
+    if (key.return) {
+      if (allModels.length === 0) return;
+      const entry = allModels[list.selected];
+      if (!entry) return;
 
-  useEffect(() => {
-    let cancelled = false;
-    const providers = [...new Set(allModels.map((m) => m.provider).filter((p) => p !== "ollama"))];
-
-    Promise.all(providers.map(async (provider) => ({
-      provider,
-      hasKey: !!(await resolveApiKey(provider, config)),
-    })))
-      .then((rows) => {
-        if (cancelled) return;
-        setAvailableProviders(Object.fromEntries(rows.map((r) => [r.provider, r.hasKey])));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setAvailableProviders({});
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [allModels, config]);
-
-  useInput((input, key) => {
-    if (step === "selecting") {
-      if (key.upArrow) {
-        list.moveUp();
-        return;
-      }
-      if (key.downArrow) {
-        list.moveDown();
-        return;
-      }
-      if (key.escape) {
+      if (entry.provider === currentProvider && entry.model === currentModel) {
         onCancel();
         return;
       }
-      if (key.return) {
-        if (allModels.length === 0) return;
-        const entry = allModels[list.selected];
-        if (!entry) return;
 
-        if (entry.provider === currentProvider && entry.model === currentModel) {
-          onCancel();
-          return;
-        }
-
-        if (isProviderAvailable(entry.provider)) {
-          onSelect(entry.provider, entry.model);
-        } else {
-          setStep("entering-key");
-          apiKey.clear();
-          setError(null);
-        }
-      }
-      return;
-    }
-
-    if (key.escape) {
-      setStep("selecting");
-      apiKey.clear();
-      setError(null);
-      return;
-    }
-
-    if (key.return) {
-      const trimmed = apiKey.valueRef.current.trim();
-      if (!trimmed) {
-        setError("API key cannot be empty.");
-        return;
-      }
-
-      const entry = allModels[list.selected];
-      if (!entry) return;
-      if (!isApiKeyProvider(entry.provider)) return;
-
-      setError(null);
-      setProviderApiKey(entry.provider, trimmed, config)
-        .then((nextConfig) => saveConfig(nextConfig))
-        .then(() => {
-          setAvailableProviders((prev) => ({ ...prev, [entry.provider]: true }));
-          onSelect(entry.provider, entry.model);
-        })
-        .catch((err) => {
-          setError(err instanceof Error ? err.message : String(err));
-        });
-      return;
-    }
-
-    if (key.backspace || key.delete) {
-      apiKey.backspaceOrDelete();
-      setError(null);
-      return;
-    }
-
-    if (key.leftArrow) {
-      apiKey.moveLeft();
-      return;
-    }
-
-    if (key.rightArrow) {
-      apiKey.moveRight();
-      return;
-    }
-
-    if (key.ctrl && input === "u") {
-      apiKey.clear();
-      setError(null);
-      return;
-    }
-
-    if (!key.ctrl && !key.meta && input) {
-      apiKey.insert(input);
-      setError(null);
+      onSelect(entry.provider, entry.model);
     }
   });
-
-  if (step === "entering-key") {
-    const entry = allModels[list.selected]!;
-    if (!isApiKeyProvider(entry.provider)) return null;
-    const providerInfo = getProviderCatalogEntry(entry.provider);
-    if (!providerInfo?.envVar || !providerInfo.site) return null;
-
-    const masked = apiKey.value.length > 12
-      ? apiKey.value.slice(0, 8) + "*".repeat(apiKey.value.length - 12) + apiKey.value.slice(-4)
-      : apiKey.value;
-
-    const before = masked.slice(0, apiKey.cursor);
-    const cursorChar = masked[apiKey.cursor] ?? " ";
-    const after = masked.slice(apiKey.cursor + 1);
-
-    return (
-      <Box flexDirection="column" paddingX={1}>
-        <Text bold>Enter your {entry.providerLabel} API key:</Text>
-        <Text color={hex.dimText}> </Text>
-        <Text color={hex.dimText}>Get one from {providerInfo.site}</Text>
-        <Text color={hex.dimText}>Saved to macOS Keychain (set {providerInfo.envVar} to override)</Text>
-        <Text color={hex.dimText}> </Text>
-        <Box paddingLeft={2}>
-          <Text color={hex.brass}>{before}</Text>
-          <Text inverse>{cursorChar}</Text>
-          <Text color={hex.brass}>{after}</Text>
-        </Box>
-        {error && (
-          <>
-            <Text color={hex.dimText}> </Text>
-            <Text color={hex.error}>{error}</Text>
-          </>
-        )}
-        <Text color={hex.dimText}> </Text>
-        <Text color={hex.dimText}><Text bold color={hex.messageText}>Enter</Text> to save <Text bold color={hex.messageText}>Esc</Text> to go back</Text>
-      </Box>
-    );
-  }
 
   let lastProvider = "";
 
@@ -240,19 +103,17 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
         lastProvider = entry.provider;
         const isCurrent = entry.provider === currentProvider && entry.model === currentModel;
         const isSelected = i === list.selected;
-        const available = isProviderAvailable(entry.provider);
 
         return (
           <React.Fragment key={`${entry.provider}-${entry.model}`}>
             {isNewGroup && (
               <Box paddingLeft={2} marginTop={i === 0 ? 0 : 1}>
                 <Text bold color={hex.baseText}>{entry.providerLabel}</Text>
-                {!available && <Text color={hex.brass}>{"  "}[setup required]</Text>}
               </Box>
             )}
             <Box paddingLeft={4}>
               <Text color={isSelected ? hex.sky : hex.dimText}>{isSelected ? "> " : "  "}</Text>
-              <Text bold={isSelected} color={isSelected ? hex.messageText : hex.dimText} dimColor={!available && !isSelected}>{entry.label}</Text>
+              <Text bold={isSelected} color={isSelected ? hex.messageText : hex.dimText}>{entry.label}</Text>
               {isCurrent && <Text color={hex.sage}>{"  "}(current)</Text>}
             </Box>
           </React.Fragment>
@@ -283,7 +144,7 @@ export function ModelPicker({ currentProvider, currentModel, config, onSelect, o
       )}
 
       <Text> </Text>
-      <Text color={hex.dimText}>{"  "}↑↓ navigate  enter select  esc cancel</Text>
+      <Text color={hex.dimText}>{"  "}{"\u2191\u2193"} navigate  enter select  esc cancel</Text>
     </Box>
   );
 }

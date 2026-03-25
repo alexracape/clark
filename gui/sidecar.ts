@@ -39,17 +39,21 @@ import { Conversation } from "../core/llm/messages.ts";
 import { createProvider } from "../core/llm/index.ts";
 import { setProviderOptions } from "../core/llm/provider.ts";
 import type { LLMProvider } from "../core/llm/provider.ts";
-import { getDefaultModelForProvider, getCloudModelEntries, getProviderCatalogEntry, isApiKeyProvider } from "../core/llm/catalog.ts";
+import { getDefaultModelForProvider, getCloudModelEntries, getProviderCatalogEntry } from "../core/llm/catalog.ts";
 import { createTools } from "../core/mcp/index.ts";
 import type { ToolDefinition } from "../core/mcp/tools.ts";
-import { loadConfig, saveConfig, resolveApiKey, setProviderApiKey, needsOnboarding } from "../core/config.ts";
+import { loadConfig, saveConfig, resolveApiKey, needsOnboarding } from "../core/config.ts";
 import type { ClarkConfig } from "../core/config.ts";
 import { scaffoldLibrary, clarkCanvasDirPath } from "../core/library.ts";
 import { loadEffectiveSystemPrompt } from "../cli/bootstrap/system-prompt.ts";
 import { CanvasSessionManager } from "../core/app/canvas-session.ts";
 import { createSlashCommandHandler } from "../core/app/command-router.ts";
 import { VisionOCRProvider } from "../core/ocr/provider.ts";
+import { CloudOCRProvider } from "../core/ocr/cloud.ts";
 import { OllamaEmbeddingProvider, type EmbeddingProvider } from "../core/embedding/provider.ts";
+import { CloudEmbeddingProvider } from "../core/embedding/cloud.ts";
+import { resolveCloudConfig } from "../core/config.ts";
+import { version } from "../core/version.ts";
 import { EmbeddingIndex } from "../core/embedding/index.ts";
 import { SessionManager } from "../core/sessions/index.ts";
 import { clarkSessionsDirPath } from "../core/library.ts";
@@ -127,7 +131,7 @@ async function resolveProviderFromConfig(cfg: ClarkConfig): Promise<{
   modelName: string;
   provider: LLMProvider;
 }> {
-  const pName = cfg.provider ?? "anthropic";
+  const pName = cfg.provider ?? "clark-cloud";
   let mName =
     cfg.model
     ?? getDefaultModelForProvider(pName);
@@ -195,12 +199,22 @@ function setupEmbedding(cfg: ClarkConfig, wsDir: string): void {
   embeddingProvider = null;
   searchIndex = null;
 
-  if (cfg.embedding?.provider === "ollama" && cfg.embedding.model) {
+  const embeddingCfg = cfg.embedding?.provider ?? (cfg.provider === "clark-cloud" ? "clark-cloud" : undefined);
+
+  if (embeddingCfg === "clark-cloud") {
+    try {
+      const cloud = resolveCloudConfig(cfg);
+      embeddingProvider = new CloudEmbeddingProvider(cloud.url, cloud.secret, cloud.clientId);
+      searchIndex = new EmbeddingIndex(join(wsDir, "Clark", "search.db"));
+    } catch {
+      embeddingProvider = null;
+      searchIndex = null;
+    }
+  } else if (embeddingCfg === "ollama" && cfg.embedding?.model) {
     try {
       embeddingProvider = new OllamaEmbeddingProvider(cfg.embedding.model);
       searchIndex = new EmbeddingIndex(join(wsDir, "Clark", "search.db"));
     } catch {
-      // Embedding setup failed — fall back to keyword search
       embeddingProvider = null;
       searchIndex = null;
     }
@@ -261,6 +275,10 @@ async function bootstrap(): Promise<void> {
       broadcast({ type: "system_message", text: msg });
     },
     getOCRProvider: () => {
+      if (providerName === "clark-cloud") {
+        const cloud = resolveCloudConfig(config);
+        return new CloudOCRProvider(cloud.url, cloud.secret, cloud.clientId);
+      }
       if (!provider.supportsVision) return null;
       return new VisionOCRProvider(provider);
     },
@@ -275,6 +293,7 @@ async function bootstrap(): Promise<void> {
     maxToolCallsPerTurn: config.maxToolCallsPerTurn,
   });
 
+  const cloudCfg = providerName === "clark-cloud" ? resolveCloudConfig(config) : undefined;
   onSlashCommand = createSlashCommandHandler({
     canvas,
     getExportDir: () => exportDir,
@@ -285,7 +304,22 @@ async function bootstrap(): Promise<void> {
     },
     conversation,
     getProvider: () => provider,
+    cloudConfig: cloudCfg,
   });
+
+  // Fire-and-forget telemetry ping for cloud users
+  if (cloudCfg && process.env.CLARK_TELEMETRY !== "false") {
+    fetch(`${cloudCfg.url}/api/telemetry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientId: cloudCfg.clientId,
+        version,
+        provider: "clark-cloud",
+      }),
+      signal: AbortSignal.timeout(3000),
+    }).catch(() => {}); // silent failure
+  }
 }
 
 // --- Helpers ---
@@ -665,12 +699,6 @@ async function handleProviderSwitch(req: Request): Promise<Response> {
 
   try {
     let newConfig = await loadConfig();
-    if (body.apiKey && body.provider) {
-      if (!isApiKeyProvider(body.provider)) {
-        return jsonResponse({ error: `Provider "${body.provider}" does not accept API keys.` }, 400);
-      }
-      newConfig = await setProviderApiKey(body.provider, body.apiKey, newConfig);
-    }
     if (body.provider) newConfig.provider = body.provider;
     if (body.model) newConfig.model = body.model;
     await saveConfig(newConfig);
@@ -938,28 +966,29 @@ async function handleOnboardingStatus(): Promise<Response> {
 /** POST /api/complete-onboarding — Save provider, API key, workspace, and mark onboarding done */
 async function handleCompleteOnboarding(req: Request): Promise<Response> {
   const body = await req.json() as {
-    provider: string;
+    provider?: string;
     apiKey?: string;
     workspaceDir?: string;
     model?: string;
     workspaceIsNew?: boolean;
   };
-  if (!body.provider) {
-    return jsonResponse({ error: "Missing 'provider' field" }, 400);
-  }
 
   try {
     let newConfig = await loadConfig();
 
-    // Save API key to system secret store (sets secretStoreBackend on config)
-    if (body.apiKey && isApiKeyProvider(body.provider)) {
-      newConfig = await setProviderApiKey(body.provider, body.apiKey, newConfig);
+    // Default to clark-cloud if no provider specified
+    const selectedProvider = body.provider || "clark-cloud";
+
+    // Generate cloud clientId for cloud users
+    if (selectedProvider === "clark-cloud") {
+      const cloud = resolveCloudConfig(newConfig);
+      newConfig.cloud = { ...newConfig.cloud, clientId: cloud.clientId };
     }
 
     // Set provider and model. Use explicit model if provided (e.g. Ollama),
     // otherwise fall back to catalog default.
-    newConfig.provider = body.provider;
-    newConfig.model = body.model || getDefaultModelForProvider(body.provider);
+    newConfig.provider = selectedProvider;
+    newConfig.model = body.model || getDefaultModelForProvider(selectedProvider);
     newConfig.hasCompletedOnboarding = true;
 
     // Set pdfExportDir: for new workspaces use Resources/PDFs, otherwise workspace root
