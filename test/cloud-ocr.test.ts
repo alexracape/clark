@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { CloudOCRProvider } from "../core/ocr/cloud.ts";
 
 const CLOUD_URL = "https://test-cloud.example.com";
-const CLOUD_SECRET = "test-secret";
 const CLIENT_ID = "test-client-id";
 
 describe("CloudOCRProvider", () => {
@@ -17,7 +16,7 @@ describe("CloudOCRProvider", () => {
   });
 
   it("has the correct name", () => {
-    const provider = new CloudOCRProvider(CLOUD_URL, CLOUD_SECRET, CLIENT_ID);
+    const provider = new CloudOCRProvider(CLOUD_URL, CLIENT_ID);
     expect(provider.name).toBe("clark-cloud-ocr");
   });
 
@@ -28,7 +27,6 @@ describe("CloudOCRProvider", () => {
       expect(init?.method).toBe("POST");
 
       const headers = init?.headers as Record<string, string>;
-      expect(headers["Authorization"]).toBe(`Bearer ${CLOUD_SECRET}`);
       expect(headers["X-Clark-Client-Id"]).toBe(CLIENT_ID);
 
       const body = JSON.parse(init?.body as string);
@@ -41,7 +39,7 @@ describe("CloudOCRProvider", () => {
       });
     };
 
-    const provider = new CloudOCRProvider(CLOUD_URL, CLOUD_SECRET, CLIENT_ID);
+    const provider = new CloudOCRProvider(CLOUD_URL, CLIENT_ID);
     const imageBuffer = new ArrayBuffer(10);
     const result = await provider.transcribeImage(imageBuffer, "image/png");
     expect(result).toBe("# Transcribed content");
@@ -59,7 +57,7 @@ describe("CloudOCRProvider", () => {
       });
     };
 
-    const provider = new CloudOCRProvider(CLOUD_URL, CLOUD_SECRET, CLIENT_ID);
+    const provider = new CloudOCRProvider(CLOUD_URL, CLIENT_ID);
     const pdfBuffer = new ArrayBuffer(100);
     const result = await provider.transcribePDF(pdfBuffer);
     expect(result.markdown).toBe("# PDF content");
@@ -71,13 +69,13 @@ describe("CloudOCRProvider", () => {
       return new Response("Server error", { status: 500 });
     };
 
-    const provider = new CloudOCRProvider(CLOUD_URL, CLOUD_SECRET, CLIENT_ID);
+    const provider = new CloudOCRProvider(CLOUD_URL, CLIENT_ID);
     await expect(provider.transcribeImage(new ArrayBuffer(10), "image/png"))
       .rejects.toThrow("Cloud OCR error (500)");
   });
 
   it("consolidateTranscript is a pass-through", async () => {
-    const provider = new CloudOCRProvider(CLOUD_URL, CLOUD_SECRET, CLIENT_ID);
+    const provider = new CloudOCRProvider(CLOUD_URL, CLIENT_ID);
     const input = "# Page 1\nContent\n\n# Page 2\nMore content";
     const result = await provider.consolidateTranscript(input);
     expect(result).toBe(input);

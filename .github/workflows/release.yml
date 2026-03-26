@@ -103,7 +103,7 @@ jobs:
 
       - name: Build desktop artifacts
         working-directory: tauri
-        run: bunx @tauri-apps/cli build --target universal-apple-darwin
+        run: ../node_modules/.bin/tauri build --target universal-apple-darwin
 
       - name: Collect desktop release assets
         run: |

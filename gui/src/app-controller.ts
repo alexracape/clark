@@ -25,16 +25,13 @@ const TUTORIAL_STEPS: TutorialStep[] = [
 
 // --- Onboarding State ---
 
-export type OnboardingStep = "welcome" | "workspace" | "provider" | "api-key" | "ollama-setup";
+export type OnboardingStep = "welcome" | "beta-code" | "workspace";
 
 export interface OnboardingState {
   step: OnboardingStep;
+  betaCode: string;
   workspaceDir: string;
   workspaceIsNew: boolean;
-  selectedProvider: string;
-  apiKey: string;
-  ollamaModels: string[];
-  selectedOllamaModel: string;
   error: string | null;
   isSubmitting: boolean;
 }
@@ -615,17 +612,14 @@ export function renameEditorFile(state: AppState, newPath: string): AppState {
 
 // --- Onboarding pure functions ---
 
-const STEP_ORDER: OnboardingStep[] = ["welcome", "workspace", "provider", "api-key"];
+const STEP_ORDER: OnboardingStep[] = ["welcome", "beta-code", "workspace"];
 
 function createOnboardingState(): OnboardingState {
   return {
     step: "welcome",
+    betaCode: "",
     workspaceDir: "",
     workspaceIsNew: false,
-    selectedProvider: "",
-    apiKey: "",
-    ollamaModels: [],
-    selectedOllamaModel: "",
     error: null,
     isSubmitting: false,
   };
@@ -655,19 +649,19 @@ export function onboardingPrevStep(state: AppState): AppState {
   };
 }
 
-export function setOnboardingWorkspace(state: AppState, dir: string): AppState {
+export function setOnboardingBetaCode(state: AppState, betaCode: string): AppState {
   if (!state.onboarding) return state;
-  return { ...state, onboarding: { ...state.onboarding, workspaceDir: dir } };
+  return { ...state, onboarding: { ...state.onboarding, betaCode } };
 }
 
-export function setOnboardingProvider(state: AppState, provider: string): AppState {
+export function setOnboardingWorkspace(state: AppState, workspaceDir: string): AppState {
   if (!state.onboarding) return state;
-  return { ...state, onboarding: { ...state.onboarding, selectedProvider: provider } };
+  return { ...state, onboarding: { ...state.onboarding, workspaceDir } };
 }
 
-export function setOnboardingApiKey(state: AppState, apiKey: string): AppState {
+export function setOnboardingWorkspaceIsNew(state: AppState, workspaceIsNew: boolean): AppState {
   if (!state.onboarding) return state;
-  return { ...state, onboarding: { ...state.onboarding, apiKey } };
+  return { ...state, onboarding: { ...state.onboarding, workspaceIsNew } };
 }
 
 export function setOnboardingError(state: AppState, error: string | null): AppState {
@@ -682,24 +676,4 @@ export function setOnboardingSubmitting(state: AppState, isSubmitting: boolean):
 
 export function completeOnboarding(state: AppState): AppState {
   return { ...state, onboarding: null };
-}
-
-export function setOnboardingWorkspaceIsNew(state: AppState, isNew: boolean): AppState {
-  if (!state.onboarding) return state;
-  return { ...state, onboarding: { ...state.onboarding, workspaceIsNew: isNew } };
-}
-
-export function setOnboardingOllamaModels(state: AppState, models: string[]): AppState {
-  if (!state.onboarding) return state;
-  return { ...state, onboarding: { ...state.onboarding, ollamaModels: models } };
-}
-
-export function setOnboardingOllamaModel(state: AppState, model: string): AppState {
-  if (!state.onboarding) return state;
-  return { ...state, onboarding: { ...state.onboarding, selectedOllamaModel: model } };
-}
-
-export function setOnboardingStepOllama(state: AppState): AppState {
-  if (!state.onboarding) return state;
-  return { ...state, onboarding: { ...state.onboarding, step: "ollama-setup", error: null } };
 }

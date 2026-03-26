@@ -65,7 +65,7 @@ export async function resolveProvider(config: ClarkConfig, args: CliArgs): Promi
 
   if (providerName === "clark-cloud") {
     // Resolve cloud config and ensure clientId is persisted
-    const { url, secret, clientId } = resolveCloudConfig(config);
+    const { url, clientId } = resolveCloudConfig(config);
     if (!config.cloud?.clientId) {
       config.cloud = { ...config.cloud, url, clientId };
       await saveConfig(config);
@@ -80,9 +80,8 @@ export async function resolveProvider(config: ClarkConfig, args: CliArgs): Promi
       ...(config.maxTokens ? { maxTokens: config.maxTokens } : {}),
     });
 
-    // Set cloud URL and secret in env for the provider to pick up
+    // Set cloud URL in env for the provider to pick up
     process.env.CLARK_CLOUD_URL = url;
-    process.env.CLARK_CLOUD_SECRET = secret;
 
     return {
       providerName,

@@ -12,7 +12,6 @@ export class CloudOCRProvider implements OCRProvider {
 
   constructor(
     private cloudUrl: string,
-    private cloudSecret: string,
     private clientId: string,
   ) {}
 
@@ -23,7 +22,6 @@ export class CloudOCRProvider implements OCRProvider {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${this.cloudSecret}`,
         "X-Clark-Client-Id": this.clientId,
       },
       body: JSON.stringify({ image: base64, mimeType }),
@@ -49,7 +47,6 @@ export class CloudOCRProvider implements OCRProvider {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${this.cloudSecret}`,
         "X-Clark-Client-Id": this.clientId,
       },
       body: JSON.stringify({ pdf: base64 }),

@@ -9,11 +9,12 @@ import { streamText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { google } from "@ai-sdk/google";
-import { authenticate } from "../lib/auth.ts";
+import { authenticate, requireTier } from "../lib/auth.ts";
 import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.ts";
 import { errorResponse, methodNotAllowed } from "../lib/errors.ts";
 
 const chatLimiter = createRateLimiter(30, "60 s");
+const UPSTREAM_TIMEOUT_MS = 25_000;
 
 /**
  * Map a model ID to the underlying provider name.
@@ -98,112 +99,143 @@ function convertTools(tools: any[]): Record<string, any> {
   return result;
 }
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== "POST") return methodNotAllowed();
+export default {
+  async fetch(req: Request): Promise<Response> {
+    if (req.method !== "POST") return methodNotAllowed();
 
-  // Auth
-  const auth = authenticate(req);
-  if (!auth.ok) return auth.response;
+    // Auth
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth.response;
 
-  // Rate limit
-  const rateLimited = await checkRateLimit(chatLimiter, auth.clientId);
-  if (rateLimited) return rateLimited;
+    const tierCheck = requireTier("beta", auth);
+    if (tierCheck) return tierCheck;
 
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
-    return errorResponse(400, "Invalid JSON body");
-  }
+    // Rate limit
+    const rateLimited = await checkRateLimit(chatLimiter, auth.clientId);
+    if (rateLimited) return rateLimited;
 
-  const { model, messages, tools, systemPrompt } = body;
-  if (!model || !messages) {
-    return errorResponse(400, "Missing required fields: model, messages");
-  }
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return errorResponse(400, "Invalid JSON body");
+    }
 
-  try {
-    const provider = body.provider ?? inferProvider(model);
-    const aiModel = getModel(provider, model);
-    const convertedMessages = convertMessages(messages);
-    const convertedTools = tools?.length ? convertTools(tools) : undefined;
+    const { model, messages, tools, systemPrompt } = body;
+    if (!model || !messages) {
+      return errorResponse(400, "Missing required fields: model, messages");
+    }
 
-    const result = streamText({
-      model: aiModel,
-      messages: convertedMessages,
-      system: systemPrompt,
-      ...(convertedTools ? { tools: convertedTools } : {}),
-      maxTokens: body.maxTokens ?? 4096,
-    });
+    try {
+      const provider = body.provider ?? inferProvider(model);
+      const aiModel = getModel(provider, model);
+      const convertedMessages = convertMessages(messages);
+      const convertedTools = tools?.length ? convertTools(tools) : undefined;
 
-    // Stream response as SSE in Clark's StreamChunk format
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          let currentToolCallId = "";
+      const result = streamText({
+        model: aiModel,
+        messages: convertedMessages,
+        system: systemPrompt,
+        ...(convertedTools ? { tools: convertedTools } : {}),
+        maxTokens: body.maxTokens ?? 4096,
+        abortSignal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
 
-          for await (const part of result.fullStream) {
-            let chunk: string | null = null;
+      // Stream response as SSE in Clark's StreamChunk format
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            let currentToolCallId = "";
 
-            switch (part.type) {
-              case "text-delta":
-                chunk = JSON.stringify({ type: "text_delta", text: part.textDelta });
-                break;
-              case "reasoning":
-                chunk = JSON.stringify({ type: "thinking_delta", text: part.textDelta });
-                break;
-              case "tool-call-streaming-start":
-                currentToolCallId = part.toolCallId;
-                chunk = JSON.stringify({
-                  type: "tool_use_start",
-                  id: part.toolCallId,
-                  name: part.toolName,
-                });
-                break;
-              case "tool-call-delta":
-                chunk = JSON.stringify({
-                  type: "tool_input_delta",
-                  id: currentToolCallId,
-                  input: part.argsTextDelta,
-                });
-                break;
-              case "finish":
-                chunk = JSON.stringify({
-                  type: "done",
-                  stopReason: part.finishReason === "tool-calls"
-                    ? "tool_use"
-                    : part.finishReason === "length"
-                      ? "max_tokens"
-                      : "end_turn",
-                });
-                break;
+            for await (const part of result.fullStream) {
+              let chunk: string | null = null;
+
+              switch (part.type) {
+                case "text-delta":
+                  chunk = JSON.stringify({ type: "text_delta", text: part.textDelta });
+                  break;
+                case "reasoning":
+                  chunk = JSON.stringify({ type: "thinking_delta", text: part.textDelta });
+                  break;
+                case "tool-call-streaming-start":
+                  currentToolCallId = part.toolCallId;
+                  chunk = JSON.stringify({
+                    type: "tool_use_start",
+                    id: part.toolCallId,
+                    name: part.toolName,
+                  });
+                  break;
+                case "tool-call-delta":
+                  chunk = JSON.stringify({
+                    type: "tool_input_delta",
+                    id: currentToolCallId,
+                    input: part.argsTextDelta,
+                  });
+                  break;
+                case "error": {
+                  const msg = part.error instanceof Error
+                    ? part.error.message
+                    : JSON.stringify(part.error);
+                  console.error("[chat] upstream error part", {
+                    clientId: auth.clientId,
+                    model,
+                    provider: body.provider ?? inferProvider(model),
+                    error: msg,
+                  });
+                  chunk = JSON.stringify({ type: "error", error: msg });
+                  break;
+                }
+                case "finish":
+                  chunk = JSON.stringify({
+                    type: "done",
+                    stopReason: part.finishReason === "tool-calls"
+                      ? "tool_use"
+                      : part.finishReason === "length"
+                        ? "max_tokens"
+                        : "end_turn",
+                  });
+                  break;
+              }
+
+              if (chunk) {
+                controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
+              }
             }
-
-            if (chunk) {
-              controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
-            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error("[chat] stream failed", {
+              clientId: auth.clientId,
+              model,
+              provider: body.provider ?? inferProvider(model),
+              error: msg,
+            });
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: "error", error: msg })}\n\n`),
+            );
+          } finally {
+            controller.close();
           }
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: "error", error: msg })}\n\n`),
-          );
-        } finally {
-          controller.close();
-        }
-      },
-    });
+        },
+      });
 
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-        "X-Clark-Provider": body.provider ?? inferProvider(model),
-      },
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return errorResponse(500, msg);
-  }
-}
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "X-Clark-Provider": body.provider ?? inferProvider(model),
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[chat] handler failed", {
+        clientId: auth.clientId,
+        model,
+        provider: body.provider ?? null,
+        error: msg,
+      });
+      return errorResponse(500, msg);
+    }
+  },
+};

@@ -216,7 +216,7 @@ async function buildOCRProvider(args: ParsedArgs): Promise<OCRProvider> {
 
   if (providerName === "clark-cloud") {
     const cloud = resolveCloudConfig(config);
-    return new CloudOCRProvider(cloud.url, cloud.secret, cloud.clientId);
+    return new CloudOCRProvider(cloud.url, cloud.clientId);
   }
 
   const modelName = args.model

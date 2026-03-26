@@ -1,55 +1,17 @@
 import React, { useState, useCallback } from "react";
-import type { OnboardingState, OnboardingStep } from "../app-controller.ts";
+import type { OnboardingState } from "../app-controller.ts";
 import { ParticleGraph } from "./ParticleGraph.tsx";
-
-const MAIN_STEPS: OnboardingStep[] = [
-  "welcome",
-  "workspace",
-];
 
 interface OnboardingProps {
   state: OnboardingState;
   isTauri: boolean;
   onNext: () => void;
   onPrev: () => void;
+  onSetBetaCode: (code: string) => void;
   onSetWorkspace: (dir: string) => void;
   onSetWorkspaceIsNew: (isNew: boolean) => void;
   onPickFolder: () => Promise<string | null>;
-  onSetProvider: (provider: string) => void;
-  onSetApiKey: (key: string) => void;
-  onOllamaNext: () => void;
-  onRefreshOllamaModels: () => void;
-  onSelectOllamaModel: (model: string) => void;
   onComplete: () => void;
-}
-
-function StepIndicator({ currentStep }: { currentStep: OnboardingStep }) {
-  const displayStep = currentStep === "ollama-setup" ? "workspace" : currentStep;
-  const currentIdx = MAIN_STEPS.indexOf(displayStep);
-  return (
-    <div className="onboarding-steps">
-      {MAIN_STEPS.map((step, i) => (
-        <React.Fragment key={step}>
-          {i > 0 && (
-            <div
-              className={`onboarding-steps__line ${i <= currentIdx ? "onboarding-steps__line--done" : ""}`}
-            />
-          )}
-          <div
-            className={[
-              "onboarding-steps__dot",
-              i < currentIdx ? "onboarding-steps__dot--done" : "",
-              i === currentIdx ? "onboarding-steps__dot--active" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            {i < currentIdx ? "\u2713" : i + 1}
-          </div>
-        </React.Fragment>
-      ))}
-    </div>
-  );
 }
 
 function WelcomeStep({ onNext }: { onNext: () => void }) {
@@ -70,6 +32,67 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
           onClick={onNext}
         >
           Get Started
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BetaCodeStep({
+  betaCode,
+  error,
+  isSubmitting,
+  onSetBetaCode,
+  onNext,
+  onPrev,
+}: {
+  betaCode: string;
+  error: string | null;
+  isSubmitting: boolean;
+  onSetBetaCode: (code: string) => void;
+  onNext: () => void;
+  onPrev: () => void;
+}) {
+  return (
+    <div className="onboarding-content">
+      <h2 className="onboarding-heading">Beta Access</h2>
+      <p className="onboarding-body">
+        Enter your beta code to unlock full cloud access, or skip to continue
+        with basic features.
+      </p>
+
+      <input
+        className="onboarding-input"
+        type="text"
+        placeholder="Enter beta code"
+        value={betaCode}
+        onChange={(e) => onSetBetaCode(e.target.value)}
+        disabled={isSubmitting}
+      />
+
+      {error && <p className="onboarding-error">{error}</p>}
+
+      <div className="onboarding-nav">
+        <button
+          className="onboarding-btn onboarding-btn--ghost"
+          onClick={onPrev}
+          disabled={isSubmitting}
+        >
+          Back
+        </button>
+        <button
+          className="onboarding-btn onboarding-btn--secondary"
+          onClick={onNext}
+          disabled={isSubmitting}
+        >
+          Skip
+        </button>
+        <button
+          className="onboarding-btn onboarding-btn--primary"
+          onClick={onNext}
+          disabled={isSubmitting}
+        >
+          Continue
         </button>
       </div>
     </div>
@@ -249,13 +272,12 @@ export function Onboarding({
   isTauri,
   onNext,
   onPrev,
+  onSetBetaCode,
   onSetWorkspace,
   onSetWorkspaceIsNew,
   onPickFolder,
-  onSetProvider,
   onComplete,
 }: OnboardingProps) {
-  // Welcome step uses full-bleed particle animation — no step indicator
   if (state.step === "welcome") {
     return (
       <div className="onboarding onboarding--welcome">
@@ -264,17 +286,18 @@ export function Onboarding({
     );
   }
 
-  // Provider and API key steps are skipped — default to clark-cloud.
-  // If the flow somehow lands on these steps, auto-advance to workspace.
-  if (state.step === "provider" || state.step === "api-key" || state.step === "ollama-setup") {
-    onSetProvider("clark-cloud");
-    onNext();
-    return null;
-  }
-
   return (
     <div className="onboarding">
-      <StepIndicator currentStep={state.step} />
+      {state.step === "beta-code" && (
+        <BetaCodeStep
+          betaCode={state.betaCode}
+          error={state.error}
+          isSubmitting={state.isSubmitting}
+          onSetBetaCode={onSetBetaCode}
+          onNext={onNext}
+          onPrev={onPrev}
+        />
+      )}
       {state.step === "workspace" && (
         <WorkspaceStep
           workspaceDir={state.workspaceDir}

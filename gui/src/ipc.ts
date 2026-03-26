@@ -31,6 +31,8 @@ const ROUTE_MAP: Record<string, Route> = {
   rename_file: { method: "POST", path: "/api/rename-file" },
   list_sessions: { method: "GET", path: "/api/sessions" },
   load_session: { method: "POST", path: "/api/sessions/load" },
+  redeem_beta: { method: "POST", path: "/api/redeem-beta" },
+  get_auth_status: { method: "GET", path: "/api/auth-status" },
 };
 
 function isTauriRuntime(): boolean {

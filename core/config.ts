@@ -47,6 +47,8 @@ export interface ClarkConfig {
     url?: string;
     /** Anonymous client ID (generated UUID, persisted on first use). */
     clientId?: string;
+    /** Whether this client has successfully redeemed a beta code. */
+    betaRedeemed?: boolean;
   };
 
   /** Flag indicating user has completed initial onboarding. */
@@ -137,15 +139,14 @@ export async function needsOnboarding(config: ClarkConfig): Promise<boolean> {
  * Resolve cloud proxy configuration.
  * Generates a clientId on first call if one doesn't exist.
  */
-export function resolveCloudConfig(config: ClarkConfig): { url: string; secret: string; clientId: string } {
+export function resolveCloudConfig(config: ClarkConfig): { url: string; clientId: string } {
   const url = config.cloud?.url ?? process.env.CLARK_CLOUD_URL ?? "https://clark-cloud.vercel.app";
-  const secret = process.env.CLARK_CLOUD_SECRET ?? "";
   let clientId = config.cloud?.clientId;
   if (!clientId) {
     clientId = crypto.randomUUID();
     // Caller should persist this back to config
   }
-  return { url, secret, clientId };
+  return { url, clientId };
 }
 
 export function resolveMaxToolCallsPerTurn(config: ClarkConfig): number {

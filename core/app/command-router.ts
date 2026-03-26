@@ -14,7 +14,7 @@ export interface CommandRouterOptions {
   conversation: Conversation;
   getProvider: () => LLMProvider;
   /** Cloud proxy config — when set, feedback is routed through the proxy. */
-  cloudConfig?: { url: string; secret: string; clientId: string };
+  cloudConfig?: { url: string; clientId: string };
 }
 
 export function createSlashCommandHandler(options: CommandRouterOptions) {
@@ -271,7 +271,6 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${cloudConfig.secret}`,
                 "X-Clark-Client-Id": cloudConfig.clientId,
               },
               body: JSON.stringify(payload),

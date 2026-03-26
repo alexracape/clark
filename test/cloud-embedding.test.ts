@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { CloudEmbeddingProvider } from "../core/embedding/cloud.ts";
 
 const CLOUD_URL = "https://test-cloud.example.com";
-const CLOUD_SECRET = "test-secret";
 const CLIENT_ID = "test-client-id";
 
 describe("CloudEmbeddingProvider", () => {
@@ -17,14 +16,14 @@ describe("CloudEmbeddingProvider", () => {
   });
 
   it("has correct metadata", () => {
-    const provider = new CloudEmbeddingProvider(CLOUD_URL, CLOUD_SECRET, CLIENT_ID);
+    const provider = new CloudEmbeddingProvider(CLOUD_URL, CLIENT_ID);
     expect(provider.name).toBe("clark-cloud");
     expect(provider.modelId).toBe("text-embedding-3-small");
     expect(provider.dimensions).toBe(1536);
   });
 
   it("returns empty array for empty input", async () => {
-    const provider = new CloudEmbeddingProvider(CLOUD_URL, CLOUD_SECRET, CLIENT_ID);
+    const provider = new CloudEmbeddingProvider(CLOUD_URL, CLIENT_ID);
     const result = await provider.embed([]);
     expect(result).toEqual([]);
   });
@@ -38,7 +37,6 @@ describe("CloudEmbeddingProvider", () => {
       expect(init?.method).toBe("POST");
 
       const headers = init?.headers as Record<string, string>;
-      expect(headers["Authorization"]).toBe(`Bearer ${CLOUD_SECRET}`);
       expect(headers["X-Clark-Client-Id"]).toBe(CLIENT_ID);
 
       const body = JSON.parse(init?.body as string);
@@ -54,7 +52,7 @@ describe("CloudEmbeddingProvider", () => {
       });
     };
 
-    const provider = new CloudEmbeddingProvider(CLOUD_URL, CLOUD_SECRET, CLIENT_ID);
+    const provider = new CloudEmbeddingProvider(CLOUD_URL, CLIENT_ID);
     const result = await provider.embed(["hello", "world"]);
     expect(result).toEqual(mockEmbeddings);
   });
@@ -64,7 +62,7 @@ describe("CloudEmbeddingProvider", () => {
       return new Response("Rate limited", { status: 429 });
     };
 
-    const provider = new CloudEmbeddingProvider(CLOUD_URL, CLOUD_SECRET, CLIENT_ID);
+    const provider = new CloudEmbeddingProvider(CLOUD_URL, CLIENT_ID);
     await expect(provider.embed(["test"]))
       .rejects.toThrow("Cloud embedding error (429)");
   });

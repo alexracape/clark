@@ -10,45 +10,47 @@ import { errorResponse, methodNotAllowed } from "../lib/errors.ts";
 
 const feedbackLimiter = createRateLimiter(5, "60 s");
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== "POST") return methodNotAllowed();
+export default {
+  async fetch(req: Request): Promise<Response> {
+    if (req.method !== "POST") return methodNotAllowed();
 
-  const auth = authenticate(req);
-  if (!auth.ok) return auth.response;
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth.response;
 
-  const rateLimited = await checkRateLimit(feedbackLimiter, auth.clientId);
-  if (rateLimited) return rateLimited;
+    const rateLimited = await checkRateLimit(feedbackLimiter, auth.clientId);
+    if (rateLimited) return rateLimited;
 
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
-    return errorResponse(400, "Invalid JSON body");
-  }
-
-  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-  if (!webhookUrl) {
-    return errorResponse(500, "Server misconfigured: missing DISCORD_WEBHOOK_URL");
-  }
-
-  try {
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (!response.ok) {
-      return errorResponse(502, `Discord webhook error: ${response.status}`);
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return errorResponse(400, "Invalid JSON body");
     }
 
-    return new Response(
-      JSON.stringify({ ok: true }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
-    );
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return errorResponse(500, `Feedback delivery failed: ${msg}`);
-  }
-}
+    const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+    if (!webhookUrl) {
+      return errorResponse(500, "Server misconfigured: missing DISCORD_WEBHOOK_URL");
+    }
+
+    try {
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!response.ok) {
+        return errorResponse(502, `Discord webhook error: ${response.status}`);
+      }
+
+      return new Response(
+        JSON.stringify({ ok: true }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return errorResponse(500, `Feedback delivery failed: ${msg}`);
+    }
+  },
+};

@@ -37,7 +37,6 @@ export class CloudLLMProvider implements LLMProvider {
 
   constructor(
     private cloudUrl: string,
-    private cloudSecret: string,
     private clientId: string,
     private provider: string,
     private model: string,
@@ -54,7 +53,6 @@ export class CloudLLMProvider implements LLMProvider {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${this.cloudSecret}`,
         "X-Clark-Client-Id": this.clientId,
       },
       body: JSON.stringify({
@@ -129,11 +127,10 @@ export class CloudLLMProvider implements LLMProvider {
 // Register the cloud provider
 registerProvider("clark-cloud", (model, options) => {
   const cloudUrl = process.env.CLARK_CLOUD_URL ?? "https://clark-cloud.vercel.app";
-  const cloudSecret = process.env.CLARK_CLOUD_SECRET ?? "";
   const clientId = options?.apiKey ?? ""; // clientId is passed via the apiKey option slot
 
   const resolvedModel = model ?? "claude-sonnet-4-6";
   const provider = inferProviderName(resolvedModel);
 
-  return new CloudLLMProvider(cloudUrl, cloudSecret, clientId, provider, resolvedModel);
+  return new CloudLLMProvider(cloudUrl, clientId, provider, resolvedModel);
 });

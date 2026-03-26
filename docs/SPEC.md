@@ -4,112 +4,181 @@
 
 ## Overview
 
-Clark is a terminal-based Socratic tutoring assistant that helps students work through homework and problem sets. Instead of giving answers, Clark asks guiding questions — like a good TA would. Its key differentiator is seamless support for **handwritten work**: students write on an iPad via a shared tldraw canvas while Clark reads and responds to their progress from the TUI on their Mac.
+Clark is a Socratic tutoring assistant for students. Instead of giving direct answers, Clark asks guiding questions — like a good TA would. Its key differentiator is treating handwritten work as a first-class input: students write on an iPad via a shared tldraw canvas while Clark reads and responds from the desktop app on their Mac.
 
 ## Design Principles
 
 - **Socratic first.** Clark never solves problems. It asks questions, surfaces relevant context, and nudges the student toward understanding.
 - **Handwriting is a first-class input.** Students shouldn't have to transcribe their work. Clark sees what they write.
-- **Local and private.** All data stays on the student's machine. No cloud storage, no telemetry.
+- **Zero-config onboarding.** No API keys, no provider selection. Clark Cloud handles LLM access out of the box.
 - **Hackable.** Simple architecture, few abstractions, easy to extend.
+
+---
 
 ## Architecture
 
-```
-┌─────────────────┐         ┌─────────────────────────────────────────────┐
-│   iPad (Safari)  │◄──WS──►│              Mac (Bun process)              │
-│                  │         │                                             │
-│  ┌─────────────┐ │         │  ┌──────────────┐    ┌──────────────────┐  │
-│  │  tldraw app │ │         │  │ tldraw server│    │    TUI (Ink)     │  │
-│  │  + agent    │ │         │  │ Bun.serve +  │    │    chat + input  │  │
-│  │  context    │ │         │  │ TLSocketRoom │    │                  │  │
-│  │  extraction │ │         │  └──────┬───────┘    └────────┬─────────┘  │
-│  └─────────────┘ │         │         │                     │            │
-└─────────────────┘         │         │    ┌─────────────┐  │            │
-                             │         └───►│  MCP Server │◄─┘            │
-                             │              │  (tools)    │               │
-                             │              └─────────────┘               │
-                             └─────────────────────────────────────────────┘
-```
-
-The main process (`index.ts`) starts three components in a single Bun process:
-
-1. **tldraw server** — `Bun.serve()` hosts the tldraw app and manages sync via `TLSocketRoom` from `@tldraw/sync-core`. The iPad connects over LAN. The server owns the authoritative document state using `InMemorySyncStorage` with an `onChange` callback for auto-persistence.
-
-2. **TUI** — The Ink-based chat interface the student uses on their Mac. Manages the conversation loop, sends messages to the LLM, and dispatches tool calls to the MCP server.
-
-3. **MCP server** — Exposes tools to the LLM for reading files, searching notes, and interacting with the canvas. Canvas tools (snapshot, export) work by sending a WebSocket message to the iPad client, which performs the operation using tldraw's browser-based export APIs and returns the result.
-
-### Data flow for canvas snapshots
-
-Since tldraw's export APIs (`editor.toImage()`, `editor.getSvgString()`) require a browser DOM, snapshots are generated client-side:
+Clark is a Tauri desktop app (macOS) with three main layers:
 
 ```
-LLM calls read_canvas tool
-  → MCP server sends { type: "snapshot", page?: number } via WebSocket to iPad
-  → iPad client calls editor.toImage() on the requested page
-  → iPad sends PNG data back via WebSocket
-  → MCP server returns the image to the LLM's vision API
+┌──────────────────────────────────────────────────────────┐
+│  Tauri Desktop App (macOS)                               │
+│                                                          │
+│  ┌────────────────────┐   ┌──────────────────────────┐  │
+│  │  React Frontend    │   │  Rust Tauri Backend       │  │
+│  │  (gui/src/)        │◄──│  (tauri/src/)             │  │
+│  └─────────┬──────────┘   └────────────┬─────────────┘  │
+│            │ IPC                        │ spawn           │
+│            ▼                            ▼                 │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │  Bun Sidecar (gui/sidecar.ts)                       │ │
+│  │  Bun.serve() HTTP + ConversationEngine              │ │
+│  │  Routes: /api/chat, /api/settings, /api/files, ...  │ │
+│  └────────────────────────┬────────────────────────────┘ │
+└───────────────────────────┼──────────────────────────────┘
+                            │
+          ┌─────────────────┴──────────────────┐
+          │                                    │
+          ▼                                    ▼
+┌──────────────────────┐          ┌────────────────────────┐
+│  Clark Cloud         │          │  iPad (Safari)          │
+│  (Vercel serverless) │          │                         │
+│                      │          │  tldraw canvas app      │
+│  /api/chat (LLMs)    │          │  draws + sends          │
+│  /api/embed          │          │  PNG snapshots          │
+│  /api/ocr (Mistral)  │          │  via WebSocket          │
+│  /api/auth           │          │                         │
+└──────────────────────┘          └────────────────────────┘
 ```
 
-This is the simplest approach and always works during active tutoring sessions (the iPad is connected by definition).
+**Data flow for a conversation turn:**
+1. Student types in the GUI Composer
+2. React calls `invokeCommand` → Tauri IPC → Rust → HTTP to Bun sidecar
+3. Sidecar runs `ConversationEngine.runTurn()`, which streams from `CloudLLMProvider`
+4. `CloudLLMProvider` sends a POST to Clark Cloud (`/api/chat`) which calls the upstream LLM and streams SSE back in Clark's `StreamChunk` format
+5. If the LLM calls a tool (e.g., `read_canvas`), `ConversationEngine` dispatches to the MCP tool handler
+6. `read_canvas` sends a WebSocket message to the iPad, which calls `editor.toImage()` and returns the PNG
+7. The PNG is passed to the LLM as a vision image; the model continues
+8. Streaming events are broadcast from the sidecar → Tauri relay → `sidecar:event` in React → `applyStreamEvent` reducer updates UI
 
-## Components
+---
 
-### 1. TUI Chat Interface
+## Clark Cloud
 
-**Framework:** Ink (React for CLI)
+Clark Cloud is a Vercel serverless proxy service that lets users get started without any API keys or provider setup. All API credentials are managed server-side.
 
-**Behavior:**
-- Single-session, single-thread conversation
-- Student types messages; Clark responds with Socratic questions
-- Supports slash commands for common actions
-- Tab completion and hint UI for slash commands (arrow keys to navigate, Tab to complete)
-- File ingestion via drag-and-drop or pasted paths — files are copied to Resources/ and transcribed
-- Command history with up/down navigation (persisted to `~/.clark/history`)
-- Shows a status indicator when Clark is thinking or reading the canvas
+**Deployed endpoints (`cloud/api/`):**
 
-**Session lifecycle:**
-- Student launches `clark` from the terminal
-- On first run, an onboarding flow prompts for:
-  1. LLM provider selection (Anthropic, OpenAI, Gemini, or Ollama)
-  2. API key entry (skipped for Ollama)
-- Clark scaffolds the current working directory on startup:
-  - Always creates `Clark/`, `Clark/Canvas/`, `Clark/Structures/`, and `Clark/CLARK.md`
-  - If the working directory is empty, also creates default top-level folders (`Notes`, `Resources`, `Templates`)
-- Config is saved to `~/.clark/config.json`
-- Session is ephemeral — conversation is not persisted across runs (v1)
+| Endpoint | Purpose | Rate limit |
+|----------|---------|------------|
+| `/api/chat` | LLM proxy (Anthropic / OpenAI / Google via Vercel AI SDK) | 30 req/60s |
+| `/api/embed` | Embeddings via OpenAI `text-embedding-3-small` | 20 req/60s |
+| `/api/ocr` | OCR via Mistral OCR API (base64 PDF or image) | 10 req/60s |
+| `/api/feedback` | Relays feedback to Discord webhook | — |
+| `/api/telemetry` | Lightweight anonymous usage telemetry | — |
+| `/api/auth/status` | Returns the client's auth tier | — |
 
-**Slash commands (built-in):**
-- `/help` — Show available commands
-- `/tutorial` — Interactive tutorial for first-time users
-- `/canvas` — Open or show active canvas (shows canvas picker if none open)
-- `/export [path]` — Export canvas pages as A4 PDF (default: `<pdfExportDir>/<canvasName>.pdf`, fallback `./<canvasName>.pdf`). Supports tab-completion for directory paths.
-- `/model` — Switch model and provider (shows interactive picker with API key entry for unconfigured providers)
-- `/context` — Show context window usage breakdown (10x10 color-coded grid with per-category token estimates)
-- `/compact` — Summarize conversation to reclaim context tokens
-- `/feedback <message>` — Send feedback to the developer via Discord webhook (includes system context: Clark version, platform, Bun version, LLM provider)
-- `/clear` — Clear conversation history
-- `/exit` or `/quit` — Exit Clark (same as Ctrl+C)
-- `/settings` — Open the Settings panel (GUI only — workspace, file routing, embedding, PDF export)
+**Auth:** Each client generates a UUID on first run stored in `~/.clark/config.json` as `clientId`. All requests include `X-Clark-Client-Id`. There is no sign-in — the client ID is the identity.
 
-**Structures (via NLU):**
-- Structure definitions live in `Clark/Structures/` as `.md` files (user-editable)
-- At startup, `loadEffectiveSystemPrompt()` scans Structures/ and appends a summary (name + purpose) to the system prompt
-- The LLM discovers structures from the system prompt and uses `read_file`/`create_file` tools naturally when a student asks to create one (e.g., "create a new class for CS101")
-- No dedicated slash commands — the model handles structure creation conversationally
+**Rate limiting:** Uses Upstash Redis sliding window rate limiting. Keys are `rl:<clientId>`. No IPs are stored.
 
-**File ingestion (agentic):**
-- When the student drags a file into the terminal or pastes a file path, the TUI detects it as a path (via `detectFilePath()`) before checking for slash commands
-- The file is copied to the appropriate `Resources/` subfolder (PDFs → `Resources/PDFs/`, images → `Resources/Images/`)
-- A message is injected into the conversation telling the model about the new file
-- The model then drives processing using MCP tools: `read_file` to inspect content, `transcribe_pdf` to OCR scanned PDFs, `create_file` to save transcripts
-- The model decides where to place transcripts based on vault structure and CLARK.md conventions
-- For scanned/handwritten PDFs, `transcribe_pdf` renders pages to images via poppler (`pdftoppm`) and OCRs each page using a pluggable vision API
+**Stack:** `cloud/lib/auth.ts` + `cloud/lib/rate-limit.ts` + `cloud/lib/redis.ts`. Deployed via `cloud/vercel.json`.
 
-### 2. Workspace System
+---
 
-Clark assumes the current working directory is the student's workspace root.
+## GUI (Tauri Desktop App)
+
+The desktop app is the primary way to use Clark. It provides a full chat interface, settings panel, file browser, canvas integration, and onboarding flow.
+
+### React Frontend (`gui/src/`)
+
+**`App.tsx`** — Root component. On mount: checks onboarding status, subscribes to `sidecar:event` for streaming updates. Renders the Titlebar, Sidebar, ChatWindow or MarkdownEditor, Composer, and all modals (ModelPicker, CanvasPicker, ContextPanel, Settings, SessionPicker, Tutorial, Onboarding).
+
+**`app-controller.ts`** — Pure reducer pattern for all app state. `AppState` tracks chat messages, streaming state, active tool calls, modal visibility, canvas status, ingestion toasts, and onboarding progress. Key functions:
+- `applyStreamEvent` — processes SSE chunks from the sidecar
+- `planSendInput` — handles message submission
+- `planFileDrop` — handles drag-and-drop file ingestion
+- `applySlashCommandResult` — maps slash command results (e.g., `uiAction: "settings"`) to state transitions
+
+**`ipc.ts`** — IPC bridge:
+- **Tauri mode:** `invokeCommand(name, args)` → `tauriInvoke` → Rust `commands.rs` → HTTP to sidecar
+- **Browser/dev mode:** maps command names directly to `{ method, path }` and calls sidecar HTTP
+
+**Components:**
+
+| Component | Description |
+|-----------|-------------|
+| `Composer.tsx` | Message input with Tiptap-based slash command autocomplete |
+| `ChatWindow.tsx` | Chat message list with streaming support |
+| `MessageBubble.tsx` | Individual message rendering (text, tool calls, images) |
+| `ToolCard.tsx` | Tool call/result display |
+| `Sidebar.tsx` | Left panel file browser |
+| `Settings.tsx` | Settings modal (workspace, file routing, embedding, PDF export) |
+| `Onboarding.tsx` | First-run flow (Welcome → workspace setup) |
+| `ModelPicker.tsx` | Provider/model selection modal |
+| `CanvasPicker.tsx` | Canvas file selection modal |
+| `ContextPanel.tsx` | Context window usage visualization |
+| `SessionPicker.tsx` | Restore a past session |
+| `MarkdownEditor.tsx` | In-app markdown file editor |
+
+### Tauri Backend (`tauri/src/`)
+
+The Rust backend wraps the React frontend and manages the Bun sidecar subprocess.
+
+- `lib.rs` — Tauri app setup, sidecar spawn, IPC invoke handler registration
+- `commands.rs` — IPC command handlers; each proxies to sidecar HTTP
+- `sidecar.rs` — Sidecar process lifecycle (spawn, port discovery)
+- `stream.rs` — Forwards SSE events from the sidecar to Tauri frontend events
+
+### Bun Sidecar (`gui/sidecar.ts`)
+
+The sidecar is a `Bun.serve()` HTTP server that holds all runtime state and runs the `ConversationEngine`. It is spawned as a subprocess by the Tauri Rust backend.
+
+**Module-level state:**
+
+| Variable | Description |
+|----------|-------------|
+| `config` | `ClarkConfig` loaded from `~/.clark/config.json` |
+| `workspaceDir` | Active workspace root |
+| `provider` | Active `LLMProvider` instance |
+| `conversation` | `Conversation` message history |
+| `engine` | `ConversationEngine` |
+| `tools` | MCP tool definitions |
+| `embeddingProvider` | `CloudEmbeddingProvider` or `OllamaEmbeddingProvider` |
+| `searchIndex` | `EmbeddingIndex` (SQLite) |
+| `sessionManager` | Session persistence handler |
+
+**Key API endpoints:**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/chat` | POST | Run a conversation turn; streaming via WebSocket broadcast |
+| `/api/command` | POST | Dispatch a slash command |
+| `/api/ingest` | POST | Copy file to workspace + run ingestion pipeline |
+| `/api/status` | GET | Current provider and model |
+| `/api/files` | GET | List workspace files (optional `?path=`) |
+| `/api/canvases` | GET | List `.tldr` canvas files |
+| `/api/canvas/open` | POST | Open a canvas by name |
+| `/api/context` | GET | Context window usage breakdown |
+| `/api/settings` | GET/POST | Read/write config; reinitializes affected subsystems |
+| `/api/onboarding-status` | GET | Whether onboarding has been completed |
+| `/api/complete-onboarding` | POST | Finalize onboarding |
+
+### Settings Panel
+
+The Settings modal (`Settings.tsx`) provides a GUI for:
+
+- **Workspace** — workspace root directory (OS native folder picker in Tauri)
+- **File Routing** — relative paths for dropped PDFs, images, and other files
+- **Semantic Search** — embedding provider (Off / Clark Cloud / Ollama) and model
+- **PDF Export** — default export directory
+
+The modal tracks dirty state via JSON comparison and only enables Save when there are changes. `POST /api/settings` triggers subsystem reinitialization (e.g., rebuilds `embeddingProvider`, `searchIndex`, and MCP tool list when embedding config changes).
+
+---
+
+## Workspace System
+
+Clark treats the configured path in settings as the workspace root.
 
 **Directory structure:**
 ```
@@ -118,14 +187,14 @@ Clark assumes the current working directory is the student's workspace root.
 ├── Resources/
 │   ├── Images/             # Images, diagrams
 │   ├── PDFs/               # PDF documents
-│   └── Transcripts/     # Markdown transcripts of resources
+│   └── Transcripts/        # Markdown transcripts of resources
 └── Templates/
-    └── Paper Template.md
 
 <workspace>/Clark/
-├── CLARK.md                # Optional local config/context injected into system prompt
+├── CLARK.md                # Per-workspace context injected into system prompt
 ├── Canvas/                 # tldraw canvas files (.tldr)
-└── Structures/             # Structure definitions (also serve as skills)
+|-- Sessions/               # old conversations that can be resumed (.md)
+└── Structures/             # Structure definitions (skill files)
     ├── Class.md
     ├── Idea.md
     ├── Paper.md
@@ -134,150 +203,138 @@ Clark assumes the current working directory is the student's workspace root.
     └── Resource.md
 ```
 
-**Scaffolding:** `scaffoldLibrary()` in `core/library.ts` always creates the Clark core directories/files. It only creates top-level defaults when the workspace starts empty.
+**Scaffolding:** `scaffoldLibrary()` in `core/library.ts` always creates the `Clark/` core directories. It only creates top-level defaults (`Notes/`, `Resources/`, `Templates/`) when the workspace starts empty.
 
-**Structures:** Each Structure file contains `## Purpose`, `## Generation`, and optionally `## Template` sections. The Purpose describes what the structure is for; the Generation section contains LLM-oriented instructions for creating instances; the Template section provides the markdown template. These files double as skill definitions for dynamic slash commands.
+**Structures:** Each Structure file contains `## Purpose`, `## Generation`, and optionally `## Template` sections. The LLM discovers structures from the system prompt and uses `read_file`/`create_file` tools when a student asks to create one conversationally.
 
-### 3. Canvas System (tldraw)
+**CLARK.md:** If this file exists in `<workspace>/Clark/`, its contents are appended to the system prompt on startup. This gives students a per-workspace customization point (e.g., "I'm taking CS229 — focus on machine learning concepts").
 
-#### tldraw Server
+**File ingestion:** When a student drags a file into the Composer (or pastes a path in the TUI), it is:
+1. Copied to the appropriate `Resources/` subfolder based on file routing config
+2. A message is injected into the conversation about the new file
+3. The LLM drives processing using MCP tools: `read_file`, `transcribe_pdf`, `create_file`
+4. For scanned/handwritten PDFs, `transcribe_pdf` OCRs each page via the configured OCR provider
+
+---
+
+## Canvas System (tldraw)
+
+### Overview
+
+The canvas system lets students write or draw on an iPad while Clark reads their work. The canvas server starts lazily when the student opens a canvas.
+
+### tldraw Server (`core/canvas/server.ts`)
 
 **Runtime:** `Bun.serve()` with WebSocket support
 
 **Sync:** Uses `TLSocketRoom` from `@tldraw/sync-core` with `InMemorySyncStorage`.
 
 ```ts
-import { TLSocketRoom, InMemorySyncStorage } from '@tldraw/sync-core'
-
 const storage = new InMemorySyncStorage({
-  snapshot: existingData, // load from disk if resuming
+  snapshot: existingData,
   onChange() {
-    // debounced auto-save
     debouncedSave(storage.getSnapshot())
   },
 })
 const room = new TLSocketRoom({ storage })
 ```
 
-**Behavior:**
-- Serves the tldraw React app as a static HTML page (bundled by Bun's HTML import system)
-- Canvas is lazy — the server only starts when the user opens a canvas via `/canvas`
-- Canvas runs in the iPad's browser at a LAN address (e.g., `http://192.168.1.x:3000`)
-- The iPad client connects using `useSync({ uri: 'ws://...' })` from `@tldraw/sync`
-- `TLSocketRoom` handles sync, conflict resolution, and reconnection automatically
-- Custom WebSocket messages use a separate `/ws` endpoint (not interleaved with sync protocol on `/sync`)
-
-**Custom WebSocket messages** (on `/ws` endpoint):
-- `{ type: "snapshot-request", page?: string }` — Server → iPad: request a page screenshot
-- `{ type: "snapshot-response", page: string, png: base64 }` — iPad → Server: screenshot result
-- `{ type: "export-request" }` — Server → iPad: request all pages as images for PDF
-- `{ type: "export-response", pages: Array<{ name: string, png: base64 }> }` — iPad → Server: all page images
-
-#### Canvas Picker
-
-When the user types `/canvas`, a picker UI shows existing `.tldr` files from `<workspace>/Clark/Canvas/` and allows creating new canvases by typing a name. The canvas server starts on the configured port (default 3000).
-
-#### Page-Based UI
-
-The canvas is configured as a **page-based notebook**, not an infinite canvas. This maps directly to homework submissions.
-
-**tldraw page support:**
-- tldraw natively supports multiple pages per document (up to 40 by default, configurable via `maxPages`)
-- Each page has its own shapes, camera position, and selection state
-- The built-in `NavigationPanel` provides page navigation, zoom controls, and minimap
-
-**A4 page setup (single-page, multi-frame):**
-- All "pages" are A4 frame shapes stacked vertically on a single tldraw page (`maxPages: 1` disables page tabs)
-- Each frame is 595.28 x 841.89 points with a 60-point gap between frames
-- Frames are undeletable (`registerBeforeDeleteHandler` returns `false`) and their position/size is locked via `registerBeforeChangeHandler`
-- Camera is unconstrained — users can freely scroll and zoom; `zoomToFit()` on mount
-- When a user draws on the last (empty) frame, a new empty frame is auto-created below
-- On export, each frame is exported individually with `bounds` clipped to the frame
-
-#### Visual Context Extraction (inspired by tldraw Agent SDK)
-
-The tldraw Agent SDK defines a pattern for giving AI models rich context about canvas state. Clark adopts this approach for the iPad client:
-
-**Three levels of shape representation** (from the Agent SDK):
-1. **BlurryShape** — Lightweight summary of shapes in the viewport: bounds, ID, type, text content. Cheap to include in every LLM call as structured context.
-2. **SimpleShape** — Full properties for selected/focused shapes. Used when the LLM needs detailed information about specific content.
-3. **PeripheralShapeCluster** — Grouped counts of shapes outside the viewport. Gives the LLM awareness of off-screen content without sending full data.
-
-#### Persistence
-
 - Canvas state is stored as `.tldr` files in `<workspace>/Clark/Canvas/`
-- `InMemorySyncStorage.onChange()` fires on every canvas change
-- Changes are debounced and the full document snapshot is serialized to disk
+- The tldraw React app (`core/canvas/app.tsx`) is served as a static HTML page bundled by Bun's HTML import system
+- The iPad connects using `useSync({ uri: 'ws://...' })` from `@tldraw/sync` over LAN
+- Custom WebSocket messages use a separate `/ws` endpoint (not interleaved with the sync protocol on `/sync`)
 
-#### PDF Export
+**Custom WebSocket messages (on `/ws`):**
 
-- The `/export` command (or `export_pdf` MCP tool) sends an `export-request` to the iPad client
-- The iPad client iterates through all pages, calling `editor.toImage()` on each with the frame bounds and print resolution (300 DPI)
-- Page images are sent back to the server via WebSocket
-- The server composes them into a multi-page A4 PDF using `pdf-lib`
-- PDF is written to disk (default export dir is `pdfExportDir` from config, else working directory)
+| Direction | Message | Purpose |
+|-----------|---------|---------|
+| Server → iPad | `{ type: "snapshot-request", page?: string }` | Request a page screenshot |
+| iPad → Server | `{ type: "snapshot-response", page: string, png: base64 }` | Screenshot result |
+| Server → iPad | `{ type: "export-request" }` | Request all pages for PDF export |
+| iPad → Server | `{ type: "export-response", pages: Array<{ name, png }> }` | All page images |
 
-### 4. MCP Server (Context + Canvas Tools)
+### Canvas Snapshots
 
-**Protocol:** Model Context Protocol (MCP) over stdio
+Since tldraw's export APIs (`editor.toImage()`) require a browser DOM, snapshots are generated client-side on the iPad:
 
-**Resources:**
-- `notes://` — Access to the configured notes vault (any folder of markdown/PDF/image files)
+```
+LLM calls read_canvas tool
+  → MCP server sends { type: "snapshot-request" } via WebSocket to iPad
+  → iPad calls editor.toImage() on the requested page
+  → iPad sends PNG back via WebSocket
+  → MCP server returns the image to the LLM's vision API
+```
+
+### Page Layout
+
+The canvas is a **page-based notebook** — all "pages" are A4 frame shapes stacked vertically on a single tldraw document.
+
+- Each frame is 595.28 × 841.89 points with a 60-point gap between frames
+- Frames are undeletable and position/size-locked via tldraw's `registerBeforeChangeHandler`
+- When a user draws on the last empty frame, a new frame is auto-created below (`core/canvas/page-autocreate.ts`)
+- On export, each frame is exported individually with bounds clipped to the frame
+
+### PDF Export
+
+The `/export` command (or `export_pdf` MCP tool):
+1. Sends an `export-request` to the iPad client
+2. The iPad iterates through all frames and calls `editor.toImage()` on each at 300 DPI
+3. Images are sent back via WebSocket
+4. The server composes them into a multi-page A4 PDF using `pdf-lib` (`core/canvas/pdf-export.ts`)
+5. PDF is written to the configured export directory
+
+---
+
+## MCP Server
+
+**Protocol:** Model Context Protocol over stdio (internally; the sidecar wires tools directly to `ConversationEngine`)
 
 **Tools exposed to the LLM:**
 
 | Tool | Description | Annotations |
 |------|-------------|-------------|
-| `read_file` | Read a file from the vault (markdown with wikilink resolution, PDF text extraction, images as base64) | readOnly |
-| `search_notes` | Semantic search (cosine similarity via embeddings) with keyword fallback across markdown/text files | readOnly |
+| `read_file` | Read a vault file (markdown with wikilink resolution, PDF text extraction, images as base64) | readOnly |
+| `search_notes` | Semantic + keyword fallback search across vault files | readOnly |
 | `list_files` | List vault directory contents with optional extension filter | readOnly |
 | `create_file` | Create a new file in the vault (fails if exists) | write |
 | `edit_file` | Find-and-replace editing in vault files | write, destructive |
-| `read_canvas` | Capture a PNG snapshot of a canvas page from the iPad client (via WebSocket) | readOnly |
-| `export_pdf` | Export canvas pages as A4 PDF via `pdf-lib` | write |
+| `read_canvas` | Capture a PNG snapshot from the iPad via WebSocket | readOnly |
+| `export_pdf` | Export canvas pages as A4 PDF | write |
 | `save_canvas` | Persist current canvas state to disk | write, idempotent |
-| `transcribe_pdf` | OCR scanned/handwritten PDFs: renders pages via poppler, transcribes via vision API, saves markdown transcript | write |
-| `web_search` | Search the web for current information and recent data | readOnly |
+| `transcribe_pdf` | OCR scanned/handwritten PDFs; saves markdown transcript | write |
+| `web_search` | Search the web for current information | readOnly |
 
-**Tool implementation:**
-All file tools are vault-scoped — paths are resolved relative to the vault root, and path traversal outside the vault is rejected. The MCP server holds references to:
-- A `CanvasBroker` instance (for `read_canvas` and `export_pdf` — sends requests to the iPad, awaits responses)
-- An optional `saveCanvas` callback (for `save_canvas` — provided by `index.ts` when the canvas server is running)
-- An optional `OCRProvider` (for `transcribe_pdf` — default uses LLM vision API, pluggable for dedicated OCR models)
-
-This keeps the MCP server decoupled from tldraw internals. It doesn't import tldraw or know about shapes — it just sends messages and receives images.
+All file tools are vault-scoped — paths are resolved relative to the vault root, and traversal outside the vault is rejected.
 
 **File format support:**
-- **Markdown (.md):** Read as plain text. Wikilinks (`[[...]]` and `![[...]]`) are extracted and resolved to vault paths, appended as a link footer so the LLM can follow references.
-- **PDF (.pdf):** Text extracted via `pdf-parse` for search and reading. `read_file` hints when a PDF has sparse text (likely scanned). `transcribe_pdf` provides full OCR via poppler + vision API.
-- **Images (.png, .jpg, .gif, etc.):** Returned as base64-encoded data for the LLM's vision API.
+- **Markdown:** Wikilinks (`[[...]]`) are extracted and resolved, appended as a link footer so the LLM can follow references
+- **PDF:** Text extracted via `pdf-parse`. `read_file` hints when a PDF likely needs OCR. `transcribe_pdf` runs full page-by-page OCR
+- **Images:** Returned as base64-encoded data for the LLM's vision API
 
-**Search:** `search_notes` uses semantic search when an embedding provider is configured, falling back to keyword/substring search otherwise. Semantic results are ranked by cosine similarity; keyword results are ranked by match density. On the first call with an empty index, `search_notes` awaits index completion before returning results (blocking, with a progress message). On subsequent calls it triggers a background index refresh non-blocking. See the Semantic Search section for details.
+**Standalone mode:** The MCP server can run as a standalone stdio process (`core/mcp/standalone.ts`) for testing with the MCP Inspector.
 
-**Standalone mode:** The MCP server can also run as a standalone stdio process (`core/mcp/standalone.ts`) for testing with the MCP Inspector or external clients.
+---
 
-### 5. Semantic Search
+## Semantic Search
 
-Semantic search allows `search_notes` to find notes by meaning rather than literal keyword matches. It is optional and disabled by default; enabling it requires configuring an embedding provider (currently Ollama only).
+`search_notes` uses semantic search when an embedding provider is configured, falling back to keyword search otherwise.
 
-#### Architecture
+### Architecture
 
 ```
-search_notes tool call
+search_notes
   → check if EmbeddingProvider + EmbeddingIndex are initialized
   → if not configured → keyword fallback
-  → embed the query text via OllamaEmbeddingProvider
-  → if index is empty → await SearchIndexer.indexStaleFiles() (blocking, with progress)
-  → if index is non-empty → trigger indexStaleFiles() in background (non-blocking)
-  → EmbeddingIndex.searchSimilar(queryVec, modelId, limit) → cosine similarity results
-  → format and return top results
+  → embed the query via EmbeddingProvider
+  → if index empty → await SearchIndexer.indexStaleFiles() (blocking, with progress)
+  → if index non-empty → trigger indexStaleFiles() in background (non-blocking)
+  → EmbeddingIndex.searchSimilar(queryVec, modelId, limit)
+  → return top results ranked by cosine similarity
 ```
 
-#### Components
+### Components
 
 **`EmbeddingProvider` (`core/embedding/provider.ts`):**
-
-Pluggable interface:
 ```ts
 interface EmbeddingProvider {
   readonly name: string;
@@ -287,70 +344,34 @@ interface EmbeddingProvider {
 }
 ```
 
-- `OllamaEmbeddingProvider` — calls the Ollama HTTP API (`/api/embed`). Reads `OLLAMA_HOST` env var (default `http://localhost:11434`). Discovers vector dimensions from the first response.
-- `NoopEmbeddingProvider` — returns empty arrays; used when embeddings aren't configured.
+- `CloudEmbeddingProvider` — routes requests through Clark Cloud (`/api/embed` → OpenAI `text-embedding-3-small`). Default for Clark Cloud users.
+- `OllamaEmbeddingProvider` — calls the Ollama HTTP API directly. For local/power users.
 
 **`EmbeddingIndex` (`core/embedding/index.ts`):**
 
-SQLite-backed store (`~/.clark/embeddings.db`) using `bun:sqlite`. Schema:
-
+SQLite-backed store (`~/.clark/embeddings.db`) via `bun:sqlite`. Schema:
 ```sql
 chunks (id, path, chunk_idx, content, hash, model_id, embedding BLOB, updated_at)
 UNIQUE(path, chunk_idx, model_id)
 ```
 
-Embeddings are stored as raw `Float32Array` blobs. Search is brute-force cosine similarity computed in JavaScript — sufficient for vaults up to ~1,000 chunks.
-
-Key methods:
-- `isEmpty(modelId)` — used by `search_notes` to decide whether to await or background-index
-- `searchSimilar(queryVec, modelId, limit)` — returns top results sorted by cosine similarity
-- `upsertChunks(path, chunks, modelId)` — batch insert/replace in a transaction
-- `getIndexedHashes(modelId)` — returns `Map<path, Map<chunkIdx, sha256>>` for staleness detection
+Embeddings stored as raw `Float32Array` blobs. Search uses brute-force cosine similarity — sufficient for vaults up to ~1,000 chunks.
 
 **`SearchIndexer` (`core/embedding/indexer.ts`):**
 
-Orchestrates scanning, chunking, and embedding:
-- `indexStaleFiles(vaultDir)` — walks all `.md`/`.txt` files, chunks via `chunkMarkdown()`, computes SHA-256 content hashes, embeds only stale chunks in batch, upserts results.
-- `indexFile(vaultDir, relativePath)` — single-file version for targeted re-indexing.
-
-Staleness detection avoids re-embedding unchanged content: if a chunk's SHA-256 matches the stored hash, it is skipped.
+Orchestrates scanning, chunking, and embedding. SHA-256 staleness detection avoids re-embedding unchanged content.
 
 **`chunkMarkdown` (`core/embedding/chunker.ts`):**
 
-Splits markdown into semantically meaningful chunks for embedding. Each chunk carries an index and text content.
+Splits markdown into semantically meaningful chunks for embedding.
 
-#### Background Indexing
+---
 
-`search_notes` maintains a module-level `activeIndexingPromise` to prevent concurrent indexing runs:
-
-- **Empty index:** await the promise (blocking) before searching, showing "Building semantic search index..." progress to the user.
-- **Non-empty index:** fire-and-forget background refresh so results are always available immediately while the index stays fresh.
-
-#### Configuration
-
-Embedding is configured in `~/.clark/config.json`:
-```json
-{
-  "embedding": {
-    "provider": "ollama",
-    "model": "nomic-embed-text"
-  }
-}
-```
-
-In the GUI, this is managed via the Settings panel (Semantic Search section). In the CLI, it must currently be set manually or via onboarding.
-
-### 6. LLM Layer
+## LLM Layer
 
 **Design:** Pluggable provider interface with a registry pattern
 
-**Providers:**
-- **Anthropic (Claude)** — Claude Sonnet via the Anthropic API. Vision support for canvas snapshots and PDF images. Default model: `claude-sonnet-4-5-20250929`.
-- **OpenAI** — GPT-4o via the OpenAI API. Vision support for canvas snapshots. Default model: `gpt-4o`.
-- **Google (Gemini)** — Gemini via the Google GenAI SDK. Default model: `gemini-2.5-flash`.
-- **Ollama** — Local model support for privacy-first use. Auto-discovers available models, performs RAM preflight checks before loading. No API key required.
-
-**Provider interface:**
+**`LLMProvider` interface:**
 ```ts
 interface LLMProvider {
   readonly name: string;
@@ -363,369 +384,185 @@ interface LLMProvider {
 }
 ```
 
-- All providers must support streaming responses
-- All providers must support tool use (function calling)
-- Vision capability is required for canvas reading — providers without vision skip the `read_canvas` tool
-- System prompt is passed as a separate parameter (not as a message)
+All providers must support streaming and tool use. Vision is required for canvas reading — providers without vision skip `read_canvas`.
 
-**Model picker:** The `/model` command shows an interactive picker with all configured providers and their models. Ollama dynamically lists locally available models. Selection is persisted to config for next launch.
+**Providers:**
 
-**Conversation management:** The `Conversation` class (`core/llm/messages.ts`) manages message history with:
-- Token estimation per role (for `/context` display)
-- Compaction via LLM-generated summary (for `/compact`)
-- Stream response collection (converting `StreamChunk[]` into `MessageContent[]`)
+- **Clark Cloud** (`core/llm/cloud.ts`) — Default. Routes all LLM requests through the Clark Cloud Vercel proxy. API keys managed server-side; users need nothing. Supports vision.
+- **Ollama** (`core/llm/ollama.ts`) — Local model support for power users who prefer privacy-first operation. Auto-discovers available models, performs RAM preflight checks before loading.
 
-**Configuration:**
-- Provider and model are set via onboarding, CLI flags, config file, or environment variables
-- `CLARK_MODEL` environment variable overrides the saved model
-- API keys via standard env vars: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`
-- Keys can also be saved during onboarding to `~/.clark/config.json` and are applied to the environment at startup
+**Model picker:** The `/model` command shows an interactive picker with Clark Cloud and Ollama providers. Ollama dynamically lists locally available models. Selection is persisted to config.
 
-### 7. GUI (Tauri Desktop App)
+**Conversation management:** The `Conversation` class (`core/llm/messages.ts`) manages message history with token estimation (for `/context`) and compaction via LLM-generated summary (for `/compact`).
 
-The GUI is a Tauri desktop app wrapping a React frontend. It provides the same core functionality as the TUI in a graphical environment — chat, canvas integration, file ingestion, model switching — with additions like the Settings panel and a richer visual design.
+---
 
-#### Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Tauri Desktop App (macOS)                                  │
-│                                                             │
-│  ┌──────────────────────┐   ┌──────────────────────────┐   │
-│  │  React Frontend      │   │  Rust Tauri Backend       │   │
-│  │  (gui/src/)          │◄──│  (tauri/src/)             │   │
-│  │                      │   │                           │   │
-│  │  App.tsx             │   │  commands.rs              │   │
-│  │  app-controller.ts   │   │  (IPC command proxies)    │   │
-│  │  ipc.ts              │   │                           │   │
-│  └──────────┬───────────┘   └──────────────────────────┘   │
-│             │ HTTP / SSE                  │ spawn            │
-│             ▼                             ▼                  │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │  Bun Sidecar (gui/sidecar.ts)                        │   │
-│  │  Bun.serve() HTTP API on a random port               │   │
-│  │  Routes: /api/chat, /api/settings, /api/files, ...   │   │
-│  │  Holds module-level state: config, embeddingProvider,│   │
-│  │  searchIndex, workspaceDir, exportDir                │   │
-│  └──────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**IPC flow (Tauri mode):** React calls `invokeCommand(name, args)` → `tauriInvoke(name, args)` → Rust `commands.rs` handler → HTTP request to sidecar → response bubbles back.
-
-**IPC flow (browser/dev mode):** `invokeCommand` maps command names to `{ method, path }` pairs and sends HTTP directly to the sidecar dev server.
-
-#### Sidecar (`gui/sidecar.ts`)
-
-The sidecar is a plain `Bun.serve()` HTTP server that holds all runtime state:
-
-| Module-level var | Description |
-|-----------------|-------------|
-| `config` | Current `ClarkConfig` loaded from `~/.clark/config.json` |
-| `workspaceDir` | Active workspace root directory |
-| `exportDir` | PDF export directory |
-| `embeddingProvider` | `OllamaEmbeddingProvider` or `null` |
-| `searchIndex` | `EmbeddingIndex` SQLite instance or `null` |
-
-Key API endpoints:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/chat` | POST | Send a message; returns streaming AI response |
-| `/api/settings` | GET | Returns current config (workspace, file routing, embedding, export) |
-| `/api/settings` | POST | Partial-update config, save to disk, reinitialize affected subsystems |
-| `/api/files` | GET | List workspace files (optional `?path=` param) |
-| `/api/ingest` | POST | Ingest a file into the workspace |
-| `/api/canvases` | GET | List available canvas files |
-| `/api/provider` | POST | Switch LLM provider/model |
-| `/api/ollama-models` | GET | List locally available Ollama models |
-| `/api/onboarding-status` | GET | Check if onboarding is complete |
-| `/api/complete-onboarding` | POST | Finalize onboarding with provider and workspace |
-
-When `embedding` config changes via `POST /api/settings`, the sidecar calls `setupEmbedding()` to reinitialize `embeddingProvider` and `searchIndex` and rebuilds the MCP tool list.
-
-#### Settings Panel
-
-The Settings modal (`gui/src/components/Settings.tsx`) provides a GUI for configuring:
-
-- **Workspace** — workspace root directory (OS native folder picker in Tauri, text input in browser)
-- **File Routing** — relative paths for PDFs, images, and other dropped files
-- **Semantic Search** — embedding provider (Off / Ollama) and model (dropdown populated from `list_ollama_models`, falls back to text input if Ollama unreachable)
-- **PDF Export** — export directory for `/export` and `export_pdf`
-
-The modal tracks dirty state via JSON comparison and only enables Save when there are changes.
-
-#### App State Management
-
-`app-controller.ts` uses a pure reducer pattern:
-
-```ts
-interface AppState {
-  showSettings: boolean;
-  showContext: boolean;
-  showModelPicker: boolean;
-  // ... other UI state
-}
-
-function setShowSettings(state: AppState, open: boolean): AppState
-```
-
-Slash command results with `uiAction` strings (e.g., `"settings"`, `"context"`, `"model"`) are mapped to state transitions in `applySlashCommandResult`.
-
-### 8. Socratic System Prompt
+## System Prompt
 
 The system prompt is the sole guardrail mechanism. It instructs the LLM to:
 
 - Never provide direct answers to homework problems
-- Ask guiding questions that lead the student to discover the answer
+- Ask guiding questions that lead the student toward discovery
 - Reference the student's own notes and class materials when relevant
 - Read the student's handwritten work and comment on their approach
 - Identify misconceptions and address them with targeted questions
 - Encourage the student and acknowledge progress
-- Adapt question difficulty based on the student's responses
 
-The system prompt is stored as a plain text file (`core/prompts/system.md`) so users can customize it. When a skill is active, the Structure file's content is appended to the system prompt for that conversation turn.
+Stored as plain text at `core/prompts/system.md` — user-customizable. Structure file purposes are appended at startup so the LLM knows what structures exist. If `<workspace>/Clark/CLARK.md` exists, its contents are appended (separated by `---`) for per-workspace context.
 
-If a `CLARK.md` file exists in the workspace's `Clark/` directory, its contents are appended to the system prompt on startup (separated by `---`). This gives students a per-workspace customization point (e.g., "I'm taking CS229 — focus on machine learning concepts").
+---
+
+## TUI (Power Users)
+
+The Terminal UI is a secondary interface for power users who prefer working in the terminal. It provides the same core functionality as the GUI via an Ink (React for CLI) chat interface.
+
+**Entry point:** `index.ts` → `cli/bootstrap/start-app.ts`
+
+**CLI flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--provider` | `clark-cloud` | LLM provider (`clark-cloud`, `ollama`) |
+| `--model` | provider default | Specific model ID |
+| `--port` | `3000` | Port for tldraw canvas server |
+| `--upgrade` | — | Self-update to latest GitHub release |
+| `--version` / `-v` | — | Print version and exit |
+
+**Usage:**
+```bash
+cd ~/Notes/CS229
+clark
+```
+
+**Slash commands** (also available in GUI):
+- `/help`, `/tutorial`, `/canvas`, `/export [path]`, `/model`, `/context`, `/compact`, `/feedback <message>`, `/clear`, `/resume`, `/exit`
+
+The TUI shares all `core/` business logic with the GUI. The canvas server, MCP tools, conversation engine, and cloud providers are identical — only the UI layer differs.
+
+**Session persistence:** Sessions are saved incrementally to `<workspace>/Clark/Sessions/YYYY-MM-DD.md`. The `/resume` command presents a date picker to restore a past session.
+
+---
 
 ## Project Structure
 
 ```
 clark/
-├── CLAUDE.md                  # Bun conventions for AI assistants
+├── index.ts                   # CLI entry point
 ├── package.json
 ├── tsconfig.json
-├── index.ts                   # Entry point — onboarding, canvas server, TUI
-│
-├── install.sh                 # Curl-based installer (platform detection + checksum)
-│
-├── scripts/
-│   └── build.ts               # Cross-platform binary compilation via bun build --compile
-│
-├── .github/
-│   └── workflows/
-│       └── release.yml        # Build + publish binaries on git tag push
-│
-├── docs/
-│   ├── SPEC.md                # This file
-│   ├── TODO.md                # Roadmap and pending tasks
-│   ├── design/                # Brand identity, color palette, UI patterns
-│   ├── site/                  # Landing page and getting-started HTML
-│   └── dependencies/          # Vendored LLM-friendly docs for tldraw, MCP
 │
 ├── core/                      # Shared business logic (UI-agnostic)
-│   ├── engine.ts              # ConversationEngine — turn loop (stream → tool dispatch → loop)
-│   ├── version.ts             # Version constant (compile-time or package.json fallback)
+│   ├── engine.ts              # ConversationEngine — turn loop
 │   ├── config.ts              # Config persistence (~/.clark/config.json)
-│   ├── library.ts             # Library scaffolding (directory structure + templates)
+│   ├── library.ts             # Workspace scaffolding
 │   ├── workspace.ts           # Workspace directory resolution
-│   ├── history.ts             # Command history with persistence
+│   ├── history.ts             # Command history
+│   ├── version.ts             # Version constant
 │   │
-│   ├── app/                   # Application-layer orchestration
-│   │   ├── canvas-session.ts  # CanvasSessionManager (one active canvas at a time)
-│   │   ├── command-router.ts  # Slash command dispatch and /export path resolution
-│   │   └── ingest.ts          # File ingestion (path detection, copy, transcription)
+│   ├── app/
+│   │   ├── canvas-session.ts  # CanvasSessionManager
+│   │   ├── command-router.ts  # Slash command dispatch
+│   │   └── ingest.ts          # File ingestion pipeline
 │   │
-│   ├── canvas/                # tldraw server + client app
-│   │   ├── server.ts          # CanvasBroker + Bun.serve for WebSocket messaging
-│   │   ├── index.ts           # Canvas module exports
-│   │   ├── index.html         # Entry HTML served to iPad (tldraw app)
-│   │   ├── app.tsx            # tldraw React app for iPad (frames, export handlers)
-│   │   ├── page-autocreate.ts # Logic for auto-creating trailing empty frames
-│   │   ├── pdf-export.ts      # Compose page PNGs into A4 PDF (uses pdf-lib)
-│   │   ├── name.ts            # Canvas name validation and normalization
-│   │   ├── frame-heuristics.ts # Frame detection heuristics
-│   │   └── context.ts         # BlurryShape/SimpleShape types for visual context
+│   ├── canvas/                # tldraw server + iPad client app
+│   │   ├── server.ts          # CanvasBroker + Bun.serve WebSocket
+│   │   ├── app.tsx            # tldraw React app (iPad)
+│   │   ├── pdf-export.ts      # Compose page PNGs into A4 PDF
+│   │   └── page-autocreate.ts # Auto-create trailing empty frames
 │   │
-│   ├── mcp/                   # MCP server
-│   │   ├── server.ts          # MCP protocol handler (zod schema bridge)
-│   │   ├── tools.ts           # Tool definitions + handlers (file tools, canvas tools)
-│   │   ├── vault.ts           # Wikilink resolution and vault path utilities
-│   │   ├── standalone.ts      # Standalone stdio entry point for testing/inspector
-│   │   ├── pdf.ts             # PDF text extraction (for reading vault PDFs)
-│   │   └── index.ts           # MCP module exports
+│   ├── mcp/                   # MCP tools
+│   │   ├── server.ts          # MCP protocol handler
+│   │   ├── tools.ts           # All 10 tool definitions + handlers
+│   │   ├── vault.ts           # Wikilink resolution
+│   │   └── standalone.ts      # Standalone stdio entry for testing
 │   │
 │   ├── llm/                   # LLM provider abstraction
-│   │   ├── provider.ts        # Provider interface, types, registry
-│   │   ├── anthropic.ts       # Claude implementation
-│   │   ├── openai.ts          # OpenAI implementation
-│   │   ├── gemini.ts          # Google Gemini implementation
-│   │   ├── ollama.ts          # Ollama local model implementation
-│   │   ├── mock.ts            # Mock provider for tests
-│   │   ├── messages.ts        # Conversation class (history, tokens, compaction)
-│   │   ├── catalog.ts         # Provider/model catalog
-│   │   └── index.ts           # LLM module exports (+ side-effect provider registration)
+│   │   ├── provider.ts        # Provider interface + registry
+│   │   ├── cloud.ts           # Clark Cloud provider
+│   │   ├── ollama.ts          # Ollama local provider
+│   │   ├── messages.ts        # Conversation class
+│   │   └── catalog.ts         # Provider/model catalog
 │   │
-│   ├── embedding/             # Semantic search embedding system
-│   │   ├── provider.ts        # EmbeddingProvider interface + OllamaEmbeddingProvider
-│   │   ├── index.ts           # EmbeddingIndex (SQLite-backed, cosine similarity search)
-│   │   ├── indexer.ts         # SearchIndexer (scan, chunk, hash, embed, upsert)
-│   │   └── chunker.ts         # chunkMarkdown (splits markdown for embedding)
+│   ├── embedding/             # Semantic search
+│   │   ├── provider.ts        # EmbeddingProvider interface
+│   │   ├── cloud.ts           # CloudEmbeddingProvider
+│   │   ├── index.ts           # EmbeddingIndex (SQLite)
+│   │   ├── indexer.ts         # SearchIndexer
+│   │   └── chunker.ts         # chunkMarkdown
 │   │
-│   ├── ocr/                   # OCR pipeline (pluggable provider + PDF rendering)
-│   │   ├── provider.ts        # OCRProvider interface + VisionOCRProvider (LLM vision)
-│   │   ├── pdf-renderer.ts    # PDF-to-image rendering via poppler (pdftoppm)
-│   │   ├── benchmark.ts       # OCR benchmark utilities
-│   │   ├── transcribe.ts      # PDF transcription pipeline
-│   │   └── index.ts           # OCR module exports
+│   ├── ocr/                   # OCR pipeline
+│   │   ├── provider.ts        # OCRProvider interface
+│   │   ├── cloud.ts           # CloudOCRProvider (Mistral via Clark Cloud)
+│   │   ├── pdf-renderer.ts    # PDF-to-image via poppler (Ollama only)
+│   │   └── transcribe.ts      # PDF transcription pipeline
 │   │
 │   └── prompts/
 │       └── system.md          # Socratic system prompt
 │
 ├── cli/                       # Terminal UI (Ink/React)
-│   ├── bootstrap/             # CLI startup and initialization
-│   │   ├── args.ts            # CLI argument parsing (yargs)
-│   │   ├── provider.ts        # Provider/model resolution with Ollama preflight
-│   │   ├── start-app.ts       # Wire everything together and render the TUI
-│   │   ├── system-prompt.ts   # Load system.md + CLARK.md context
-│   │   └── upgrade.ts         # Self-update mechanism
-│   │
-│   └── tui/                   # Ink-based terminal UI components
-│       ├── app.tsx            # Root Ink component (conversation loop, tool dispatch)
-│       ├── chat.tsx           # Chat message display
-│       ├── input.tsx          # User input with slash command hints + tab completion
-│       ├── status.tsx         # Status bar (model, canvas, thinking)
-│       ├── onboarding.tsx     # First-run setup (provider, API key)
-│       ├── model-picker.tsx   # Interactive model/provider switcher
-│       ├── canvas-picker.tsx  # Canvas file picker (open existing or create new)
-│       ├── context.ts         # Context window usage display
-│       ├── theme.ts           # Color theme constants
-│       ├── markdown.tsx       # Markdown renderer for terminal
-│       ├── tutorial.tsx       # Interactive tutorial
-│       ├── index.ts           # TUI module exports
-│       └── primitives/        # Reusable UI hooks
-│           ├── use-line-editor.ts    # Single-line text input state
-│           └── use-selectable-list.ts # Up/down list selection state
+│   ├── bootstrap/             # CLI startup (args, provider, system prompt)
+│   └── tui/                   # Ink components (app, chat, input, status, etc.)
 │
-├── gui/                       # React GUI frontend + Bun sidecar HTTP server
-│   ├── sidecar.ts             # Bun HTTP sidecar (routes, settings, embedding init)
-│   ├── index.html             # GUI entry HTML (loaded by Tauri or dev server)
+├── gui/                       # Tauri desktop app
+│   ├── sidecar.ts             # Bun HTTP sidecar (all runtime state + API)
+│   ├── index.html             # GUI entry HTML
 │   └── src/
-│       ├── App.tsx            # Root React component (state wiring, modal rendering)
-│       ├── app-controller.ts  # Pure reducer AppState (showSettings, showContext, etc.)
-│       ├── ipc.ts             # IPC bridge: Tauri invoke or HTTP to sidecar
-│       ├── stream-events.ts   # SSE/stream event types
-│       ├── markdown.ts        # Markdown rendering utilities
-│       ├── theme.ts           # Color theme constants
-│       └── components/
-│           ├── BottomBar.tsx  # Bottom toolbar (gear icon → settings)
-│           ├── Composer.tsx   # Message input with slash command autocomplete
-│           ├── ChatWindow.tsx # Chat message list
-│           ├── MessageBubble.tsx # Individual message rendering
-│           ├── ToolCard.tsx   # Tool call/result display
-│           ├── Sidebar.tsx    # Left panel (file browser)
-│           ├── Titlebar.tsx   # Window titlebar
-│           ├── ContextPanel.tsx # Context window usage modal
-│           ├── ModelPicker.tsx  # Provider/model selection modal
-│           ├── CanvasPicker.tsx # Canvas file selection modal
-│           ├── Settings.tsx   # Settings modal (workspace, embedding, export)
-│           ├── Onboarding.tsx # First-run onboarding flow
-│           ├── Tutorial.tsx   # Interactive tutorial
-│           └── ParticleGraph.tsx # Decorative particle animation
+│       ├── App.tsx            # Root React component
+│       ├── app-controller.ts  # Pure reducer AppState
+│       ├── ipc.ts             # Tauri/HTTP IPC bridge
+│       └── components/        # All UI components
 │
 ├── tauri/                     # Tauri Rust backend
 │   └── src/
-│       ├── lib.rs             # Tauri setup, sidecar spawn, invoke_handler registration
-│       ├── commands.rs        # Tauri IPC commands (proxy to sidecar HTTP)
-│       ├── sidecar.rs         # Sidecar process management (spawn, port discovery)
-│       └── stream.rs          # SSE stream forwarder (sidecar → Tauri frontend events)
+│       ├── lib.rs             # App setup + sidecar spawn
+│       ├── commands.rs        # IPC command proxies
+│       ├── sidecar.rs         # Sidecar process management
+│       └── stream.rs          # SSE stream forwarder
 │
-├── test/                      # Tests (bun test)
-│   ├── mcp.test.ts            # MCP tool unit tests
-│   ├── mcp-integration.test.ts # MCP server integration tests (stdio)
-│   ├── conversation.test.ts   # Conversation/message management tests
-│   ├── tui.test.tsx           # TUI component tests (App, StatusBar, Chat)
-│   ├── input.test.ts          # Input parsing, command filtering, history tests
-│   ├── config.test.ts         # Config persistence tests
-│   ├── llm.test.ts            # LLM provider tests
-│   ├── canvas.test.ts         # Canvas server/broker tests
-│   ├── canvas-page-autocreate.test.ts # Frame auto-creation logic tests
-│   ├── command-router.test.ts # Slash command dispatch tests
-│   ├── ingest.test.ts         # File ingestion tests
-│   ├── library.test.ts        # Library scaffolding tests
-│   ├── chunker.test.ts        # Markdown chunking tests
-│   ├── embedding-index.test.ts # EmbeddingIndex SQLite tests
-│   └── embedding-search.test.ts # Semantic search integration tests
+├── cloud/                     # Clark Cloud (Vercel serverless)
+│   ├── api/
+│   │   ├── chat.ts            # LLM proxy (Vercel AI SDK)
+│   │   ├── embed.ts           # Embeddings proxy
+│   │   ├── ocr.ts             # OCR proxy (Mistral)
+│   │   ├── feedback.ts        # Discord webhook relay
+│   │   ├── telemetry.ts       # Usage telemetry
+│   │   └── auth/              # Beta code + status endpoints
+│   ├── lib/
+│   │   ├── auth.ts            # Client ID auth + tier enforcement
+│   │   ├── rate-limit.ts      # Upstash Redis sliding window
+│   │   └── redis.ts           # Redis client singleton
+│   └── vercel.json            # Function timeout config
 │
-└── test/test_vault/           # Sample library for tests
-    ├── Notes/                  # Markdown notes with wikilinks
-    ├── Clark/
-    │   ├── CLARK.md
-    │   ├── Canvas/             # Canvas files
-    │   └── Structures/         # Structure definitions (skill files)
-    └── Templates/              # Note templates
+├── docs/                      # SPEC.md, TODO.md, design, dependency docs
+├── scripts/                   # Build, benchmark, eval scripts
+├── test/                      # bun test suite + test_vault fixture
+└── install.sh                 # Curl-based binary installer
 ```
 
-## Dependencies
-
-| Package | Purpose |
-|---------|---------|
-| `ink` | React-based TUI framework |
-| `react` | Required by Ink and tldraw |
-| `tldraw` | Canvas drawing UI (runs on iPad) |
-| `@tldraw/sync` | Client-side sync hook (`useSync`) |
-| `@tldraw/sync-core` | Server-side sync (`TLSocketRoom`, `InMemorySyncStorage`) |
-| `@modelcontextprotocol/sdk` | MCP server implementation |
-| `@anthropic-ai/sdk` | Claude API client |
-| `openai` | OpenAI API client |
-| `@google/genai` | Google Gemini API client |
-| `ollama` | Ollama client (chat + embedding API) |
-| `pdf-parse` | PDF text extraction (reading vault PDFs) |
-| `pdf-lib` | PDF generation (exporting canvas pages to A4 PDF) |
-| `yargs` | CLI argument parsing |
-
-Dev dependencies: `@types/bun`, `@types/react`, `@types/pdf-parse`, `@types/yargs`, `ink-testing-library`, `typescript`
+---
 
 ## Configuration
 
-Clark uses environment variables, CLI flags, and a persistent config file at `~/.clark/config.json`. On first run, onboarding prompts for provider and API key, then scaffolds the current working directory. Environment variables take precedence over saved config.
+Config is persisted at `~/.clark/config.json`. No API keys are stored — Clark Cloud manages them server-side.
 
-```bash
-# API keys can be set via env or saved during onboarding
-export ANTHROPIC_API_KEY=sk-ant-...
-export OPENAI_API_KEY=sk-...
-export GOOGLE_API_KEY=AI...
-
-# Run clark from your workspace directory
-cd ~/Clark
-clark
-
-# Or with explicit provider/model
-clark --provider anthropic --model claude-sonnet-4-5-20250929
-```
-
-**CLI flags:**
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--provider` | `anthropic` | LLM provider (`anthropic`, `openai`, `gemini`, `ollama`) |
-| `--model` | provider default | Specific model ID |
-| `--port` | `3000` | Port for tldraw canvas server |
-| `--upgrade` (alias: `--update`) | `false` | Self-update Clark to the latest GitHub release |
-| `--version` (or `-v`) | - | Print version and exit |
-
-**Config file (`~/.clark/config.json`):**
 ```ts
 interface ClarkConfig {
   provider?: string;
   model?: string;
   ollamaBaseUrl?: string;
-  /** Workspace root directory (set during onboarding or via Settings). */
+  clientId?: string;          // UUID for Clark Cloud identity
   workspaceDir?: string;
-  /** Default directory for PDF exports from /export and export_pdf. */
   pdfExportDir?: string;
-  /** Destination subfolders for drag-and-drop file routing (relative to workspace). */
   fileRouting?: {
-    pdf?: string;    // default: "Resources/PDFs"
-    image?: string;  // default: "Resources/Images"
-    other?: string;  // default: "Resources"
+    pdf?: string;             // default: "Resources/PDFs"
+    image?: string;           // default: "Resources/Images"
+    other?: string;           // default: "Resources"
   };
-  /** Embedding provider for semantic search. */
   embedding?: {
-    provider?: "ollama";
-    model?: string;  // e.g. "nomic-embed-text"
+    provider?: "clark-cloud" | "ollama";
+    model?: string;
   };
-  secretStoreBackend?: "macos-keychain" | "linux-libsecret" | "windows-credential" | "fallback";
-  hasCompletedOnboarding?: boolean;  // Tracks first-run completion
+  hasCompletedOnboarding?: boolean;
   tutorialProgress?: {
     completed: boolean;
     currentStep?: number;
@@ -736,42 +573,19 @@ interface ClarkConfig {
 }
 ```
 
-**Note**: API keys are stored via environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`) or OS-native secret stores:
-- **macOS**: Keychain (via `security` CLI)
-- **Linux**: libsecret (via `secret-tool` CLI)
-- **Windows**: Credential Manager (via `cmdkey` CLI)
-- **Fallback**: Environment variables only (when native backend unavailable)
-
-## Feedback System
-
-Clark includes a built-in feedback mechanism via the `/feedback` command. When users submit feedback:
-
-1. A Discord webhook receives the message with context (Clark version, platform, architecture, Bun version, LLM provider)
-2. The webhook URL is hardcoded in the application for zero-configuration user experience
-3. No user data or conversation content is transmitted - only the explicit feedback message and system metadata
-4. Network failures gracefully degrade with a suggestion to use GitHub Issues as a fallback
-
-This approach provides immediate user feedback collection without requiring external services, authentication, or configuration. The webhook URL can be regenerated if needed without code changes by updating the constant in `core/app/command-router.ts`.
+---
 
 ## Distribution
 
-Clark is distributed as a standalone compiled binary via GitHub Releases.
+**Desktop app:** Tauri `.dmg` installer distributed via GitHub Releases. Built via `tauri build`.
 
-**Build:** `bun run build` runs `scripts/build.ts`, which:
-- Compiles `index.ts` into a single executable via `bun build --compile`
-- Inlines the version at compile time (`--define CLARK_VERSION`)
-- Generates SHA-256 checksums for each binary
-- Supports cross-compilation: `--target darwin-arm64`, `--target darwin-x64`, `--target linux-arm64`, `--target linux-x64`, `--all`
-
-**Supported platforms:** macOS (arm64, x64), Linux (arm64, x64)
-
-**Release workflow:** Pushing a git tag (`v*`) triggers `.github/workflows/release.yml`, which:
-1. Builds binaries on GitHub Actions runners for each platform
-2. Creates a GitHub Release with generated release notes and all binaries + checksums
-
-**Installation:**
+**CLI binary:** Standalone compiled binary via `bun build --compile`. Installed via:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/alexracape/clark/main/install.sh | bash
 ```
 
-The install script detects the user's platform, downloads the correct binary, verifies the SHA-256 checksum, and installs to `/usr/local/bin/clark` (or a custom `INSTALL_DIR`).
+The install script detects the user's platform, downloads the correct binary from GitHub Releases, verifies the SHA-256 checksum, and installs to `/usr/local/bin/clark`.
+
+**Supported platforms:** macOS (arm64, x64), Linux (arm64, x64)
+
+**Release workflow:** Pushing a git tag (`v*`) triggers `.github/workflows/release.yml`, which builds binaries on GitHub Actions and creates a GitHub Release with all binaries and checksums.

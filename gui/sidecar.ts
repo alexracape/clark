@@ -204,7 +204,7 @@ function setupEmbedding(cfg: ClarkConfig, wsDir: string): void {
   if (embeddingCfg === "clark-cloud") {
     try {
       const cloud = resolveCloudConfig(cfg);
-      embeddingProvider = new CloudEmbeddingProvider(cloud.url, cloud.secret, cloud.clientId);
+      embeddingProvider = new CloudEmbeddingProvider(cloud.url, cloud.clientId);
       searchIndex = new EmbeddingIndex(join(wsDir, "Clark", "search.db"));
     } catch {
       embeddingProvider = null;
@@ -277,7 +277,7 @@ async function bootstrap(): Promise<void> {
     getOCRProvider: () => {
       if (providerName === "clark-cloud") {
         const cloud = resolveCloudConfig(config);
-        return new CloudOCRProvider(cloud.url, cloud.secret, cloud.clientId);
+        return new CloudOCRProvider(cloud.url, cloud.clientId);
       }
       if (!provider.supportsVision) return null;
       return new VisionOCRProvider(provider);
@@ -311,9 +311,11 @@ async function bootstrap(): Promise<void> {
   if (cloudCfg && process.env.CLARK_TELEMETRY !== "false") {
     fetch(`${cloudCfg.url}/api/telemetry`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Clark-Client-Id": cloudCfg.clientId,
+      },
       body: JSON.stringify({
-        clientId: cloudCfg.clientId,
         version,
         provider: "clark-cloud",
       }),
@@ -963,6 +965,75 @@ async function handleOnboardingStatus(): Promise<Response> {
   return jsonResponse({ needsOnboarding: needs });
 }
 
+/** POST /api/redeem-beta — Redeem a beta code via the cloud proxy */
+async function handleRedeemBeta(req: Request): Promise<Response> {
+  const body = await req.json() as { code?: string };
+  if (!body.code) {
+    return jsonResponse({ error: "Missing beta code" }, 400);
+  }
+
+  const cfg = await loadConfig();
+  const cloud = resolveCloudConfig(cfg);
+
+  try {
+    const res = await fetch(`${cloud.url}/api/auth/beta`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Clark-Client-Id": cloud.clientId,
+      },
+      body: JSON.stringify({ code: body.code }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    const result = await res.json() as { success?: boolean; tier?: string; error?: string };
+
+    if (res.ok && result.success) {
+      // Persist betaRedeemed flag
+      const updated = await loadConfig();
+      updated.cloud = { ...updated.cloud, betaRedeemed: true };
+      await saveConfig(updated);
+      return jsonResponse({ success: true, tier: result.tier });
+    }
+
+    return jsonResponse({ success: false, error: result.error ?? "Invalid beta code" }, 401);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return jsonResponse({ error: `Beta redemption failed: ${msg}` }, 502);
+  }
+}
+
+/** GET /api/auth-status — Check auth tier via the cloud proxy */
+async function handleAuthStatus(): Promise<Response> {
+  const cfg = await loadConfig();
+  const cloud = resolveCloudConfig(cfg);
+
+  try {
+    const res = await fetch(`${cloud.url}/api/auth/status`, {
+      method: "GET",
+      headers: { "X-Clark-Client-Id": cloud.clientId },
+      signal: AbortSignal.timeout(5_000),
+    });
+
+    const result = await res.json() as { tier?: string };
+    const tier = result.tier ?? "anonymous";
+
+    // If server says anonymous but we think we're beta, clear the flag
+    if (tier === "anonymous" && cfg.cloud?.betaRedeemed) {
+      const updated = await loadConfig();
+      if (updated.cloud) {
+        updated.cloud.betaRedeemed = false;
+      }
+      await saveConfig(updated);
+    }
+
+    return jsonResponse({ tier });
+  } catch {
+    // Can't reach cloud — return cached status
+    return jsonResponse({ tier: cfg.cloud?.betaRedeemed ? "beta" : "anonymous" });
+  }
+}
+
 /** POST /api/complete-onboarding — Save provider, API key, workspace, and mark onboarding done */
 async function handleCompleteOnboarding(req: Request): Promise<Response> {
   const body = await req.json() as {
@@ -1116,6 +1187,12 @@ export async function createSidecarServer(): Promise<{
       }
       if (url.pathname === "/api/complete-onboarding" && req.method === "POST") {
         return await handleCompleteOnboarding(req);
+      }
+      if (url.pathname === "/api/redeem-beta" && req.method === "POST") {
+        return await handleRedeemBeta(req);
+      }
+      if (url.pathname === "/api/auth-status" && req.method === "GET") {
+        return await handleAuthStatus();
       }
       if (url.pathname === "/api/sessions" && req.method === "GET") {
         return await handleListSessions();

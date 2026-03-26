@@ -14,7 +14,6 @@ export class CloudEmbeddingProvider implements EmbeddingProvider {
 
   constructor(
     private cloudUrl: string,
-    private cloudSecret: string,
     private clientId: string,
   ) {}
 
@@ -25,7 +24,6 @@ export class CloudEmbeddingProvider implements EmbeddingProvider {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${this.cloudSecret}`,
         "X-Clark-Client-Id": this.clientId,
       },
       body: JSON.stringify({ texts }),

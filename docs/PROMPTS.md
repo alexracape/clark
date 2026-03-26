@@ -252,9 +252,7 @@ Each LLM provider receives the system prompt differently.
 
 | Provider | System prompt injection | File |
 |----------|------------------------|------|
-| Anthropic | `system` parameter (native) | [`core/llm/anthropic.ts`](../core/llm/anthropic.ts) |
-| OpenAI | First message with `role: "system"` | [`core/llm/openai.ts`](../core/llm/openai.ts) |
-| Gemini | `systemInstruction` parameter | [`core/llm/gemini.ts`](../core/llm/gemini.ts) |
+| Clark Cloud | Forwarded to upstream LLM via cloud proxy (handles provider-specific formatting server-side) | [`core/llm/cloud.ts`](../core/llm/cloud.ts) |
 | Ollama | Prepended as system message | [`core/llm/ollama.ts`](../core/llm/ollama.ts) |
 
 ### 14. Context Window Visualization
@@ -269,9 +267,8 @@ Categories tracked:
 Context limits by model family:
 | Model | Max tokens |
 |-------|-----------|
-| Claude | 200,000 |
-| GPT-4o | 128,000 |
-| Gemini | 1,048,576 |
+| Clark Cloud (Claude) | 200,000 |
+| Ollama | varies by model |
 | Default | 128,000 |
 
 ## File Index
@@ -290,9 +287,7 @@ All files involved in prompt and context management:
 | [`core/app/command-router.ts`](../core/app/command-router.ts) | Conversation compaction prompt (`/compact`) |
 | [`core/llm/messages.ts`](../core/llm/messages.ts) | Conversation state and message management |
 | [`core/llm/provider.ts`](../core/llm/provider.ts) | Provider interface |
-| [`core/llm/anthropic.ts`](../core/llm/anthropic.ts) | Anthropic provider (Claude) |
-| [`core/llm/openai.ts`](../core/llm/openai.ts) | OpenAI provider |
-| [`core/llm/gemini.ts`](../core/llm/gemini.ts) | Gemini provider |
+| [`core/llm/cloud.ts`](../core/llm/cloud.ts) | Clark Cloud provider (routes through Vercel proxy) |
 | [`core/llm/ollama.ts`](../core/llm/ollama.ts) | Ollama provider |
 | [`core/engine.ts`](../core/engine.ts) | Conversation turn loop and tool dispatch (UI-agnostic) |
 | [`cli/tui/app.tsx`](../cli/tui/app.tsx) | TUI shell — wires engine callbacks to React state |

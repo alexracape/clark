@@ -11,6 +11,9 @@ General
 - Delete file
 - Keep only most recent canva screenshot in context
 - Rename sessions or do this automatically
+- Clark version is off in feedback - 0.1.0
+- /feedback + enter should not send blank message - cleanly enter
+- Bash tool instead of so many MCP tools
 
 Polish
 - Thinking indicator
@@ -38,12 +41,7 @@ Low Priority
   - Identify required features vs nice-to-have add-ons.
   - Acceptance: prioritized stories that can feed implementation tickets.
 
-- ~~**Session persistence**~~ ✅ Done — sessions saved incrementally to `Clark/Sessions/YYYY-MM-DD.md`; `/resume` command shows date picker to restore any past conversation.
-
 - **tldraw licensing review for production**
   - Verify licensing terms for intended distribution/commercial use.
   - Document obligations (attribution, restrictions, paid terms if applicable).
   - Acceptance: legal/licensing go/no-go criteria documented.
-
-- **Consider using CLI tools instead of MCP**
-  - Would the model do just as well with some bash commands instead of file tools?
