@@ -7,6 +7,30 @@
 
 import type { EmbeddingProvider } from "./provider.ts";
 
+function isNumberArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "number" && Number.isFinite(item));
+}
+
+function extractEmbeddings(
+  result: unknown,
+): number[][] | null {
+  if (!result || typeof result !== "object") return null;
+
+  const standardEmbeddings = (result as { embeddings?: unknown }).embeddings;
+  if (Array.isArray(standardEmbeddings) && standardEmbeddings.every(isNumberArray)) {
+    return standardEmbeddings;
+  }
+
+  const openAIStyleData = (result as { data?: unknown }).data;
+  if (!Array.isArray(openAIStyleData)) return null;
+
+  const embeddings = openAIStyleData.map((item) =>
+    (item && typeof item === "object" ? (item as { embedding?: unknown }).embedding : null)
+  );
+
+  return embeddings.every(isNumberArray) ? embeddings : null;
+}
+
 export class CloudEmbeddingProvider implements EmbeddingProvider {
   readonly name = "clark-cloud";
   readonly modelId = "text-embedding-3-small";
@@ -35,7 +59,12 @@ export class CloudEmbeddingProvider implements EmbeddingProvider {
       throw new Error(`Cloud embedding error (${res.status}): ${text}`);
     }
 
-    const result = await res.json() as { embeddings: number[][]; dimensions: number; model: string };
-    return result.embeddings;
+    const result = await res.json() as unknown;
+    const embeddings = extractEmbeddings(result);
+    if (!embeddings) {
+      throw new Error("Cloud embedding error: invalid response shape from /api/embed");
+    }
+
+    return embeddings;
   }
 }

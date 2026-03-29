@@ -57,6 +57,37 @@ describe("CloudEmbeddingProvider", () => {
     expect(result).toEqual(mockEmbeddings);
   });
 
+  it("accepts OpenAI-style embedding responses", async () => {
+    const mockEmbeddings = [[0.1, 0.2, 0.3]];
+
+    globalThis.fetch = async () => {
+      return new Response(JSON.stringify({
+        data: [{ embedding: mockEmbeddings[0] }],
+        model: "text-embedding-3-small",
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+
+    const provider = new CloudEmbeddingProvider(CLOUD_URL, CLIENT_ID);
+    const result = await provider.embed(["hello"]);
+    expect(result).toEqual(mockEmbeddings);
+  });
+
+  it("throws on malformed success payload", async () => {
+    globalThis.fetch = async () => {
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+
+    const provider = new CloudEmbeddingProvider(CLOUD_URL, CLIENT_ID);
+    await expect(provider.embed(["test"]))
+      .rejects.toThrow("Cloud embedding error: invalid response shape from /api/embed");
+  });
+
   it("throws on HTTP error", async () => {
     globalThis.fetch = async () => {
       return new Response("Rate limited", { status: 429 });

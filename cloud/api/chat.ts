@@ -42,6 +42,16 @@ function inferProviderFromLegacyId(model: string): string {
  * Convert Clark's Message[] format to AI SDK v6 ModelMessage[] format.
  */
 function convertMessages(messages: any[]): any[] {
+  // Build toolCallId → toolName map from tool_use blocks
+  const toolNameMap = new Map<string, string>();
+  for (const msg of messages) {
+    for (const c of msg.content) {
+      if (c.type === "tool_use") {
+        toolNameMap.set(c.id, c.name);
+      }
+    }
+  }
+
   return messages.map((msg) => {
     const role = msg.role === "tool" ? "tool" : msg.role;
     const parts: any[] = [];
@@ -58,23 +68,33 @@ function convertMessages(messages: any[]): any[] {
             mediaType: c.mediaType,
           });
           break;
-        case "tool_use":
-          parts.push({
+        case "tool_use": {
+          const toolCall: any = {
             type: "tool-call",
             toolCallId: c.id,
             toolName: c.name,
             input: c.input,
-          });
+          };
+          if (c.providerMetadata) {
+            toolCall.providerOptions = c.providerMetadata;
+          }
+          parts.push(toolCall);
           break;
-        case "tool_result":
+        }
+        case "tool_result": {
+          const text = typeof c.content === "string"
+            ? c.content
+            : JSON.stringify(c.content);
           parts.push({
             type: "tool-result",
             toolCallId: c.toolUseId,
-            toolName: c.name ?? "unknown",
-            output: typeof c.content === "string" ? c.content : JSON.stringify(c.content),
-            isError: c.isError ?? false,
+            toolName: toolNameMap.get(c.toolUseId) ?? "unknown",
+            output: c.isError
+              ? { type: "error-text", value: text }
+              : { type: "text", value: text },
           });
           break;
+        }
         // Skip thinking content — ephemeral
       }
     }
@@ -143,6 +163,10 @@ export default {
       const stream = new ReadableStream({
         async start(controller) {
           try {
+            // Track tool IDs that were already streamed via tool-input-start
+            // to avoid duplicates when tool-call fires after streaming
+            const streamedToolIds = new Set<string>();
+
             for await (const part of result.fullStream) {
               let chunk: string | null = null;
 
@@ -153,13 +177,19 @@ export default {
                 case "reasoning-delta":
                   chunk = JSON.stringify({ type: "thinking_delta", text: part.text });
                   break;
-                case "tool-input-start":
-                  chunk = JSON.stringify({
+                case "tool-input-start": {
+                  streamedToolIds.add(part.id);
+                  const startChunk: any = {
                     type: "tool_use_start",
                     id: part.id,
                     name: part.toolName,
-                  });
+                  };
+                  if (part.providerMetadata) {
+                    startChunk.providerMetadata = part.providerMetadata;
+                  }
+                  chunk = JSON.stringify(startChunk);
                   break;
+                }
                 case "tool-input-delta":
                   chunk = JSON.stringify({
                     type: "tool_input_delta",
@@ -167,6 +197,28 @@ export default {
                     input: part.delta,
                   });
                   break;
+                case "tool-call": {
+                  // Skip if already streamed via tool-input-start/delta
+                  if (streamedToolIds.has(part.toolCallId)) break;
+                  // Non-streaming tool call — emit start + input as a single pair
+                  const tcStart: any = {
+                    type: "tool_use_start",
+                    id: part.toolCallId,
+                    name: part.toolName,
+                  };
+                  if (part.providerMetadata) {
+                    tcStart.providerMetadata = part.providerMetadata;
+                  }
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify(tcStart)}\n\n`),
+                  );
+                  chunk = JSON.stringify({
+                    type: "tool_input_delta",
+                    id: part.toolCallId,
+                    input: JSON.stringify(part.input),
+                  });
+                  break;
+                }
                 case "error": {
                   const msg = part.error instanceof Error
                     ? part.error.message

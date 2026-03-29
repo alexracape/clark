@@ -11,6 +11,7 @@ General
 - build out telemetry
 - shift ocr and embeddings to gateway
 - move websearch tool to gateway: https://vercel.com/docs/ai-gateway/capabilities#web-search
+- ignore Clark/Sessions from search results
 
 Polish
 - Thinking indicator

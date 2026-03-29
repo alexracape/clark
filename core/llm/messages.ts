@@ -58,6 +58,19 @@ export class Conversation {
     let currentToolInput = "";
     let currentToolId = "";
     let currentToolName = "";
+    let currentToolMeta: Record<string, unknown> | undefined;
+
+    const flushTool = () => {
+      if (!currentToolId) return;
+      const tool: MessageContent & { type: "tool_use" } = {
+        type: "tool_use",
+        id: currentToolId,
+        name: currentToolName,
+        input: JSON.parse(currentToolInput || "{}"),
+      };
+      if (currentToolMeta) tool.providerMetadata = currentToolMeta;
+      content.push(tool);
+    };
 
     for (const chunk of chunks) {
       switch (chunk.type) {
@@ -83,31 +96,18 @@ export class Conversation {
         }
         case "tool_use_start":
           // Flush any pending tool
-          if (currentToolId) {
-            content.push({
-              type: "tool_use",
-              id: currentToolId,
-              name: currentToolName,
-              input: JSON.parse(currentToolInput || "{}"),
-            });
-          }
+          flushTool();
           currentToolId = chunk.id;
           currentToolName = chunk.name;
           currentToolInput = "";
+          currentToolMeta = chunk.providerMetadata;
           break;
         case "tool_input_delta":
           currentToolInput += chunk.input;
           break;
         case "done":
           // Flush final tool if pending
-          if (currentToolId) {
-            content.push({
-              type: "tool_use",
-              id: currentToolId,
-              name: currentToolName,
-              input: JSON.parse(currentToolInput || "{}"),
-            });
-          }
+          flushTool();
           break;
       }
     }
