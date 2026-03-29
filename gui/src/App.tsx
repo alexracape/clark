@@ -35,6 +35,7 @@ import {
   planFileDrop,
   planSendInput,
   setOnboardingBetaCode,
+  setOnboardingUsageTracking,
   setOnboardingWorkspace,
   setOnboardingWorkspaceIsNew,
   setOnboardingError,
@@ -549,6 +550,7 @@ export function App() {
       await invokeCommand("complete_onboarding", {
         workspaceDir: ob.workspaceDir || undefined,
         workspaceIsNew: ob.workspaceIsNew,
+        usageTrackingEnabled: ob.usageTrackingEnabled,
       });
       const data = (await invokeCommand("get_status", {})) as { provider: string; model: string };
       setState((prev) => {
@@ -587,6 +589,7 @@ export function App() {
           onNext={() => setState((prev) => onboardingNextStep(prev))}
           onPrev={() => setState((prev) => onboardingPrevStep(prev))}
           onSetBetaCode={(code) => setState((prev) => setOnboardingBetaCode(prev, code))}
+          onSetUsageTrackingEnabled={(enabled) => setState((prev) => setOnboardingUsageTracking(prev, enabled))}
           onSetWorkspace={(dir) => setState((prev) => setOnboardingWorkspace(prev, dir))}
           onSetWorkspaceIsNew={(isNew) => setState((prev) => setOnboardingWorkspaceIsNew(prev, isNew))}
           onPickFolder={handlePickFolder}

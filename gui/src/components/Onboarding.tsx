@@ -8,6 +8,7 @@ interface OnboardingProps {
   onNext: () => void;
   onPrev: () => void;
   onSetBetaCode: (code: string) => void;
+  onSetUsageTrackingEnabled: (enabled: boolean) => void;
   onSetWorkspace: (dir: string) => void;
   onSetWorkspaceIsNew: (isNew: boolean) => void;
   onPickFolder: () => Promise<string | null>;
@@ -21,7 +22,9 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
   return (
     <div className="welcome-step">
       <ParticleGraph onSettled={handleSettled} textYRatio={0.35} />
-      <div className={`welcome-step__ui ${settled ? "welcome-step__ui--visible" : ""}`}>
+      <div
+        className={`welcome-step__ui ${settled ? "welcome-step__ui--visible" : ""}`}
+      >
         <p className="onboarding-subtitle">Your Socratic study partner.</p>
         <p className="onboarding-body">
           Clark helps you read, annotate, and reason about documents with
@@ -99,10 +102,84 @@ function BetaCodeStep({
   );
 }
 
+function TrackingStep({
+  usageTrackingEnabled,
+  onSetUsageTrackingEnabled,
+  onNext,
+  onPrev,
+}: {
+  usageTrackingEnabled: boolean;
+  onSetUsageTrackingEnabled: (enabled: boolean) => void;
+  onNext: () => void;
+  onPrev: () => void;
+}) {
+  return (
+    <div className="onboarding-content">
+      <h2 className="onboarding-heading">Help Us Improve Clark</h2>
+      <p className="onboarding-body">
+        Clark can share anonymous usage data. This includes things like which
+        features you use and how often, to help us understand what's working and
+        what isn't. None of your files, personal information, or conversation
+        details are ever collected. It's purely for improving the app.
+      </p>
+
+      <div className="onboarding-tracking-options">
+        <label className="onboarding-tracking-option">
+          <input
+            type="radio"
+            name="tracking"
+            checked={usageTrackingEnabled}
+            onChange={() => onSetUsageTrackingEnabled(true)}
+          />
+          <div>
+            <span className="onboarding-tracking-option__title">
+              Yes, share anonymous usage data
+            </span>
+            <span className="onboarding-tracking-option__desc">
+              Help us improve Clark.
+            </span>
+          </div>
+        </label>
+        <label className="onboarding-tracking-option">
+          <input
+            type="radio"
+            name="tracking"
+            checked={!usageTrackingEnabled}
+            onChange={() => onSetUsageTrackingEnabled(false)}
+          />
+          <div>
+            <span className="onboarding-tracking-option__title">No thanks</span>
+            <span className="onboarding-tracking-option__desc">
+              You can change this later in Settings.
+            </span>
+          </div>
+        </label>
+      </div>
+
+      <div className="onboarding-nav">
+        <button
+          className="onboarding-btn onboarding-btn--ghost"
+          onClick={onPrev}
+        >
+          Back
+        </button>
+        <button
+          className="onboarding-btn onboarding-btn--primary"
+          onClick={onNext}
+        >
+          Continue
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function WorkspaceStep({
   workspaceDir,
   workspaceIsNew,
   isTauri,
+  error,
+  isSubmitting,
   onSetWorkspace,
   onSetWorkspaceIsNew,
   onPickFolder,
@@ -112,6 +189,8 @@ function WorkspaceStep({
   workspaceDir: string;
   workspaceIsNew: boolean;
   isTauri: boolean;
+  error: string | null;
+  isSubmitting: boolean;
   onSetWorkspace: (dir: string) => void;
   onSetWorkspaceIsNew: (isNew: boolean) => void;
   onPickFolder: () => Promise<string | null>;
@@ -155,17 +234,6 @@ function WorkspaceStep({
 
       <div className="onboarding-mode-toggle">
         <button
-          className={`onboarding-mode-toggle__btn ${!workspaceIsNew ? "onboarding-mode-toggle__btn--active" : ""}`}
-          onClick={() => {
-            onSetWorkspaceIsNew(false);
-            onSetWorkspace("");
-            setParentDir("");
-            setFolderName("");
-          }}
-        >
-          Use existing folder
-        </button>
-        <button
           className={`onboarding-mode-toggle__btn ${workspaceIsNew ? "onboarding-mode-toggle__btn--active" : ""}`}
           onClick={() => {
             onSetWorkspaceIsNew(true);
@@ -175,6 +243,17 @@ function WorkspaceStep({
           }}
         >
           Create new folder
+        </button>
+        <button
+          className={`onboarding-mode-toggle__btn ${!workspaceIsNew ? "onboarding-mode-toggle__btn--active" : ""}`}
+          onClick={() => {
+            onSetWorkspaceIsNew(false);
+            onSetWorkspace("");
+            setParentDir("");
+            setFolderName("");
+          }}
+        >
+          Use existing folder
         </button>
       </div>
 
@@ -248,19 +327,22 @@ function WorkspaceStep({
         </>
       )}
 
+      {error && <p className="onboarding-error">{error}</p>}
+
       <div className="onboarding-nav">
         <button
           className="onboarding-btn onboarding-btn--ghost"
           onClick={onPrev}
+          disabled={isSubmitting}
         >
           Back
         </button>
         <button
           className="onboarding-btn onboarding-btn--primary"
           onClick={onComplete}
-          disabled={!workspaceDir}
+          disabled={!workspaceDir || isSubmitting}
         >
-          Complete Setup
+          {isSubmitting ? "Setting up…" : "Complete Setup"}
         </button>
       </div>
     </div>
@@ -273,6 +355,7 @@ export function Onboarding({
   onNext,
   onPrev,
   onSetBetaCode,
+  onSetUsageTrackingEnabled,
   onSetWorkspace,
   onSetWorkspaceIsNew,
   onPickFolder,
@@ -298,11 +381,21 @@ export function Onboarding({
           onPrev={onPrev}
         />
       )}
+      {state.step === "tracking" && (
+        <TrackingStep
+          usageTrackingEnabled={state.usageTrackingEnabled}
+          onSetUsageTrackingEnabled={onSetUsageTrackingEnabled}
+          onNext={onNext}
+          onPrev={onPrev}
+        />
+      )}
       {state.step === "workspace" && (
         <WorkspaceStep
           workspaceDir={state.workspaceDir}
           workspaceIsNew={state.workspaceIsNew}
           isTauri={isTauri}
+          error={state.error}
+          isSubmitting={state.isSubmitting}
           onSetWorkspace={onSetWorkspace}
           onSetWorkspaceIsNew={onSetWorkspaceIsNew}
           onPickFolder={onPickFolder}

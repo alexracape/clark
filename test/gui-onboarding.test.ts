@@ -5,6 +5,7 @@ import {
   onboardingNextStep,
   onboardingPrevStep,
   setOnboardingBetaCode,
+  setOnboardingUsageTracking,
   setOnboardingWorkspace,
   setOnboardingWorkspaceIsNew,
   setOnboardingError,
@@ -23,18 +24,22 @@ describe("onboarding state transitions", () => {
     expect(state.onboarding).not.toBeNull();
     expect(state.onboarding!.step).toBe("welcome");
     expect(state.onboarding!.betaCode).toBe("");
+    expect(state.onboarding!.usageTrackingEnabled).toBe(true);
     expect(state.onboarding!.workspaceDir).toBe("");
-    expect(state.onboarding!.workspaceIsNew).toBe(false);
+    expect(state.onboarding!.workspaceIsNew).toBe(true);
     expect(state.onboarding!.error).toBeNull();
     expect(state.onboarding!.isSubmitting).toBe(false);
   });
 
-  test("onboardingNextStep advances welcome → beta-code → workspace", () => {
+  test("onboardingNextStep advances welcome → beta-code → tracking → workspace", () => {
     let state = startOnboarding(createInitialAppState());
     expect(state.onboarding!.step).toBe("welcome");
 
     state = onboardingNextStep(state);
     expect(state.onboarding!.step).toBe("beta-code");
+
+    state = onboardingNextStep(state);
+    expect(state.onboarding!.step).toBe("tracking");
 
     state = onboardingNextStep(state);
     expect(state.onboarding!.step).toBe("workspace");
@@ -44,11 +49,15 @@ describe("onboarding state transitions", () => {
     expect(state.onboarding!.step).toBe("workspace");
   });
 
-  test("onboardingPrevStep goes back workspace → beta-code → welcome", () => {
+  test("onboardingPrevStep goes back workspace → tracking → beta-code → welcome", () => {
     let state = startOnboarding(createInitialAppState());
     state = onboardingNextStep(state);
     state = onboardingNextStep(state);
+    state = onboardingNextStep(state);
     expect(state.onboarding!.step).toBe("workspace");
+
+    state = onboardingPrevStep(state);
+    expect(state.onboarding!.step).toBe("tracking");
 
     state = onboardingPrevStep(state);
     expect(state.onboarding!.step).toBe("beta-code");
@@ -94,6 +103,15 @@ describe("onboarding state transitions", () => {
     expect(state.onboarding!.isSubmitting).toBe(false);
   });
 
+  test("setOnboardingUsageTracking updates preference", () => {
+    let state = startOnboarding(createInitialAppState());
+    expect(state.onboarding!.usageTrackingEnabled).toBe(true);
+    state = setOnboardingUsageTracking(state, false);
+    expect(state.onboarding!.usageTrackingEnabled).toBe(false);
+    state = setOnboardingUsageTracking(state, true);
+    expect(state.onboarding!.usageTrackingEnabled).toBe(true);
+  });
+
   test("setOnboardingWorkspace updates workspace dir", () => {
     let state = startOnboarding(createInitialAppState());
     state = setOnboardingWorkspace(state, "/home/user/docs");
@@ -102,9 +120,9 @@ describe("onboarding state transitions", () => {
 
   test("setOnboardingWorkspaceIsNew toggles flag", () => {
     let state = startOnboarding(createInitialAppState());
-    expect(state.onboarding!.workspaceIsNew).toBe(false);
-    state = setOnboardingWorkspaceIsNew(state, true);
     expect(state.onboarding!.workspaceIsNew).toBe(true);
+    state = setOnboardingWorkspaceIsNew(state, false);
+    expect(state.onboarding!.workspaceIsNew).toBe(false);
   });
 
   test("completeOnboarding clears onboarding state", () => {
@@ -122,6 +140,7 @@ describe("onboarding state transitions", () => {
     expect(onboardingNextStep(state).onboarding).toBeNull();
     expect(onboardingPrevStep(state).onboarding).toBeNull();
     expect(setOnboardingBetaCode(state, "code").onboarding).toBeNull();
+    expect(setOnboardingUsageTracking(state, false).onboarding).toBeNull();
     expect(setOnboardingWorkspace(state, "/foo").onboarding).toBeNull();
     expect(setOnboardingWorkspaceIsNew(state, true).onboarding).toBeNull();
     expect(setOnboardingError(state, "err").onboarding).toBeNull();

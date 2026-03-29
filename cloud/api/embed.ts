@@ -1,14 +1,19 @@
 /**
- * Embeddings Proxy — generates text embeddings via OpenAI API.
+ * Embeddings Proxy — generates text embeddings via the Vercel AI Gateway.
  *
- * Accepts an array of text strings and returns embedding vectors.
+ * Routes through the Gateway for unified key management and cost tracking.
+ * Uses OpenAI text-embedding-3-small by default.
  */
 
+import { embedMany } from "ai";
+import { gateway } from "@ai-sdk/gateway";
 import { authenticate, requireTier } from "../lib/auth.ts";
 import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.ts";
 import { errorResponse, methodNotAllowed } from "../lib/errors.ts";
 
 const embedLimiter = createRateLimiter(20, "60 s");
+const DEFAULT_MODEL = "openai/text-embedding-3-small";
+const DEFAULT_DIMENSIONS = 1536;
 
 export default {
   async fetch(req: Request): Promise<Response> {
@@ -37,41 +42,22 @@ export default {
 
     if (texts.length === 0) {
       return new Response(
-        JSON.stringify({ embeddings: [], dimensions: 1536, model: "text-embedding-3-small" }),
+        JSON.stringify({ embeddings: [], dimensions: DEFAULT_DIMENSIONS, model: DEFAULT_MODEL }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }
 
-    const openaiKey = process.env.OPENAI_API_KEY;
-    if (!openaiKey) {
-      return errorResponse(500, "Server misconfigured: missing OPENAI_API_KEY");
-    }
-
     try {
-      const response = await fetch("https://api.openai.com/v1/embeddings", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${openaiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "text-embedding-3-small",
-          input: texts,
-        }),
-        signal: AbortSignal.timeout(25_000),
+      const { embeddings } = await embedMany({
+        model: gateway.textEmbeddingModel(DEFAULT_MODEL),
+        values: texts,
+        abortSignal: AbortSignal.timeout(25_000),
       });
 
-      if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        return errorResponse(502, `OpenAI embeddings error (${response.status}): ${text}`);
-      }
-
-      const result = await response.json() as any;
-      const embeddings = result.data.map((item: any) => item.embedding);
-      const dimensions = embeddings[0]?.length ?? 1536;
+      const dimensions = embeddings[0]?.length ?? DEFAULT_DIMENSIONS;
 
       return new Response(
-        JSON.stringify({ embeddings, dimensions, model: "text-embedding-3-small" }),
+        JSON.stringify({ embeddings, dimensions, model: DEFAULT_MODEL }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     } catch (err) {

@@ -29,7 +29,7 @@ async function runConversationTurn(
   const llmTools = tools.map((t) => ({
     name: t.name,
     description: t.description,
-    parameters: {
+    inputSchema: {
       type: "object" as const,
       properties: Object.fromEntries(
         Object.entries(t.inputSchema.properties).map(([key, val]) => [

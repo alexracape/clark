@@ -208,7 +208,7 @@ export class OllamaProvider implements LLMProvider {
       function: {
         name: t.name,
         description: t.description,
-        parameters: t.parameters,
+        parameters: t.inputSchema,
       },
     }));
 

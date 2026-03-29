@@ -39,7 +39,7 @@ describe("POST /api/telemetry", () => {
   test("accepts valid telemetry ping", async () => {
     const res = await handler(
       clientRequest("/api/telemetry", {
-        body: { version: "0.1.0", provider: "clark-cloud" },
+        body: { version: "9.9.9", provider: "clark-cloud" },
       }),
     );
     expect(res.status).toBe(200);

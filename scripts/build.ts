@@ -9,6 +9,7 @@
 
 import { parseArgs } from "node:util";
 import { join } from "node:path";
+import { normalizeVersion, readVersionFile } from "../core/version.ts";
 
 const TARGETS = {
   "darwin-arm64": "bun-darwin-arm64",
@@ -27,10 +28,7 @@ const { values } = parseArgs({
   },
 });
 
-const packageJson = await Bun.file(
-  join(import.meta.dir, "..", "package.json"),
-).json();
-const version: string = values.version ?? packageJson.version;
+const version = normalizeVersion(values.version ?? await readVersionFile());
 
 // Determine which targets to build
 let targets: TargetKey[];

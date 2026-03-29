@@ -2,9 +2,13 @@
  * Cloud LLM provider — routes chat requests through the Clark Cloud proxy.
  *
  * The proxy handles all provider-specific logic (streaming protocols,
- * thinking tokens, tool call formats) via the Vercel AI SDK server-side.
+ * thinking tokens, tool call formats) via the Vercel AI Gateway.
  * This provider is a thin SSE consumer that yields the same StreamChunk
  * types the engine expects.
+ *
+ * Model IDs use the Gateway "provider/model" format
+ * (e.g. "anthropic/claude-sonnet-4.6"). Legacy bare IDs are supported
+ * for backward compatibility.
  */
 
 import type {
@@ -14,17 +18,20 @@ import type {
   StreamChunk,
 } from "./provider.ts";
 import { registerProvider } from "./provider.ts";
+import { extractProvider, DEFAULT_CLOUD_MODEL } from "./catalog.ts";
 
 /**
- * Map a model ID to the underlying provider name.
- * This determines what `provider.name` returns, which matters for
- * engine.ts image handling (checks `provider.name === "anthropic"`).
+ * Ensure a model ID is in Gateway "provider/model" format.
+ * Handles legacy bare model IDs from older configs.
  */
-function inferProviderName(model: string): string {
-  if (model.startsWith("claude")) return "anthropic";
-  if (model.startsWith("gpt") || model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4")) return "openai";
-  if (model.startsWith("gemini")) return "google";
-  return "anthropic"; // default fallback
+function toGatewayModelId(model: string): string {
+  if (model.includes("/")) return model;
+  // Legacy bare model ID — infer provider
+  if (model.startsWith("claude")) return `anthropic/${model}`;
+  if (model.startsWith("gpt") || model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4")) return `openai/${model}`;
+  if (model.startsWith("gemini")) return `google/${model}`;
+  if (model.startsWith("grok")) return `xai/${model}`;
+  return `anthropic/${model}`; // default fallback
 }
 
 export class CloudLLMProvider implements LLMProvider {
@@ -35,13 +42,16 @@ export class CloudLLMProvider implements LLMProvider {
   readonly name: string;
   readonly supportsVision = true;
 
+  /** The full Gateway model ID, e.g. "anthropic/claude-sonnet-4.6" */
+  readonly gatewayModelId: string;
+
   constructor(
     private cloudUrl: string,
     private clientId: string,
-    private provider: string,
-    private model: string,
+    model: string,
   ) {
-    this.name = provider;
+    this.gatewayModelId = toGatewayModelId(model);
+    this.name = extractProvider(this.gatewayModelId);
   }
 
   async *chat(
@@ -56,8 +66,7 @@ export class CloudLLMProvider implements LLMProvider {
         "X-Clark-Client-Id": this.clientId,
       },
       body: JSON.stringify({
-        provider: this.provider,
-        model: this.model,
+        model: this.gatewayModelId,
         messages,
         tools,
         systemPrompt,
@@ -126,11 +135,9 @@ export class CloudLLMProvider implements LLMProvider {
 
 // Register the cloud provider
 registerProvider("clark-cloud", (model, options) => {
-  const cloudUrl = process.env.CLARK_CLOUD_URL ?? "https://clark-cloud.vercel.app";
+  const cloudUrl = options?.cloudUrl ?? process.env.CLARK_CLOUD_URL ?? "https://clark-cloud.vercel.app";
   const clientId = options?.apiKey ?? ""; // clientId is passed via the apiKey option slot
 
-  const resolvedModel = model ?? "claude-sonnet-4-6";
-  const provider = inferProviderName(resolvedModel);
-
-  return new CloudLLMProvider(cloudUrl, clientId, provider, resolvedModel);
+  const resolvedModel = model ?? DEFAULT_CLOUD_MODEL;
+  return new CloudLLMProvider(cloudUrl, clientId, resolvedModel);
 });

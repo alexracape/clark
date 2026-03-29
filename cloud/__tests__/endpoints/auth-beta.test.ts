@@ -13,12 +13,12 @@ describe("POST /api/auth/beta", () => {
   useCloudEnv({ BETA_CODE: "correct-beta-code" });
 
   test("rejects non-POST methods", async () => {
-    const res = await handler(clientRequest("/api/auth/beta", { method: "GET" }));
+    const res = await handler.fetch(clientRequest("/api/auth/beta", { method: "GET" }));
     expect(res.status).toBe(405);
   });
 
   test("returns 400 when X-Clark-Client-Id is missing", async () => {
-    const res = await handler(anonRequest("/api/auth/beta", { body: { code: "abc" } }));
+    const res = await handler.fetch(anonRequest("/api/auth/beta", { body: { code: "abc" } }));
     expect(res.status).toBe(400);
     const body = await jsonBody(res);
     expect(body.error).toContain("X-Clark-Client-Id");
@@ -30,12 +30,12 @@ describe("POST /api/auth/beta", () => {
       headers: { "X-Clark-Client-Id": "client-1" },
       body: "not json",
     });
-    const res = await handler(req);
+    const res = await handler.fetch(req);
     expect(res.status).toBe(400);
   });
 
   test("returns 401 for wrong beta code", async () => {
-    const res = await handler(
+    const res = await handler.fetch(
       clientRequest("/api/auth/beta", { body: { code: "wrong-code" } }),
     );
     expect(res.status).toBe(401);
@@ -44,7 +44,7 @@ describe("POST /api/auth/beta", () => {
   });
 
   test("returns 401 when no code provided", async () => {
-    const res = await handler(
+    const res = await handler.fetch(
       clientRequest("/api/auth/beta", { body: {} }),
     );
     expect(res.status).toBe(401);
@@ -53,7 +53,7 @@ describe("POST /api/auth/beta", () => {
   test("succeeds with correct beta code and sets Redis key", async () => {
     store.clear();
     const clientId = "redeem-client";
-    const res = await handler(
+    const res = await handler.fetch(
       clientRequest("/api/auth/beta", {
         clientId,
         body: { code: "correct-beta-code" },
@@ -68,14 +68,16 @@ describe("POST /api/auth/beta", () => {
     expect(store.get(`beta:${clientId}`)).toBe("1");
   });
 
-  test("returns 401 when BETA_CODE env var is not set", async () => {
+  test("returns 500 when BETA_CODE env var is not set", async () => {
     const original = process.env.BETA_CODE;
     delete process.env.BETA_CODE;
     try {
-      const res = await handler(
+      const res = await handler.fetch(
         clientRequest("/api/auth/beta", { body: { code: "anything" } }),
       );
-      expect(res.status).toBe(401);
+      expect(res.status).toBe(500);
+      const body = await jsonBody(res);
+      expect(body.error).toContain("missing BETA_CODE");
     } finally {
       if (original) process.env.BETA_CODE = original;
     }

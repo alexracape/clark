@@ -12,44 +12,39 @@ import {
 const handler = chatHandler.fetch.bind(chatHandler);
 
 /**
- * Build a fake Anthropic streaming response body.
- * Returns an SSE stream that the AI SDK can parse.
+ * Build a fake AI Gateway streaming response.
+ * The Gateway uses SSE with LanguageModelV3StreamPart JSON events.
  */
-function fakeAnthropicStream(text: string): ReadableStream<Uint8Array> {
+function fakeGatewayStream(text: string): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const events = [
-    `event: message_start\ndata: ${JSON.stringify({
-      type: "message_start",
-      message: {
-        id: "msg_test",
-        type: "message",
-        role: "assistant",
-        content: [],
-        model: "claude-sonnet-4-20250514",
-        stop_reason: null,
-        usage: { input_tokens: 10, output_tokens: 0 },
-      },
+    // response metadata
+    `data: ${JSON.stringify({
+      type: "response-metadata",
+      id: "resp_test",
+      modelId: "claude-sonnet-4-20250514",
+      timestamp: new Date().toISOString(),
     })}\n\n`,
-    `event: content_block_start\ndata: ${JSON.stringify({
-      type: "content_block_start",
-      index: 0,
-      content_block: { type: "text", text: "" },
+    // text content
+    `data: ${JSON.stringify({
+      type: "text-start",
+      id: "text_0",
     })}\n\n`,
-    `event: content_block_delta\ndata: ${JSON.stringify({
-      type: "content_block_delta",
-      index: 0,
-      delta: { type: "text_delta", text },
+    `data: ${JSON.stringify({
+      type: "text-delta",
+      id: "text_0",
+      delta: text,
     })}\n\n`,
-    `event: content_block_stop\ndata: ${JSON.stringify({
-      type: "content_block_stop",
-      index: 0,
+    `data: ${JSON.stringify({
+      type: "text-end",
+      id: "text_0",
     })}\n\n`,
-    `event: message_delta\ndata: ${JSON.stringify({
-      type: "message_delta",
-      delta: { stop_reason: "end_turn", stop_sequence: null },
-      usage: { output_tokens: 5 },
+    // finish
+    `data: ${JSON.stringify({
+      type: "finish",
+      finishReason: "stop",
+      usage: { inputTokens: 10, outputTokens: 5 },
     })}\n\n`,
-    `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}\n\n`,
   ];
 
   return new ReadableStream({
@@ -63,7 +58,7 @@ function fakeAnthropicStream(text: string): ReadableStream<Uint8Array> {
 }
 
 const validBody = {
-  model: "claude-sonnet-4-20250514",
+  model: "anthropic/claude-sonnet-4-20250514",
   messages: [
     {
       role: "user",
@@ -74,12 +69,14 @@ const validBody = {
 
 describe("POST /api/chat", () => {
   const store = useBetaClient("test-client-uuid");
-  useCloudEnv({ ANTHROPIC_API_KEY: "sk-ant-test-key" });
+  useCloudEnv({ AI_GATEWAY_API_KEY: "test-gateway-key" });
+  let lastGatewayRequestBody: any = null;
 
-  // Mock Anthropic API
+  // Mock AI Gateway
   useFetchMock((url, init) => {
-    if (url.includes("api.anthropic.com")) {
-      return new Response(fakeAnthropicStream("Hello from Claude!"), {
+    if (url.includes("ai-gateway.vercel.sh")) {
+      lastGatewayRequestBody = init?.body ? JSON.parse(String(init.body)) : null;
+      return new Response(fakeGatewayStream("Hello from Claude!"), {
         status: 200,
         headers: { "Content-Type": "text/event-stream" },
       });
@@ -127,7 +124,7 @@ describe("POST /api/chat", () => {
   test("returns 400 when messages is missing", async () => {
     const res = await handler(
       clientRequest("/api/chat", {
-        body: { model: "claude-sonnet-4-20250514" },
+        body: { model: "anthropic/claude-sonnet-4-20250514" },
       }),
     );
     expect(res.status).toBe(400);
@@ -141,7 +138,7 @@ describe("POST /api/chat", () => {
     );
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("text/event-stream");
-    expect(res.headers.get("X-Clark-Provider")).toBe("anthropic");
+    expect(res.headers.get("X-Clark-Model")).toBe("anthropic/claude-sonnet-4-20250514");
 
     // Read the full SSE stream
     const text = await res.text();
@@ -160,11 +157,65 @@ describe("POST /api/chat", () => {
     expect(doneEvents[0].stopReason).toBe("end_turn");
   });
 
-  test("infers provider from model name", async () => {
+  test("returns gateway model ID in response header", async () => {
     const res = await handler(
       clientRequest("/api/chat", { body: validBody }),
     );
-    expect(res.headers.get("X-Clark-Provider")).toBe("anthropic");
+    expect(res.headers.get("X-Clark-Model")).toBe("anthropic/claude-sonnet-4-20250514");
+  });
+
+  test("forwards tool schemas in AI SDK format", async () => {
+    lastGatewayRequestBody = null;
+
+    const res = await handler(
+      clientRequest("/api/chat", {
+        body: {
+          ...validBody,
+          tools: [
+            {
+              name: "echo",
+              description: "Echo text back",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  text: {
+                    type: "string",
+                    description: "Text to echo",
+                  },
+                },
+                required: ["text"],
+              },
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(lastGatewayRequestBody?.tools).toHaveLength(1);
+    expect(lastGatewayRequestBody?.tools[0]).toMatchObject({
+      type: "function",
+      name: "echo",
+      description: "Echo text back",
+      inputSchema: {
+        type: "object",
+        required: ["text"],
+      },
+    });
+    expect(lastGatewayRequestBody?.tools[0]?.inputSchema?.properties?.text).toMatchObject({
+      type: "string",
+      description: "Text to echo",
+    });
+  });
+
+  test("handles legacy bare model IDs", async () => {
+    const res = await handler(
+      clientRequest("/api/chat", {
+        body: { ...validBody, model: "claude-sonnet-4-20250514" },
+      }),
+    );
+    expect(res.headers.get("X-Clark-Model")).toBe("anthropic/claude-sonnet-4-20250514");
   });
 
   test("returns 500 for unsupported provider", async () => {
@@ -183,8 +234,7 @@ describe("POST /api/chat", () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async (input: any) => {
       const url = typeof input === "string" ? input : input.url;
-      if (url.includes("api.anthropic.com")) {
-        // Throw a network error (non-retryable) instead of returning an HTTP error
+      if (url.includes("ai-gateway.vercel.sh")) {
         throw new Error("Network connection refused");
       }
       return originalFetch(input);
@@ -193,7 +243,7 @@ describe("POST /api/chat", () => {
       const res = await handler(
         clientRequest("/api/chat", { body: validBody }),
       );
-      // The handler returns 200 SSE, but the stream should contain an error event
+      // The handler catches the error; check for 500 or error in stream
       const text = await res.text();
       const lines = text
         .split("\n\n")

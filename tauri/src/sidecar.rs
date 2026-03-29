@@ -42,6 +42,10 @@ impl Sidecar {
             .sidecar("clark-sidecar")
             .map_err(|e| format!("Failed to create sidecar command: {}", e))?
             .env("CLARK_SIDECAR_PORT", "0")
+            .env(
+                "CLARK_VERSION",
+                self.app_handle.package_info().version.to_string(),
+            )
             .env("CLARK_WORKSPACE_DIR", &workspace_dir);
 
         let (mut rx, child) = cmd

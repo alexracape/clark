@@ -2,25 +2,25 @@ Some future enhancements and things that need fixing, organized into parallel ex
 
 ## Backlog of future enhancements
 
-GUI
-- Context visualization missing tool definitions
-
 General
-- Clark Cloud service for OCR, Embeddings, Model provider, usage data.
 - Inline PDF rendering
 - Delete file
-- Keep only most recent canva screenshot in context
+- Keep only most recent canvas screenshot in context
 - Rename sessions or do this automatically
-- Clark version is off in feedback - 0.1.0
-- /feedback + enter should not send blank message - cleanly enter
 - Bash tool instead of so many MCP tools
+- build out telemetry
+- shift ocr and embeddings to gateway
+- move websearch tool to gateway: https://vercel.com/docs/ai-gateway/capabilities#web-search
 
 Polish
 - Thinking indicator
 - Animations and micro interactions
 - QR code
 - /note should auto focus on new note title to rename
+- /feedback + enter should not send blank message - cleanly enter
 - Graph view in bottom left of explorer
+- Context visualization missing tool definitions
+
 
 Bugs
 - Issue in resolve links in read tool:

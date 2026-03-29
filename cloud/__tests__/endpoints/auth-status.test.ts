@@ -13,18 +13,18 @@ describe("GET /api/auth/status", () => {
   useCloudEnv();
 
   test("rejects non-GET methods", async () => {
-    const res = await handler(clientRequest("/api/auth/status", { method: "POST" }));
+    const res = await handler.fetch(clientRequest("/api/auth/status", { method: "POST" }));
     expect(res.status).toBe(405);
   });
 
   test("returns 400 when X-Clark-Client-Id is missing", async () => {
-    const res = await handler(anonRequest("/api/auth/status", { method: "GET" }));
+    const res = await handler.fetch(anonRequest("/api/auth/status", { method: "GET" }));
     expect(res.status).toBe(400);
   });
 
   test("returns anonymous tier for unknown client", async () => {
     store.clear();
-    const res = await handler(
+    const res = await handler.fetch(
       clientRequest("/api/auth/status", { method: "GET", clientId: "unknown-client" }),
     );
     expect(res.status).toBe(200);
@@ -35,7 +35,7 @@ describe("GET /api/auth/status", () => {
 
   test("returns beta tier for client with beta key", async () => {
     store.set("beta:beta-client", "1");
-    const res = await handler(
+    const res = await handler.fetch(
       clientRequest("/api/auth/status", { method: "GET", clientId: "beta-client" }),
     );
     expect(res.status).toBe(200);

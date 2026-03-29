@@ -70,7 +70,7 @@ export interface ToolInputSchema {
 export interface Tool {
   name: string;
   description: string;
-  parameters: ToolInputSchema;
+  inputSchema: ToolInputSchema;
 }
 
 // --- Streaming ---
@@ -123,6 +123,7 @@ const providers = new Map<string, (model?: string, options?: ProviderFactoryOpti
 
 export interface ProviderFactoryOptions {
   apiKey?: string;
+  cloudUrl?: string;
   maxTokens?: number;
   supportsVision?: boolean;
 }

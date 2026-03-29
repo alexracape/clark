@@ -1,10 +1,9 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
 import embedHandler from "../../api/embed.ts";
 import {
   useMockRedis,
   useBetaClient,
   useCloudEnv,
-  useFetchMock,
   clientRequest,
   anonRequest,
   jsonBody,
@@ -12,23 +11,33 @@ import {
 
 const handler = embedHandler.fetch.bind(embedHandler);
 
+// Mock the AI SDK's embedMany function
+const mockEmbedMany = mock(() =>
+  Promise.resolve({
+    embeddings: [
+      Array.from({ length: 1536 }, () => Math.random()),
+      Array.from({ length: 1536 }, () => Math.random()),
+    ],
+  }),
+);
+
+// Mock the gateway module
+mock.module("ai", () => ({
+  embedMany: mockEmbedMany,
+}));
+
+mock.module("@ai-sdk/gateway", () => ({
+  gateway: {
+    textEmbeddingModel: (modelId: string) => ({ modelId }),
+  },
+}));
+
 describe("POST /api/embed", () => {
   const store = useBetaClient("test-client-uuid");
-  useCloudEnv({ OPENAI_API_KEY: "sk-test-key" });
+  useCloudEnv({});
 
-  // Mock OpenAI embeddings API
-  useFetchMock((url, init) => {
-    if (url.includes("api.openai.com/v1/embeddings")) {
-      const body = JSON.parse(init?.body as string);
-      const texts = body.input as string[];
-      const data = texts.map((_, i) => ({
-        object: "embedding",
-        index: i,
-        embedding: Array.from({ length: 1536 }, () => Math.random()),
-      }));
-      return Response.json({ object: "list", data, model: "text-embedding-3-small" });
-    }
-    return null;
+  beforeEach(() => {
+    mockEmbedMany.mockClear();
   });
 
   test("rejects non-POST methods", async () => {
@@ -71,6 +80,8 @@ describe("POST /api/embed", () => {
     expect(res.status).toBe(200);
     const body = await jsonBody(res);
     expect(body.embeddings).toEqual([]);
+    // Should not call embedMany for empty input
+    expect(mockEmbedMany).not.toHaveBeenCalled();
   });
 
   test("returns embeddings for valid input", async () => {
@@ -81,21 +92,17 @@ describe("POST /api/embed", () => {
     const body = await jsonBody(res);
     expect(body.embeddings.length).toBe(2);
     expect(body.embeddings[0].length).toBe(1536);
-    expect(body.model).toBe("text-embedding-3-small");
+    expect(body.model).toBe("openai/text-embedding-3-small");
+    expect(mockEmbedMany).toHaveBeenCalledTimes(1);
   });
 
-  test("returns 500 when OPENAI_API_KEY is missing", async () => {
-    const original = process.env.OPENAI_API_KEY;
-    delete process.env.OPENAI_API_KEY;
-    try {
-      const res = await handler(
-        clientRequest("/api/embed", { body: { texts: ["hello"] } }),
-      );
-      expect(res.status).toBe(500);
-      const body = await jsonBody(res);
-      expect(body.error).toContain("OPENAI_API_KEY");
-    } finally {
-      if (original) process.env.OPENAI_API_KEY = original;
-    }
+  test("returns 500 when embedMany throws", async () => {
+    mockEmbedMany.mockRejectedValueOnce(new Error("Gateway unavailable"));
+    const res = await handler(
+      clientRequest("/api/embed", { body: { texts: ["hello"] } }),
+    );
+    expect(res.status).toBe(500);
+    const body = await jsonBody(res);
+    expect(body.error).toContain("Gateway unavailable");
   });
 });

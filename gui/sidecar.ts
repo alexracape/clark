@@ -39,7 +39,8 @@ import { Conversation } from "../core/llm/messages.ts";
 import { createProvider } from "../core/llm/index.ts";
 import { setProviderOptions } from "../core/llm/provider.ts";
 import type { LLMProvider } from "../core/llm/provider.ts";
-import { getDefaultModelForProvider, getCloudModelEntries, getProviderCatalogEntry } from "../core/llm/catalog.ts";
+import { getDefaultModelForProvider, getFallbackCloudEntries, cloudModelsToPickerEntries } from "../core/llm/catalog.ts";
+import type { CloudModelEntry, ModelPickerEntry } from "../core/llm/catalog.ts";
 import { createTools } from "../core/mcp/index.ts";
 import type { ToolDefinition } from "../core/mcp/tools.ts";
 import { loadConfig, saveConfig, resolveApiKey, needsOnboarding } from "../core/config.ts";
@@ -88,6 +89,42 @@ let searchIndex: EmbeddingIndex | null = null;
 let sessionManager: SessionManager | null = null;
 let currentSessionPath: string | null = null;
 let sessionHasMessages = false;
+
+/** Cached cloud model catalog from the proxy */
+let cachedCloudModels: ModelPickerEntry[] | null = null;
+let cloudModelsCacheTime = 0;
+const CLOUD_MODELS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Fetch available models from the Clark Cloud proxy.
+ * Returns cached data if fresh, falls back to hardcoded list on error.
+ */
+async function fetchCloudModels(cfg: ClarkConfig): Promise<ModelPickerEntry[]> {
+  const now = Date.now();
+  if (cachedCloudModels && (now - cloudModelsCacheTime) < CLOUD_MODELS_CACHE_TTL_MS) {
+    return cachedCloudModels;
+  }
+
+  const cloudConfig = cfg.cloud ?? {};
+  const cloudUrl = cloudConfig.url ?? process.env.CLARK_CLOUD_URL ?? "https://clark-cloud.vercel.app";
+
+  try {
+    const res = await fetch(`${cloudUrl}/api/models`, {
+      signal: AbortSignal.timeout(8_000),
+    });
+
+    if (!res.ok) throw new Error(`Cloud proxy returned ${res.status}`);
+
+    const body = await res.json() as { models: CloudModelEntry[] };
+    cachedCloudModels = cloudModelsToPickerEntries(body.models);
+    cloudModelsCacheTime = now;
+    return cachedCloudModels;
+  } catch (err) {
+    console.error("[sidecar] Failed to fetch cloud models, using fallback:", err);
+    // Return cached data if available (even if stale), otherwise fallback
+    return cachedCloudModels ?? getFallbackCloudEntries();
+  }
+}
 
 /** Connected WebSocket clients for streaming events */
 const streamClients = new Set<{ send(data: string): void }>();
@@ -147,14 +184,22 @@ async function resolveProviderFromConfig(cfg: ClarkConfig): Promise<{
     }
   }
 
-  // Keep the sidecar bootable even when no cloud API keys are configured.
-  // This allows the GUI model picker to load and collect missing keys.
-  const apiKey = await resolveApiKey(pName, cfg);
+  const providerOptions: { apiKey?: string; cloudUrl?: string; maxTokens?: number } = {};
+  if (cfg.maxTokens) providerOptions.maxTokens = cfg.maxTokens;
 
-  setProviderOptions(pName, {
-    ...(apiKey ? { apiKey } : {}),
-    ...(cfg.maxTokens ? { maxTokens: cfg.maxTokens } : {}),
-  });
+  if (pName === "clark-cloud") {
+    const cloud = resolveCloudConfig(cfg);
+    // The cloud provider expects the anonymous client ID in the apiKey slot.
+    providerOptions.apiKey = cloud.clientId;
+    providerOptions.cloudUrl = cloud.url;
+  } else {
+    // Keep the sidecar bootable even when no local API keys are configured.
+    // This allows the GUI model picker to load and collect missing keys.
+    const apiKey = await resolveApiKey(pName, cfg);
+    if (apiKey) providerOptions.apiKey = apiKey;
+  }
+
+  setProviderOptions(pName, providerOptions);
 
   try {
     return {
@@ -479,9 +524,11 @@ function runIngestionInBackground(fileName: string, destPath: string, ingestKey:
     })
     .join("\n");
 
-  const ocrProvider = provider.supportsVision
-    ? new VisionOCRProvider(provider)
-    : null;
+  const ocrProvider = providerName === "clark-cloud"
+    ? new CloudOCRProvider(resolveCloudConfig(config).url, resolveCloudConfig(config).clientId)
+    : provider.supportsVision
+      ? new VisionOCRProvider(provider)
+      : null;
 
   runIngestionPipeline({
     filePath: join(workspaceDir, destPath),
@@ -493,6 +540,7 @@ function runIngestionInBackground(fileName: string, destPath: string, ingestKey:
     systemPrompt: systemPromptText,
     conversationContext: contextMessages,
     ocrProvider,
+    fileRouting: config.fileRouting,
     onProgress: (stage, message) => {
       broadcast({ type: "ingest_progress", fileName, stage, message });
     },
@@ -640,6 +688,7 @@ async function handleRenameFile(req: Request): Promise<Response> {
 /** GET /api/status — Current provider/model info */
 function handleStatus(): Response {
   return jsonResponse({
+    version,
     provider: providerName,
     model: modelName,
     workspace: workspaceDir,
@@ -756,20 +805,16 @@ function handleHistory(): Response {
 
 /** GET /api/models — Available models with provider availability */
 async function handleModels(): Promise<Response> {
-  const cloudModels = getCloudModelEntries();
-
-  // Check which providers have API keys
-  const providerAvailability: Record<string, boolean> = {};
   const currentConfig = await loadConfig();
-  for (const entry of cloudModels) {
-    if (!(entry.provider in providerAvailability)) {
-      const key = await resolveApiKey(entry.provider, currentConfig);
-      providerAvailability[entry.provider] = !!key;
-    }
-  }
+  const cloudModels = await fetchCloudModels(currentConfig);
+
+  // Clark Cloud is always "available" (managed server-side, no local API key)
+  const providerAvailability: Record<string, boolean> = {
+    "clark-cloud": true,
+  };
 
   // Check for Ollama models
-  let ollamaModels: Array<{ provider: string; providerLabel: string; model: string; label: string }> = [];
+  let ollamaModels: ModelPickerEntry[] = [];
   let ollamaStatus = "not-running";
   try {
     const { listLocalModels } = await import("../core/llm/ollama.ts");
@@ -779,8 +824,8 @@ async function handleModels(): Promise<Response> {
     } else {
       ollamaStatus = "running";
       ollamaModels = models.map((m) => ({
-        provider: "ollama",
-        providerLabel: getProviderCatalogEntry("ollama")?.label ?? "Ollama (Local)",
+        provider: "ollama" as const,
+        providerLabel: "Ollama (Local)",
         model: m.name,
         label: m.name,
       }));
@@ -972,8 +1017,15 @@ async function handleRedeemBeta(req: Request): Promise<Response> {
     return jsonResponse({ error: "Missing beta code" }, 400);
   }
 
-  const cfg = await loadConfig();
+  let cfg = await loadConfig();
   const cloud = resolveCloudConfig(cfg);
+  if (cfg.cloud?.clientId !== cloud.clientId) {
+    cfg = {
+      ...cfg,
+      cloud: { ...cfg.cloud, clientId: cloud.clientId },
+    };
+    await saveConfig(cfg);
+  }
 
   try {
     const res = await fetch(`${cloud.url}/api/auth/beta`, {
@@ -986,20 +1038,36 @@ async function handleRedeemBeta(req: Request): Promise<Response> {
       signal: AbortSignal.timeout(10_000),
     });
 
-    const result = await res.json() as { success?: boolean; tier?: string; error?: string };
+    const text = await res.text();
+    let result: { success?: boolean; tier?: string; error?: string } = {};
+    try {
+      result = JSON.parse(text);
+    } catch {
+      console.error("[sidecar] Beta endpoint returned non-JSON:", res.status, text.slice(0, 200));
+      return jsonResponse({ success: false, error: `Cloud service unavailable (${res.status})` }, 502);
+    }
 
     if (res.ok && result.success) {
       // Persist betaRedeemed flag
       const updated = await loadConfig();
-      updated.cloud = { ...updated.cloud, betaRedeemed: true };
+      updated.cloud = {
+        ...updated.cloud,
+        clientId: cloud.clientId,
+        betaRedeemed: true,
+      };
       await saveConfig(updated);
       return jsonResponse({ success: true, tier: result.tier });
     }
 
-    return jsonResponse({ success: false, error: result.error ?? "Invalid beta code" }, 401);
+    console.warn("[sidecar] Beta redemption rejected", {
+      status: res.status,
+      error: result.error ?? null,
+    });
+    return jsonResponse({ success: false, error: result.error ?? "Invalid beta code" });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return jsonResponse({ error: `Beta redemption failed: ${msg}` }, 502);
+    console.error("[sidecar] Beta redemption failed", { error: msg });
+    return jsonResponse({ success: false, error: `Cloud service unavailable: ${msg}` });
   }
 }
 
@@ -1042,6 +1110,7 @@ async function handleCompleteOnboarding(req: Request): Promise<Response> {
     workspaceDir?: string;
     model?: string;
     workspaceIsNew?: boolean;
+    usageTrackingEnabled?: boolean;
   };
 
   try {
@@ -1061,6 +1130,9 @@ async function handleCompleteOnboarding(req: Request): Promise<Response> {
     newConfig.provider = selectedProvider;
     newConfig.model = body.model || getDefaultModelForProvider(selectedProvider);
     newConfig.hasCompletedOnboarding = true;
+    if (typeof body.usageTrackingEnabled === "boolean") {
+      newConfig.usageTrackingEnabled = body.usageTrackingEnabled;
+    }
 
     // Set pdfExportDir: for new workspaces use Resources/PDFs, otherwise workspace root
     const targetWorkspace = body.workspaceDir || workspaceDir;

@@ -6,6 +6,7 @@
     "api/feedback.ts": { "maxDuration": 10 },
     "api/telemetry.ts": { "maxDuration": 10 },
     "api/auth/beta.ts": { "maxDuration": 10 },
-    "api/auth/status.ts": { "maxDuration": 10 }
+    "api/auth/status.ts": { "maxDuration": 10 },
+    "api/models.ts": { "maxDuration": 15 }
   }
 }

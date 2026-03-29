@@ -3,9 +3,26 @@
  *
  * Supports both single-image OCR and full-PDF OCR via Mistral.
  * For PDFs, the entire file is sent as base64 — no poppler dependency needed.
+ * When extractImages is true, embedded images are returned alongside markdown
+ * with Obsidian-format wikilinks (![[img-0.jpg]]).
  */
 
 import type { OCRProvider } from "./provider.ts";
+
+export interface ExtractedImage {
+  /** Image reference ID (e.g. "img-0.jpg") */
+  id: string;
+  /** Raw base64 image data (no data URI prefix) */
+  data: string;
+  /** MIME type (e.g. "image/jpeg") */
+  mediaType: string;
+}
+
+export interface CloudPDFResult {
+  markdown: string;
+  pageCount: number;
+  images: ExtractedImage[];
+}
 
 export class CloudOCRProvider implements OCRProvider {
   readonly name = "clark-cloud-ocr";
@@ -39,8 +56,13 @@ export class CloudOCRProvider implements OCRProvider {
 
   /**
    * Transcribe a full PDF without poppler — Mistral handles page rendering.
+   * When extractImages is true, embedded images are extracted and returned
+   * with Obsidian-format wikilinks in the markdown.
    */
-  async transcribePDF(pdfBuffer: ArrayBuffer): Promise<{ markdown: string; pageCount: number }> {
+  async transcribePDF(
+    pdfBuffer: ArrayBuffer,
+    opts?: { extractImages?: boolean },
+  ): Promise<CloudPDFResult> {
     const base64 = Buffer.from(pdfBuffer).toString("base64");
 
     const res = await fetch(`${this.cloudUrl}/api/ocr`, {
@@ -49,8 +71,11 @@ export class CloudOCRProvider implements OCRProvider {
         "Content-Type": "application/json",
         "X-Clark-Client-Id": this.clientId,
       },
-      body: JSON.stringify({ pdf: base64 }),
-      signal: AbortSignal.timeout(120_000), // PDFs can be large
+      body: JSON.stringify({
+        pdf: base64,
+        extractImages: opts?.extractImages ?? false,
+      }),
+      signal: AbortSignal.timeout(120_000),
     });
 
     if (!res.ok) {
@@ -58,7 +83,12 @@ export class CloudOCRProvider implements OCRProvider {
       throw new Error(`Cloud OCR error (${res.status}): ${text}`);
     }
 
-    return await res.json() as { markdown: string; pageCount: number };
+    const result = await res.json() as CloudPDFResult;
+    return {
+      markdown: result.markdown,
+      pageCount: result.pageCount,
+      images: result.images ?? [],
+    };
   }
 
   async consolidateTranscript(rawTranscript: string): Promise<string> {

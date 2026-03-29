@@ -4,6 +4,7 @@ import { mkdtemp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createSidecarServer, subscribeStreamEvents } from "../gui/sidecar.ts";
 import { isSidecarStreamEvent, type SidecarStreamEvent } from "../gui/src/stream-events.ts";
+import { readVersionFile } from "../core/version.ts";
 
 let server: Awaited<ReturnType<typeof createSidecarServer>>;
 let workspaceDir: string;
@@ -70,6 +71,7 @@ describe("sidecar API contracts", () => {
     const res = await callRoute("/api/status");
     expect(res.status).toBe(200);
     const data = await res.json() as Record<string, unknown>;
+    expect(data.version).toBe(await readVersionFile());
     expect(typeof data.provider).toBe("string");
     expect(typeof data.model).toBe("string");
     expect(typeof data.workspace).toBe("string");
@@ -144,6 +146,96 @@ describe("sidecar API contracts", () => {
       return event.type === "ingest_start" && event.fileName === "duplicate-note.txt";
     });
     expect(startEvents).toHaveLength(1);
+  });
+
+  test("POST /api/redeem-beta persists the generated cloud clientId for onboarding", async () => {
+    const originalFetch = globalThis.fetch;
+    let redeemedClientId: string | null = null;
+
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith("/api/auth/beta")) {
+        redeemedClientId = new Headers(init?.headers).get("X-Clark-Client-Id");
+        return Response.json({ success: true, tier: "beta" });
+      }
+      return originalFetch(input, init);
+    };
+
+    try {
+      const redeemRes = await callRoute("/api/redeem-beta", "POST", { code: "correct-beta-code" });
+      expect(redeemRes.status).toBe(200);
+      const redeemBody = await redeemRes.json() as { success?: boolean };
+      expect(redeemBody.success).toBe(true);
+      expect(typeof redeemedClientId).toBe("string");
+
+      const completeRes = await callRoute("/api/complete-onboarding", "POST", {
+        workspaceDir,
+        workspaceIsNew: true,
+      });
+      expect(completeRes.status).toBe(200);
+
+      const savedConfig = await Bun.file(configPath).json() as {
+        cloud?: { clientId?: string; betaRedeemed?: boolean };
+      };
+      expect(savedConfig.cloud?.clientId).toBe(redeemedClientId);
+      expect(savedConfig.cloud?.betaRedeemed).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("POST /api/chat uses the persisted cloud clientId for proxy auth", async () => {
+    const originalFetch = globalThis.fetch;
+    const cloudClientId = "beta-client-123";
+    let chatClientId: string | null = null;
+
+    await Bun.write(configPath, JSON.stringify({
+      provider: "clark-cloud",
+      model: "anthropic/claude-sonnet-4-6",
+      cloud: {
+        clientId: cloudClientId,
+        betaRedeemed: true,
+        url: "https://cloud.test",
+      },
+    }, null, 2));
+
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (url === "https://cloud.test/api/chat") {
+        chatClientId = new Headers(init?.headers).get("X-Clark-Client-Id");
+        return new Response(
+          "data: {\"type\":\"text_delta\",\"text\":\"hello\"}\n\n" +
+          "data: {\"type\":\"done\",\"stopReason\":\"end_turn\"}\n\n",
+          {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          },
+        );
+      }
+
+      return originalFetch(input, init);
+    };
+
+    try {
+      const switchRes = await callRoute("/api/provider", "POST", {
+        provider: "clark-cloud",
+        model: "anthropic/claude-sonnet-4-6",
+      });
+      expect(switchRes.status).toBe(200);
+
+      const eventsPromise = waitForEventSequence((events) => {
+        return events.some((event) => event.type === "turn_complete");
+      });
+
+      const chatRes = await callRoute("/api/chat", "POST", { text: "hello" });
+      expect(chatRes.status).toBe(200);
+
+      await eventsPromise;
+      expect(chatClientId).toBe(cloudClientId);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test("GET /api/context and /api/history are reachable", async () => {

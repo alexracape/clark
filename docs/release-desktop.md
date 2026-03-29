@@ -4,7 +4,9 @@ This runbook documents the unified-tag release process for Clark.
 
 ## Versioning Contract
 
+- `VERSION` is the canonical stored app version and contains bare semver (`X.Y.Z`).
 - A single tag `vX.Y.Z` represents the release version for both CLI and desktop.
+- Release tags must match `v$(cat VERSION)`.
 - CLI and desktop build in separate CI lanes under the same tag.
 - A release can publish CLI assets even if desktop fails, but desktop availability must be called out in release notes.
 
@@ -21,14 +23,15 @@ Notes:
 ## Release Steps
 
 1. Bump app versions in source as needed and ensure changelog notes are ready.
-2. Create and push a tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-3. Wait for `.github/workflows/release.yml` to complete.
-4. Verify GitHub Release assets include:
+2. Update `VERSION` to the release semver, then run `bun run sync:version`.
+3. Create and push a matching tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+4. Wait for `.github/workflows/release.yml` to complete.
+5. Verify GitHub Release assets include:
    - CLI binaries + checksums (`clark-darwin-*`, `clark-linux-*`, `*.sha256`)
    - Desktop macOS DMG
    - Updater artifacts (`*.tar.gz`, `*.sig`, `latest.json`, `latest-macos.json`)
-5. Verify updater metadata version equals the tag version.
-6. If desktop lane failed, either:
+6. Verify updater metadata version equals the tag version.
+7. If desktop lane failed, either:
    - Re-run just the desktop lane and republish assets, or
    - Keep desktop marked unavailable in release notes.
 

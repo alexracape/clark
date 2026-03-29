@@ -18,6 +18,7 @@ import type { StreamChunk } from "../core/llm/provider.ts";
 
 // Import actual handlers
 import chatHandler from "../cloud/api/chat.ts";
+import modelsHandler from "../cloud/api/models.ts";
 import embedHandler from "../cloud/api/embed.ts";
 import ocrHandler from "../cloud/api/ocr.ts";
 import feedbackHandler from "../cloud/api/feedback.ts";
@@ -44,28 +45,25 @@ function createMockRedis() {
 }
 
 /**
- * Build a fake Anthropic streaming response body.
+ * Build a fake AI Gateway streaming response (LanguageModelV3StreamPart SSE).
  */
-function fakeAnthropicStream(text: string): ReadableStream<Uint8Array> {
+function fakeGatewayStream(text: string): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const events = [
-    `event: message_start\ndata: ${JSON.stringify({
-      type: "message_start",
-      message: { id: "msg_test", type: "message", role: "assistant", content: [], model: "claude-sonnet-4-20250514", stop_reason: null, usage: { input_tokens: 10, output_tokens: 0 } },
+    `data: ${JSON.stringify({
+      type: "response-metadata",
+      id: "resp_test",
+      modelId: "claude-sonnet-4-20250514",
+      timestamp: new Date().toISOString(),
     })}\n\n`,
-    `event: content_block_start\ndata: ${JSON.stringify({
-      type: "content_block_start", index: 0, content_block: { type: "text", text: "" },
+    `data: ${JSON.stringify({ type: "text-start", id: "text_0" })}\n\n`,
+    `data: ${JSON.stringify({ type: "text-delta", id: "text_0", delta: text })}\n\n`,
+    `data: ${JSON.stringify({ type: "text-end", id: "text_0" })}\n\n`,
+    `data: ${JSON.stringify({
+      type: "finish",
+      finishReason: "stop",
+      usage: { inputTokens: 10, outputTokens: 5 },
     })}\n\n`,
-    `event: content_block_delta\ndata: ${JSON.stringify({
-      type: "content_block_delta", index: 0, delta: { type: "text_delta", text },
-    })}\n\n`,
-    `event: content_block_stop\ndata: ${JSON.stringify({
-      type: "content_block_stop", index: 0,
-    })}\n\n`,
-    `event: message_delta\ndata: ${JSON.stringify({
-      type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 5 },
-    })}\n\n`,
-    `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}\n\n`,
   ];
 
   return new ReadableStream({
@@ -89,6 +87,7 @@ beforeAll(() => {
   // Set required env vars
   process.env.UPSTASH_REDIS_REST_URL = "https://fake.upstash.io";
   process.env.UPSTASH_REDIS_REST_TOKEN = "fake-token";
+  process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
   process.env.ANTHROPIC_API_KEY = "sk-ant-test-key";
   process.env.OPENAI_API_KEY = "sk-test-key";
   process.env.MISTRAL_API_KEY = "mistral-test-key";
@@ -101,6 +100,7 @@ beforeAll(() => {
       const url = new URL(req.url);
       switch (url.pathname) {
         case "/api/chat": return chatHandler.fetch(req);
+        case "/api/models": return modelsHandler.fetch(req);
         case "/api/embed": return embedHandler.fetch(req);
         case "/api/ocr": return ocrHandler.fetch(req);
         case "/api/feedback": return feedbackHandler.fetch(req);
@@ -118,24 +118,40 @@ beforeEach(() => {
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
 
-    // Anthropic API mock
-    if (url.includes("api.anthropic.com")) {
-      return new Response(fakeAnthropicStream("Hello world!"), {
-        status: 200,
-        headers: { "Content-Type": "text/event-stream" },
+    // AI Gateway models mock
+    if (url.includes("ai-gateway.vercel.sh/v1/models")) {
+      return Response.json({
+        data: [
+          {
+            id: "anthropic/claude-sonnet-4.6",
+            name: "Claude Sonnet 4.6",
+            type: "language",
+            context_window: 200000,
+            max_tokens: 128000,
+            tags: ["tool-use", "vision", "reasoning"],
+            owned_by: "anthropic",
+          },
+        ],
       });
     }
 
-    // OpenAI embeddings mock
-    if (url.includes("api.openai.com/v1/embeddings")) {
+    // AI Gateway embedding model mock (must come before general gateway catch-all)
+    if (url.includes("ai-gateway.vercel.sh") && url.includes("/embedding-model")) {
       const body = JSON.parse(init?.body as string);
-      const texts = body.input as string[];
-      const data = texts.map((_: string, i: number) => ({
-        object: "embedding",
-        index: i,
-        embedding: Array.from({ length: 1536 }, () => Math.random()),
-      }));
-      return Response.json({ object: "list", data, model: "text-embedding-3-small" });
+      const values = body.values ?? body.input ?? [];
+      const input = Array.isArray(values) ? values : [values];
+      const embeddings = input.map(() =>
+        Array.from({ length: 1536 }, () => Math.random()),
+      );
+      return Response.json({ embeddings });
+    }
+
+    // AI Gateway streaming mock
+    if (url.includes("ai-gateway.vercel.sh")) {
+      return new Response(fakeGatewayStream("Hello world!"), {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
     }
 
     // Mistral OCR mock
@@ -169,6 +185,7 @@ afterAll(() => {
   // Clean up env vars
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  delete process.env.AI_GATEWAY_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
   delete process.env.OPENAI_API_KEY;
   delete process.env.MISTRAL_API_KEY;
@@ -179,7 +196,7 @@ afterAll(() => {
 
 describe("CloudLLMProvider integration", () => {
   it("streams text deltas from real handler", async () => {
-    const provider = new CloudLLMProvider(baseUrl, TEST_CLIENT_ID, "anthropic", "claude-sonnet-4-20250514");
+    const provider = new CloudLLMProvider(baseUrl, TEST_CLIENT_ID, "anthropic/claude-sonnet-4-20250514");
     const chunks: StreamChunk[] = [];
 
     for await (const chunk of provider.chat(
@@ -205,6 +222,26 @@ describe("CloudLLMProvider integration", () => {
       body: JSON.stringify({ model: "claude-sonnet-4-20250514", messages: [] }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+// --- Models endpoint ---
+
+describe("Models endpoint integration", () => {
+  it("returns filtered models from gateway", async () => {
+    const res = await originalFetch(`${baseUrl}/api/models`, { method: "GET" });
+    expect(res.status).toBe(200);
+    const data = await res.json() as { models: any[] };
+    expect(data.models.length).toBeGreaterThan(0);
+    expect(data.models[0].id).toBe("anthropic/claude-sonnet-4.6");
+    expect(data.models[0].provider).toBe("anthropic");
+    expect(data.models[0].tags).toContain("tool-use");
+    expect(data.models[0].tags).toContain("vision");
+  });
+
+  it("rejects non-GET methods", async () => {
+    const res = await originalFetch(`${baseUrl}/api/models`, { method: "POST" });
+    expect(res.status).toBe(405);
   });
 });
 
@@ -253,7 +290,7 @@ describe("Telemetry integration", () => {
         "Content-Type": "application/json",
         "X-Clark-Client-Id": TEST_CLIENT_ID,
       },
-      body: JSON.stringify({ version: "0.1.0", provider: "clark-cloud" }),
+      body: JSON.stringify({ version: "9.9.9", provider: "clark-cloud" }),
     });
     expect(res.status).toBe(200);
     const data = await res.json() as { ok: boolean };

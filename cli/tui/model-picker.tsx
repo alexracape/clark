@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
-import { getCloudModelEntries, getProviderCatalogEntry } from "../../core/llm/catalog.ts";
+import { getFallbackCloudEntries } from "../../core/llm/catalog.ts";
 import { useSelectableList } from "./primitives/use-selectable-list.ts";
 import { hex } from "./theme.ts";
 
@@ -18,7 +18,7 @@ interface ModelEntry {
   label: string;
 }
 
-const CLOUD_MODELS: ModelEntry[] = getCloudModelEntries();
+const CLOUD_MODELS: ModelEntry[] = getFallbackCloudEntries();
 
 export interface ModelPickerProps {
   currentProvider: string;
@@ -45,7 +45,7 @@ export function ModelPicker({ currentProvider, currentModel, onSelect, onCancel 
         setOllamaStatus("running");
         setOllamaModels(models.map((m) => ({
           provider: "ollama",
-          providerLabel: getProviderCatalogEntry("ollama")?.label ?? "Ollama (Local)",
+          providerLabel: "Ollama (Local)",
           model: m.name,
           label: m.name,
         })));

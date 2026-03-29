@@ -1,14 +1,15 @@
 /**
- * LLM Chat Proxy — streams responses from Anthropic/OpenAI/Google via AI SDK.
+ * LLM Chat Proxy — streams responses via the Vercel AI Gateway.
  *
- * Accepts Clark's message format, routes to the correct provider,
- * and streams back StreamChunk events as SSE.
+ * Accepts Clark's message format, routes to the correct provider through
+ * the Gateway, and streams back StreamChunk events as SSE.
+ *
+ * Model IDs use the Gateway format: "provider/model" (e.g. "anthropic/claude-sonnet-4.6").
+ * Legacy bare model IDs (e.g. "claude-sonnet-4-6") are auto-prefixed for
+ * backward compatibility.
  */
 
-import { streamText } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { openai } from "@ai-sdk/openai";
-import { google } from "@ai-sdk/google";
+import { streamText, gateway, jsonSchema } from "ai";
 import { authenticate, requireTier } from "../lib/auth.ts";
 import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.ts";
 import { errorResponse, methodNotAllowed } from "../lib/errors.ts";
@@ -17,32 +18,28 @@ const chatLimiter = createRateLimiter(30, "60 s");
 const UPSTREAM_TIMEOUT_MS = 25_000;
 
 /**
- * Map a model ID to the underlying provider name.
- * e.g., "claude-sonnet-4-6" → "anthropic", "gpt-4.1-mini" → "openai"
+ * Ensure model ID is in Gateway "provider/model" format.
+ * Handles legacy bare model IDs from older clients.
  */
-function inferProvider(model: string): string {
+function toGatewayModelId(model: string, provider?: string): string {
+  // Already in gateway format
+  if (model.includes("/")) return model;
+
+  // Infer provider from legacy model ID
+  const p = provider ?? inferProviderFromLegacyId(model);
+  return `${p}/${model}`;
+}
+
+function inferProviderFromLegacyId(model: string): string {
   if (model.startsWith("claude")) return "anthropic";
-  if (model.startsWith("gpt")) return "openai";
-  if (model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4")) return "openai";
+  if (model.startsWith("gpt") || model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4")) return "openai";
   if (model.startsWith("gemini")) return "google";
+  if (model.startsWith("grok")) return "xai";
   throw new Error(`Cannot infer provider for model: ${model}`);
 }
 
-function getModel(provider: string, model: string) {
-  switch (provider) {
-    case "anthropic":
-      return anthropic(model);
-    case "openai":
-      return openai(model);
-    case "google":
-      return google(model);
-    default:
-      throw new Error(`Unsupported provider: ${provider}`);
-  }
-}
-
 /**
- * Convert Clark's Message[] format to AI SDK CoreMessage[] format.
+ * Convert Clark's Message[] format to AI SDK v6 ModelMessage[] format.
  */
 function convertMessages(messages: any[]): any[] {
   return messages.map((msg) => {
@@ -58,7 +55,7 @@ function convertMessages(messages: any[]): any[] {
           parts.push({
             type: "image",
             image: c.data,
-            mimeType: c.mediaType,
+            mediaType: c.mediaType,
           });
           break;
         case "tool_use":
@@ -66,14 +63,15 @@ function convertMessages(messages: any[]): any[] {
             type: "tool-call",
             toolCallId: c.id,
             toolName: c.name,
-            args: c.input,
+            input: c.input,
           });
           break;
         case "tool_result":
           parts.push({
             type: "tool-result",
             toolCallId: c.toolUseId,
-            result: typeof c.content === "string" ? c.content : JSON.stringify(c.content),
+            toolName: c.name ?? "unknown",
+            output: typeof c.content === "string" ? c.content : JSON.stringify(c.content),
             isError: c.isError ?? false,
           });
           break;
@@ -86,14 +84,14 @@ function convertMessages(messages: any[]): any[] {
 }
 
 /**
- * Convert Clark's Tool[] format to AI SDK tool definitions.
+ * Convert Clark's Tool[] format to AI SDK v6 tool definitions.
  */
 function convertTools(tools: any[]): Record<string, any> {
   const result: Record<string, any> = {};
   for (const tool of tools) {
     result[tool.name] = {
       description: tool.description,
-      parameters: tool.parameters,
+      inputSchema: jsonSchema(tool.inputSchema),
     };
   }
   return result;
@@ -127,17 +125,16 @@ export default {
     }
 
     try {
-      const provider = body.provider ?? inferProvider(model);
-      const aiModel = getModel(provider, model);
+      const gatewayModelId = toGatewayModelId(model, body.provider);
       const convertedMessages = convertMessages(messages);
       const convertedTools = tools?.length ? convertTools(tools) : undefined;
 
       const result = streamText({
-        model: aiModel,
+        model: gateway(gatewayModelId),
         messages: convertedMessages,
         system: systemPrompt,
         ...(convertedTools ? { tools: convertedTools } : {}),
-        maxTokens: body.maxTokens ?? 4096,
+        maxOutputTokens: body.maxTokens ?? 4096,
         abortSignal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       });
 
@@ -146,31 +143,28 @@ export default {
       const stream = new ReadableStream({
         async start(controller) {
           try {
-            let currentToolCallId = "";
-
             for await (const part of result.fullStream) {
               let chunk: string | null = null;
 
               switch (part.type) {
                 case "text-delta":
-                  chunk = JSON.stringify({ type: "text_delta", text: part.textDelta });
+                  chunk = JSON.stringify({ type: "text_delta", text: part.text });
                   break;
-                case "reasoning":
-                  chunk = JSON.stringify({ type: "thinking_delta", text: part.textDelta });
+                case "reasoning-delta":
+                  chunk = JSON.stringify({ type: "thinking_delta", text: part.text });
                   break;
-                case "tool-call-streaming-start":
-                  currentToolCallId = part.toolCallId;
+                case "tool-input-start":
                   chunk = JSON.stringify({
                     type: "tool_use_start",
-                    id: part.toolCallId,
+                    id: part.id,
                     name: part.toolName,
                   });
                   break;
-                case "tool-call-delta":
+                case "tool-input-delta":
                   chunk = JSON.stringify({
                     type: "tool_input_delta",
-                    id: currentToolCallId,
-                    input: part.argsTextDelta,
+                    id: part.id,
+                    input: part.delta,
                   });
                   break;
                 case "error": {
@@ -179,8 +173,7 @@ export default {
                     : JSON.stringify(part.error);
                   console.error("[chat] upstream error part", {
                     clientId: auth.clientId,
-                    model,
-                    provider: body.provider ?? inferProvider(model),
+                    model: gatewayModelId,
                     error: msg,
                   });
                   chunk = JSON.stringify({ type: "error", error: msg });
@@ -206,8 +199,7 @@ export default {
             const msg = err instanceof Error ? err.message : String(err);
             console.error("[chat] stream failed", {
               clientId: auth.clientId,
-              model,
-              provider: body.provider ?? inferProvider(model),
+              model: gatewayModelId,
               error: msg,
             });
             controller.enqueue(
@@ -224,7 +216,7 @@ export default {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
           Connection: "keep-alive",
-          "X-Clark-Provider": body.provider ?? inferProvider(model),
+          "X-Clark-Model": gatewayModelId,
         },
       });
     } catch (err) {
@@ -232,7 +224,6 @@ export default {
       console.error("[chat] handler failed", {
         clientId: auth.clientId,
         model,
-        provider: body.provider ?? null,
         error: msg,
       });
       return errorResponse(500, msg);

@@ -27,7 +27,7 @@ export function toLLMTools(tools: ToolDefinition[]): Tool[] {
   return tools.map(({ name, description, inputSchema }) => ({
     name,
     description,
-    parameters: inputSchema,
+    inputSchema,
   }));
 }
 

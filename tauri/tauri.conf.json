@@ -1,12 +1,12 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Clark",
-  "version": "0.1.0",
+  "version": "0.1.16",
   "identifier": "com.clark.app",
   "build": {
     "frontendDist": "../gui/dist",
-    "beforeDevCommand": "bun run build:gui && bun run build:sidecar",
-    "beforeBuildCommand": "bun run build:gui && bun run build:sidecar"
+    "beforeDevCommand": "bun run sync:version && bun run build:gui && bun run build:sidecar",
+    "beforeBuildCommand": "bun run sync:version && bun run build:gui && bun run build:sidecar"
   },
   "app": {
     "windows": [
@@ -21,7 +21,10 @@
         "decorations": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "trafficLightPosition": { "x": 14, "y": 18 },
+        "trafficLightPosition": {
+          "x": 14,
+          "y": 18
+        },
         "center": true
       }
     ],
@@ -33,7 +36,9 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/clark-sidecar"],
+    "externalBin": [
+      "binaries/clark-sidecar"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

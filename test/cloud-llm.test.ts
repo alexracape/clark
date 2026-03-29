@@ -31,7 +31,7 @@ describe("CloudLLMProvider", () => {
 
   test("preserves underlying provider name", () => {
     const provider = new CloudLLMProvider(
-      "https://example.com", "client-1", "anthropic", "claude-sonnet-4-6",
+      "https://example.com", "client-1", "anthropic/claude-sonnet-4-6",
     );
     expect(provider.name).toBe("anthropic");
     expect(provider.supportsVision).toBe(true);
@@ -47,7 +47,7 @@ describe("CloudLLMProvider", () => {
     globalThis.fetch = async () => mockSSEResponse(expectedChunks);
 
     const provider = new CloudLLMProvider(
-      "https://example.com", "client-1", "anthropic", "claude-sonnet-4-6",
+      "https://example.com", "client-1", "anthropic/claude-sonnet-4-6",
     );
 
     const received: StreamChunk[] = [];
@@ -69,7 +69,7 @@ describe("CloudLLMProvider", () => {
     globalThis.fetch = async () => mockSSEResponse(expectedChunks);
 
     const provider = new CloudLLMProvider(
-      "https://example.com", "client-1", "anthropic", "claude-sonnet-4-6",
+      "https://example.com", "client-1", "anthropic/claude-sonnet-4-6",
     );
 
     const received: StreamChunk[] = [];
@@ -87,7 +87,7 @@ describe("CloudLLMProvider", () => {
       });
 
     const provider = new CloudLLMProvider(
-      "https://example.com", "client-1", "anthropic", "claude-sonnet-4-6",
+      "https://example.com", "client-1", "anthropic/claude-sonnet-4-6",
     );
 
     const chunks: StreamChunk[] = [];
@@ -107,7 +107,7 @@ describe("CloudLLMProvider", () => {
       new Response(null, { status: 200 });
 
     const provider = new CloudLLMProvider(
-      "https://example.com", "client-1", "anthropic", "claude-sonnet-4-6",
+      "https://example.com", "client-1", "anthropic/claude-sonnet-4-6",
     );
 
     try {
@@ -141,7 +141,7 @@ describe("CloudLLMProvider", () => {
     };
 
     const provider = new CloudLLMProvider(
-      "https://api.clark.dev", "uuid-123", "openai", "gpt-4.1-mini",
+      "https://api.clark.dev", "uuid-123", "openai/gpt-4.1-mini",
     );
 
     for await (const _ of provider.chat(
@@ -155,8 +155,7 @@ describe("CloudLLMProvider", () => {
     expect(capturedRequest).not.toBeNull();
     expect(capturedRequest!.url).toBe("https://api.clark.dev/api/chat");
     expect(capturedRequest!.headers["X-Clark-Client-Id"]).toBe("uuid-123");
-    expect(capturedRequest!.body.provider).toBe("openai");
-    expect(capturedRequest!.body.model).toBe("gpt-4.1-mini");
+    expect(capturedRequest!.body.model).toBe("openai/gpt-4.1-mini");
     expect(capturedRequest!.body.systemPrompt).toBe("Be helpful");
   });
 });

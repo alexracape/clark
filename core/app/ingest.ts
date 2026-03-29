@@ -13,6 +13,7 @@ import { ConversationEngine } from "../engine.ts";
 import type { LLMProvider, Message } from "../llm/provider.ts";
 import type { ToolDefinition } from "../mcp/tools.ts";
 import type { OCRProvider } from "../ocr/provider.ts";
+import type { ExtractedImage } from "../ocr/cloud.ts";
 
 export interface CopyResult {
   /** Display name of the file */
@@ -149,6 +150,8 @@ export interface IngestionPipelineOptions {
   conversationContext: string;
   /** OCR provider for PDF transcription (null if vision not available). */
   ocrProvider: OCRProvider | null;
+  /** File routing config for determining where images are saved. */
+  fileRouting?: FileRouting;
   /** Progress callback. */
   onProgress: (stage: "transcribing" | "linking", message: string) => void;
 }
@@ -302,6 +305,43 @@ async function loadIngestionPrompt(vars: {
 }
 
 /**
+ * Save extracted OCR images to the image routing directory with a document prefix.
+ * Returns the prefix used, so callers can update markdown references.
+ */
+async function saveExtractedImages(
+  images: ExtractedImage[],
+  docBaseName: string,
+  workspaceDir: string,
+  routing?: FileRouting,
+): Promise<string> {
+  const imageDir = join(workspaceDir, routing?.image ?? DEFAULT_FILE_ROUTING.image);
+  await mkdir(imageDir, { recursive: true });
+
+  // Sanitize the document name for use as a prefix
+  const prefix = sanitizeFileName(docBaseName).replace(/\s+/g, "-") + "-";
+
+  for (const img of images) {
+    const destPath = join(imageDir, `${prefix}${img.id}`);
+    const buffer = Buffer.from(img.data, "base64");
+    await Bun.write(destPath, buffer);
+  }
+
+  return prefix;
+}
+
+/**
+ * Replace Obsidian image wikilinks with prefixed versions.
+ * `![[img-0.jpg]]` → `![[prefix-img-0.jpg]]`
+ */
+function prefixImageLinks(markdown: string, images: ExtractedImage[], prefix: string): string {
+  let result = markdown;
+  for (const img of images) {
+    result = result.replaceAll(`![[${img.id}]]`, `![[${prefix}${img.id}]]`);
+  }
+  return result;
+}
+
+/**
  * Run the full ingestion pipeline for a dropped file:
  * 1. Extract raw text (vision OCR → pdftotext → error)
  * 2. Clean up transcript formatting via LLM
@@ -321,6 +361,7 @@ export async function runIngestionPipeline(
   opts.onProgress("transcribing", `Transcribing ${opts.fileName}...`);
 
   let fileContent = "";
+  let extractedImages: ExtractedImage[] | undefined;
 
   if (isPDFFile(opts.fileName)) {
     try {
@@ -330,6 +371,7 @@ export async function runIngestionPipeline(
         sourcePath: opts.destPath,
       });
       fileContent = result.text;
+      extractedImages = result.images;
     } catch (err) {
       console.error(`[ingest] PDF transcription failed for ${opts.fileName}:`, err);
       const msg = err instanceof Error ? err.message : String(err);
@@ -383,7 +425,24 @@ export async function runIngestionPipeline(
     }
   }
 
-  // --- Step 4: Save transcript ---
+  // --- Step 4a: Save extracted images (if any) ---
+  if (extractedImages && extractedImages.length > 0) {
+    try {
+      const prefix = await saveExtractedImages(
+        extractedImages,
+        finalBaseName,
+        opts.workspaceDir,
+        opts.fileRouting,
+      );
+      // Update image references in the transcript with the prefix
+      fileContent = prefixImageLinks(fileContent, extractedImages, prefix);
+      console.log(`[ingest] Saved ${extractedImages.length} extracted images with prefix "${prefix}"`);
+    } catch (err) {
+      console.error(`[ingest] Failed to save extracted images for ${finalFileName}:`, err);
+    }
+  }
+
+  // --- Step 4b: Save transcript ---
   const desiredTranscriptAbsPath = join(opts.workspaceDir, "Clark", "Transcripts", `${finalBaseName}.md`);
   const finalTranscriptAbsPath = await ensureUniqueSiblingPath(desiredTranscriptAbsPath);
   const finalTranscriptRelPath = `Clark/Transcripts/${basename(finalTranscriptAbsPath)}`;

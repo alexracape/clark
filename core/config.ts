@@ -53,6 +53,8 @@ export interface ClarkConfig {
 
   /** Flag indicating user has completed initial onboarding. */
   hasCompletedOnboarding?: boolean;
+  /** Whether the user has opted in to anonymous usage tracking (default: true). */
+  usageTrackingEnabled?: boolean;
   /** Tutorial progress tracking. */
   tutorialProgress?: {
     completed: boolean;

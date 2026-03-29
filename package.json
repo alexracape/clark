@@ -1,6 +1,6 @@
 {
   "name": "clark",
-  "version": "0.1.0",
+  "version": "0.1.16",
   "module": "index.ts",
   "type": "module",
   "private": true,
@@ -9,6 +9,7 @@
     "dev:cli": "bun --hot index.ts",
     "dev:gui": "cd gui && bun run dev",
     "dev:sidecar": "bun gui/sidecar.ts",
+    "sync:version": "bun scripts/sync-version.ts",
     "build": "bun scripts/build.ts",
     "build:gui": "cd gui && bun run build",
     "build:sidecar": "bun scripts/build-sidecar.ts",

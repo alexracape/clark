@@ -12,6 +12,7 @@
 
 import { parseArgs } from "node:util";
 import { join } from "node:path";
+import { normalizeVersion, readVersionFile } from "../core/version.ts";
 
 /** Map from our target names to Bun compile targets */
 const BUN_TARGETS = {
@@ -35,8 +36,11 @@ const { values } = parseArgs({
   options: {
     target: { type: "string", multiple: true },
     universal: { type: "boolean", default: false },
+    version: { type: "string" },
   },
 });
+
+const version = normalizeVersion(values.version ?? await readVersionFile());
 
 // Determine which targets to build
 let targets: TargetKey[];
@@ -66,10 +70,10 @@ for (const target of targets) {
   const tauriTriple = TAURI_TRIPLES[target];
   const outfile = join(outDir, `clark-sidecar-${tauriTriple}`);
 
-  console.log(`Building sidecar for ${target} (${tauriTriple})...`);
+  console.log(`Building sidecar for ${target} (${tauriTriple}, v${version})...`);
 
   const result =
-    await Bun.$`bun build --compile ${entrypoint} --target=${bunTarget} --outfile=${outfile}`
+    await Bun.$`bun build --compile ${entrypoint} --target=${bunTarget} --outfile=${outfile} --define CLARK_VERSION='"${version}"'`
       .cwd(rootDir)
       .quiet();
 

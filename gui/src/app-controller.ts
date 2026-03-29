@@ -25,11 +25,12 @@ const TUTORIAL_STEPS: TutorialStep[] = [
 
 // --- Onboarding State ---
 
-export type OnboardingStep = "welcome" | "beta-code" | "workspace";
+export type OnboardingStep = "welcome" | "beta-code" | "tracking" | "workspace";
 
 export interface OnboardingState {
   step: OnboardingStep;
   betaCode: string;
+  usageTrackingEnabled: boolean;
   workspaceDir: string;
   workspaceIsNew: boolean;
   error: string | null;
@@ -612,14 +613,15 @@ export function renameEditorFile(state: AppState, newPath: string): AppState {
 
 // --- Onboarding pure functions ---
 
-const STEP_ORDER: OnboardingStep[] = ["welcome", "beta-code", "workspace"];
+const STEP_ORDER: OnboardingStep[] = ["welcome", "beta-code", "tracking", "workspace"];
 
 function createOnboardingState(): OnboardingState {
   return {
     step: "welcome",
     betaCode: "",
+    usageTrackingEnabled: true,
     workspaceDir: "",
-    workspaceIsNew: false,
+    workspaceIsNew: true,
     error: null,
     isSubmitting: false,
   };
@@ -652,6 +654,11 @@ export function onboardingPrevStep(state: AppState): AppState {
 export function setOnboardingBetaCode(state: AppState, betaCode: string): AppState {
   if (!state.onboarding) return state;
   return { ...state, onboarding: { ...state.onboarding, betaCode } };
+}
+
+export function setOnboardingUsageTracking(state: AppState, usageTrackingEnabled: boolean): AppState {
+  if (!state.onboarding) return state;
+  return { ...state, onboarding: { ...state.onboarding, usageTrackingEnabled } };
 }
 
 export function setOnboardingWorkspace(state: AppState, workspaceDir: string): AppState {
