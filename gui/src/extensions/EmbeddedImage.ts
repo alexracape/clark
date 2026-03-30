@@ -147,6 +147,8 @@ export const EmbeddedImage = Image.extend<EmbeddedImageOptions>({
       img.style.height = "auto";
       img.style.width = "100%";
       img.style.objectFit = "contain";
+      img.loading = "lazy";
+      img.decoding = "async";
       dom.append(img, warning);
 
       const setWarning = (message: string | null) => {
@@ -157,6 +159,7 @@ export const EmbeddedImage = Image.extend<EmbeddedImageOptions>({
 
       const applyAttributes = (attrs: Record<string, unknown>) => {
         for (const [key, value] of Object.entries(attrs)) {
+          if (key === "src") continue;
           if (value == null) {
             img.removeAttribute(key);
             continue;
@@ -178,9 +181,21 @@ export const EmbeddedImage = Image.extend<EmbeddedImageOptions>({
         return typeof attrs.src === "string" ? attrs.src : "";
       };
 
-      const loadAsDataUrl = async (src: string) => {
-        currentSource = src;
+      img.onload = () => {
+        if (destroyed || !currentSource) return;
+        img.title = currentAssetPath;
         setWarning(null);
+      };
+
+      img.onerror = () => {
+        if (destroyed || !currentSource) return;
+        img.removeAttribute("src");
+        img.title = currentAssetPath;
+        setWarning(`"${currentAssetPath}" could not be loaded.`);
+      };
+
+      const loadSource = (src: string) => {
+        currentSource = src;
 
         if (!src) {
           img.removeAttribute("src");
@@ -188,40 +203,13 @@ export const EmbeddedImage = Image.extend<EmbeddedImageOptions>({
           return;
         }
 
-        try {
-          const response = await fetch(src);
-          if (!response.ok) {
-            if (response.status === 404) {
-              throw new Error(`"${currentAssetPath}" could not be found.`);
-            }
-            throw new Error(`Asset request failed (${response.status})`);
-          }
-
-          const blob = await response.blob();
-          const reader = new FileReader();
-          reader.onload = () => {
-            if (destroyed || currentSource !== src || typeof reader.result !== "string") return;
-            img.src = reader.result;
-            img.title = currentAssetPath;
-            setWarning(null);
-          };
-          reader.onerror = () => {
-            if (destroyed || currentSource !== src) return;
-            setWarning(`"${currentAssetPath}" could not be loaded.`);
-          };
-          reader.readAsDataURL(blob);
-        } catch (error) {
-          if (destroyed || currentSource !== src) return;
-          const message = error instanceof Error ? error.message : String(error);
-          img.removeAttribute("src");
-          img.title = message;
-          setWarning(message);
-          console.error("Embedded image failed to load", { src, error });
-        }
+        img.title = currentAssetPath;
+        setWarning(null);
+        img.src = src;
       };
 
       applyAttributes(HTMLAttributes);
-      void loadAsDataUrl(resolvedSourceFor(node.attrs));
+      loadSource(resolvedSourceFor(node.attrs));
 
       return {
         dom,
@@ -239,13 +227,18 @@ export const EmbeddedImage = Image.extend<EmbeddedImageOptions>({
 
           const nextSrc = resolvedSourceFor(updatedNode.attrs);
           if (nextSrc !== currentSource) {
-            void loadAsDataUrl(nextSrc);
+            loadSource(nextSrc);
+          } else {
+            img.title = currentAssetPath;
+            setWarning(null);
           }
 
           return true;
         },
         destroy: () => {
           destroyed = true;
+          img.onload = null;
+          img.onerror = null;
         },
       };
     };

@@ -149,6 +149,22 @@ export function subscribeStreamEvents(listener: (event: SidecarStreamEvent) => v
   return () => streamListeners.delete(listener);
 }
 
+function rebuildSlashCommandHandler(): void {
+  const cloudCfg = providerName === "clark-cloud" ? resolveCloudConfig(config) : undefined;
+  onSlashCommand = createSlashCommandHandler({
+    canvas,
+    getExportDir: () => exportDir,
+    setExportDir: (dir: string) => { exportDir = dir; },
+    persistExportDir: async (dir: string) => {
+      const currentConfig = await loadConfig();
+      await saveConfig({ ...currentConfig, pdfExportDir: dir });
+    },
+    conversation,
+    getProvider: () => provider,
+    cloudConfig: cloudCfg,
+  });
+}
+
 // --- Bootstrap ---
 
 function getLanIP(): string {
@@ -338,21 +354,10 @@ async function bootstrap(): Promise<void> {
     maxToolCallsPerTurn: config.maxToolCallsPerTurn,
   });
 
-  const cloudCfg = providerName === "clark-cloud" ? resolveCloudConfig(config) : undefined;
-  onSlashCommand = createSlashCommandHandler({
-    canvas,
-    getExportDir: () => exportDir,
-    setExportDir: (dir: string) => { exportDir = dir; },
-    persistExportDir: async (dir: string) => {
-      const currentConfig = await loadConfig();
-      await saveConfig({ ...currentConfig, pdfExportDir: dir });
-    },
-    conversation,
-    getProvider: () => provider,
-    cloudConfig: cloudCfg,
-  });
+  rebuildSlashCommandHandler();
 
   // Fire-and-forget telemetry ping for cloud users
+  const cloudCfg = providerName === "clark-cloud" ? resolveCloudConfig(config) : undefined;
   if (cloudCfg && process.env.CLARK_TELEMETRY !== "false") {
     fetch(`${cloudCfg.url}/api/telemetry`, {
       method: "POST",
@@ -753,6 +758,7 @@ async function handleProviderSwitch(req: Request): Promise<Response> {
     if (body.provider) newConfig.provider = body.provider;
     if (body.model) newConfig.model = body.model;
     await saveConfig(newConfig);
+    config = newConfig;
 
     const resolved = await resolveProviderFromConfig(newConfig);
     provider = resolved.provider;
@@ -773,6 +779,10 @@ async function handleProviderSwitch(req: Request): Promise<Response> {
         broadcast({ type: "system_message", text: msg });
       },
       getOCRProvider: () => {
+        if (providerName === "clark-cloud") {
+          const cloud = resolveCloudConfig(config);
+          return new CloudOCRProvider(cloud.url, cloud.clientId);
+        }
         if (!provider.supportsVision) return null;
         return new VisionOCRProvider(provider);
       },
@@ -780,6 +790,7 @@ async function handleProviderSwitch(req: Request): Promise<Response> {
       getSearchIndex: () => searchIndex,
     });
     engine.setTools(tools);
+    rebuildSlashCommandHandler();
 
     broadcast({ type: "status_update", provider: providerName, model: modelName });
     return jsonResponse({ provider: providerName, model: modelName });
@@ -955,6 +966,10 @@ async function handleUpdateSettings(req: Request): Promise<Response> {
           broadcast({ type: "system_message", text: msg });
         },
         getOCRProvider: () => {
+          if (providerName === "clark-cloud") {
+            const cloud = resolveCloudConfig(config);
+            return new CloudOCRProvider(cloud.url, cloud.clientId);
+          }
           if (!provider.supportsVision) return null;
           return new VisionOCRProvider(provider);
         },
@@ -1056,6 +1071,7 @@ async function handleRedeemBeta(req: Request): Promise<Response> {
         betaRedeemed: true,
       };
       await saveConfig(updated);
+      config = updated;
       return jsonResponse({ success: true, tier: result.tier });
     }
 
@@ -1143,6 +1159,7 @@ async function handleCompleteOnboarding(req: Request): Promise<Response> {
       newConfig.pdfExportDir = newConfig.pdfExportDir ?? targetWorkspace;
     }
     await saveConfig(newConfig);
+    config = newConfig;
 
     // Update module-level state so /api/files reflects the new workspace immediately
     workspaceDir = targetWorkspace;
@@ -1156,6 +1173,8 @@ async function handleCompleteOnboarding(req: Request): Promise<Response> {
     provider = resolved.provider;
     providerName = resolved.providerName;
     modelName = resolved.modelName;
+    setupEmbedding(config, workspaceDir);
+    rebuildSlashCommandHandler();
 
     broadcast({ type: "status_update", provider: providerName, model: modelName });
     return jsonResponse({ ok: true, provider: providerName, model: modelName });

@@ -9,9 +9,10 @@ General
 - Rename sessions or do this automatically
 - Bash tool instead of so many MCP tools
 - build out telemetry
-- shift ocr and embeddings to gateway
 - move websearch tool to gateway: https://vercel.com/docs/ai-gateway/capabilities#web-search
 - ignore Clark/Sessions from search results
+- specify no H1 + Title duplication
+- block latex is black on dark background
 
 Polish
 - Thinking indicator

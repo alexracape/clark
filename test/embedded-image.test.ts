@@ -73,6 +73,71 @@ describe("EmbeddedImage", () => {
     expect(editor.getMarkdown()).toBe("![[diagram.png]]");
   });
 
+  test("parses two distinct embedded images in one document and round-trips markdown", () => {
+    const content = [
+      "![[diagram-a.png]]",
+      "",
+      "![[diagram-b.png]]",
+    ].join("\n");
+
+    const editor = new Editor({
+      extensions: [StarterKit, Markdown, EmbeddedImage],
+      content,
+      contentType: "markdown",
+    });
+
+    expect(editor.getJSON()).toMatchObject({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "image",
+              attrs: {
+                assetPath: "diagram-a.png",
+                alt: "diagram-a.png",
+                src: "http://localhost:3456/api/asset?path=Resources%2FImages%2Fdiagram-a.png",
+              },
+            },
+          ],
+        },
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "image",
+              attrs: {
+                assetPath: "diagram-b.png",
+                alt: "diagram-b.png",
+                src: "http://localhost:3456/api/asset?path=Resources%2FImages%2Fdiagram-b.png",
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(editor.getMarkdown()).toBe("![[diagram-a.png]]\n\n![[diagram-b.png]]");
+  });
+
+  test("parses repeated copies of the same embedded image and round-trips markdown", () => {
+    const content = [
+      "![[diagram.png]]",
+      "",
+      "![[diagram.png]]",
+    ].join("\n");
+
+    const editor = new Editor({
+      extensions: [StarterKit, Markdown, EmbeddedImage],
+      content,
+      contentType: "markdown",
+    });
+
+    const markdown = editor.getMarkdown();
+    expect(markdown).toBe("![[diagram.png]]\n\n![[diagram.png]]");
+    expect(markdown.match(/!\[\[diagram\.png\]\]/g)?.length).toBe(2);
+  });
+
   test("leaves incomplete embeds as raw text while editing", () => {
     const editor = new Editor({
       extensions: [StarterKit, Markdown, EmbeddedImage],

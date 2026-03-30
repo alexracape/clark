@@ -184,6 +184,78 @@ describe("sidecar API contracts", () => {
     }
   });
 
+  test("fresh onboarding keeps the redeemed cloud clientId for OCR requests", async () => {
+    const originalFetch = globalThis.fetch;
+    let redeemedClientId: string | null = null;
+    let ocrClientId: string | null = null;
+
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const headers = new Headers(init?.headers);
+
+      if (url.endsWith("/api/auth/beta")) {
+        redeemedClientId = headers.get("X-Clark-Client-Id");
+        return Response.json({ success: true, tier: "beta" });
+      }
+
+      if (url.endsWith("/api/ocr")) {
+        ocrClientId = headers.get("X-Clark-Client-Id");
+        return Response.json({
+          markdown: "# OCR Transcript\n\nFresh install OCR works.",
+          pageCount: 1,
+          images: [],
+        });
+      }
+
+      if (url.endsWith("/api/chat")) {
+        return new Response(
+          "data: {\"type\":\"text_delta\",\"text\":\"Sample Notes\"}\n\n" +
+          "data: {\"type\":\"done\",\"stopReason\":\"end_turn\"}\n\n",
+          {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          },
+        );
+      }
+
+      return originalFetch(input, init);
+    };
+
+    try {
+      const pdfDir = await mkdtemp(join(tmpdir(), "clark-ingest-pdf-"));
+      const pdfPath = join(pdfDir, "fresh-install.pdf");
+      await Bun.write(pdfPath, "fake pdf bytes");
+
+      const redeemRes = await callRoute("/api/redeem-beta", "POST", { code: "correct-beta-code" });
+      expect(redeemRes.status).toBe(200);
+
+      const completeRes = await callRoute("/api/complete-onboarding", "POST", {
+        workspaceDir,
+        workspaceIsNew: true,
+      });
+      expect(completeRes.status).toBe(200);
+
+      const eventsPromise = waitForEventSequence((events) => {
+        return events.some((event) => {
+          return (
+            (event.type === "ingest_complete" || event.type === "ingest_error")
+            && event.fileName === "fresh-install.pdf"
+          );
+        });
+      });
+
+      const ingestRes = await callRoute("/api/ingest", "POST", { path: pdfPath });
+      expect(ingestRes.status).toBe(200);
+
+      const events = await eventsPromise;
+      expect(events.some((event) => event.type === "ingest_error")).toBe(false);
+      expect(redeemedClientId).toBeTruthy();
+      expect(ocrClientId).toBe(redeemedClientId);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("POST /api/chat uses the persisted cloud clientId for proxy auth", async () => {
     const originalFetch = globalThis.fetch;
     const cloudClientId = "beta-client-123";
