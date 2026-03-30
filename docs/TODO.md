@@ -11,11 +11,11 @@ General
 - build out telemetry
 - move websearch tool to gateway: https://vercel.com/docs/ai-gateway/capabilities#web-search
 - ignore Clark/Sessions from search results
-- specify no H1 + Title duplication
+- specify no H1 + Title duplication in prompts
 - block latex is black on dark background
 
 Polish
-- Thinking indicator
+- Thinking indicator / general spinner
 - Animations and micro interactions
 - QR code
 - /note should auto focus on new note title to rename

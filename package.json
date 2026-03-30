@@ -7,11 +7,11 @@
   "scripts": {
     "dev": "bun --hot index.ts",
     "dev:cli": "bun --hot index.ts",
-    "dev:gui": "cd gui && bun run dev",
+    "dev:gui": "bun gui/dev-server.ts",
     "dev:sidecar": "bun gui/sidecar.ts",
     "sync:version": "bun scripts/sync-version.ts",
     "build": "bun scripts/build.ts",
-    "build:gui": "cd gui && bun run build",
+    "build:gui": "bun gui/build.ts",
     "build:sidecar": "bun scripts/build-sidecar.ts",
     "tauri": "cd tauri && cargo tauri",
     "tauri:dev": "cd tauri && cargo tauri dev",
