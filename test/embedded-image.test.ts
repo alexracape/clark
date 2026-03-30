@@ -56,20 +56,16 @@ describe("EmbeddedImage", () => {
       type: "doc",
       content: [
         {
-          type: "paragraph",
-          content: [
-            {
-              type: "image",
-              attrs: {
-                assetPath: "diagram.png",
-                alt: "diagram.png",
-                src: "http://localhost:3456/api/asset?path=Resources%2FImages%2Fdiagram.png",
-              },
-            },
-          ],
+          type: "image",
+          attrs: {
+            assetPath: "diagram.png",
+            alt: "diagram.png",
+            src: "http://localhost:3456/api/asset?path=Resources%2FImages%2Fdiagram.png",
+          },
         },
       ],
     });
+    expect(() => editor.state.doc.check()).not.toThrow();
     expect(editor.getMarkdown()).toBe("![[diagram.png]]");
   });
 
@@ -90,33 +86,24 @@ describe("EmbeddedImage", () => {
       type: "doc",
       content: [
         {
-          type: "paragraph",
-          content: [
-            {
-              type: "image",
-              attrs: {
-                assetPath: "diagram-a.png",
-                alt: "diagram-a.png",
-                src: "http://localhost:3456/api/asset?path=Resources%2FImages%2Fdiagram-a.png",
-              },
-            },
-          ],
+          type: "image",
+          attrs: {
+            assetPath: "diagram-a.png",
+            alt: "diagram-a.png",
+            src: "http://localhost:3456/api/asset?path=Resources%2FImages%2Fdiagram-a.png",
+          },
         },
         {
-          type: "paragraph",
-          content: [
-            {
-              type: "image",
-              attrs: {
-                assetPath: "diagram-b.png",
-                alt: "diagram-b.png",
-                src: "http://localhost:3456/api/asset?path=Resources%2FImages%2Fdiagram-b.png",
-              },
-            },
-          ],
+          type: "image",
+          attrs: {
+            assetPath: "diagram-b.png",
+            alt: "diagram-b.png",
+            src: "http://localhost:3456/api/asset?path=Resources%2FImages%2Fdiagram-b.png",
+          },
         },
       ],
     });
+    expect(() => editor.state.doc.check()).not.toThrow();
     expect(editor.getMarkdown()).toBe("![[diagram-a.png]]\n\n![[diagram-b.png]]");
   });
 
@@ -134,8 +121,28 @@ describe("EmbeddedImage", () => {
     });
 
     const markdown = editor.getMarkdown();
+    expect(() => editor.state.doc.check()).not.toThrow();
     expect(markdown).toBe("![[diagram.png]]\n\n![[diagram.png]]");
     expect(markdown.match(/!\[\[diagram\.png\]\]/g)?.length).toBe(2);
+  });
+
+  test("parses transcript-style captions into separate paragraphs after embedded images", () => {
+    const content = [
+      "![[diagram-a.png]]",
+      "Figure A",
+      "",
+      "![[diagram-b.png]]",
+      "Figure B",
+    ].join("\n");
+
+    const editor = new Editor({
+      extensions: [StarterKit, Markdown, EmbeddedImage],
+      content,
+      contentType: "markdown",
+    });
+
+    expect(() => editor.state.doc.check()).not.toThrow();
+    expect(editor.state.doc.toString()).toBe('doc(image, paragraph("Figure A"), image, paragraph("Figure B"))');
   });
 
   test("leaves incomplete embeds as raw text while editing", () => {

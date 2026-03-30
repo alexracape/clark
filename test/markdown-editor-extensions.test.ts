@@ -132,8 +132,10 @@ describe("wikilink autocomplete helpers", () => {
 
     const editor = createRichMarkdownEditor(content);
 
+    expect(() => editor.state.doc.check()).not.toThrow();
     expect(editor.getMarkdown()).toContain("Attention Is All You Need");
     editor.commands.setContent(content, { contentType: "markdown" });
+    expect(() => editor.state.doc.check()).not.toThrow();
     expect(editor.getMarkdown()).toContain("Attention Is All You Need");
   });
 
@@ -148,8 +150,10 @@ describe("wikilink autocomplete helpers", () => {
 
     const editor = createRichMarkdownEditor(content);
 
+    expect(() => editor.state.doc.check()).not.toThrow();
     expect(editor.getMarkdown()).toBe(content);
     editor.commands.setContent(content, { contentType: "markdown" });
+    expect(() => editor.state.doc.check()).not.toThrow();
     expect(editor.getMarkdown()).toBe(content);
   });
 
@@ -164,9 +168,33 @@ describe("wikilink autocomplete helpers", () => {
 
     const editor = createRichMarkdownEditor(content);
 
+    expect(() => editor.state.doc.check()).not.toThrow();
     expect(editor.getMarkdown()).toBe(content);
     editor.commands.setContent(content, { contentType: "markdown" });
+    expect(() => editor.state.doc.check()).not.toThrow();
     expect(editor.getMarkdown()).toBe(content);
+  });
+
+  test("reloading transcript-style captions around two embedded images keeps a valid document", () => {
+    const content = [
+      "# Figures",
+      "",
+      "![[figure-a.png]]",
+      "Scaled Dot-Product Attention",
+      "",
+      "![[figure-b.png]]",
+      "Multi-Head Attention",
+    ].join("\n");
+
+    const editor = createRichMarkdownEditor(content);
+
+    expect(() => editor.state.doc.check()).not.toThrow();
+    expect(editor.state.doc.toString()).toContain('image, paragraph("Scaled Dot-Product Attention"), image');
+
+    editor.commands.setContent(content, { contentType: "markdown" });
+
+    expect(() => editor.state.doc.check()).not.toThrow();
+    expect(editor.state.doc.toString()).toContain('image, paragraph("Scaled Dot-Product Attention"), image');
   });
 
   test("filters note names by query", () => {
@@ -221,11 +249,20 @@ describe("wikilink autocomplete helpers", () => {
     expect(editor.getMarkdown()).toBe("![[FullSizeRender.jpg]] ");
   });
 
+  test("converts standalone embedded-image markdown into a valid block image node", () => {
+    const editor = createMarkdownEditor("![[diagram.png]]");
+
+    expect(() => editor.state.doc.check()).not.toThrow();
+    expect(editor.state.doc.toString()).toBe("doc(image)");
+    expect(editor.getMarkdown()).toBe("![[diagram.png]]");
+  });
+
   test("keeps embed wikilinks as embeds rather than converting them to wiki-link marks", () => {
     const editor = createMarkdownEditor("![[diagram.png]]");
-    const firstNode = editor.getJSON().content?.[0]?.content?.[0];
+    const firstNode = editor.getJSON().content?.[0];
 
     expect(firstNode?.type).toBe("image");
+    expect(() => editor.state.doc.check()).not.toThrow();
     expect(editor.getMarkdown()).toBe("![[diagram.png]]");
   });
 });
