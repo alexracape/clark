@@ -63,7 +63,7 @@ describe("toLLMTools", () => {
     expect(tools).toHaveLength(1);
     expect(tools[0]!.name).toBe("echo");
     expect(tools[0]!.description).toBe("Echoes input back");
-    expect(tools[0]!.parameters).toEqual(echoTool().inputSchema);
+    expect(tools[0]!.inputSchema).toEqual(echoTool().inputSchema);
   });
 });
 

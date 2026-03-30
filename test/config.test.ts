@@ -18,87 +18,42 @@ import {
 } from "../core/config.ts";
 
 describe("needsOnboarding", () => {
-  const savedEnv: Record<string, string | undefined> = {};
-
-  beforeEach(() => {
-    savedEnv.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-    savedEnv.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-    savedEnv.GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
-  });
-
-  afterEach(() => {
-    process.env.ANTHROPIC_API_KEY = savedEnv.ANTHROPIC_API_KEY;
-    process.env.OPENAI_API_KEY = savedEnv.OPENAI_API_KEY;
-    process.env.GOOGLE_API_KEY = savedEnv.GOOGLE_API_KEY;
-  });
-
-  test("returns true when no keys anywhere", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENAI_API_KEY;
-    delete process.env.GOOGLE_API_KEY;
+  test("returns true when no provider configured and onboarding not completed", async () => {
     expect(await needsOnboarding({})).toBe(true);
   });
 
-  test("returns false with anthropic env var", async () => {
-    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
-    delete process.env.OPENAI_API_KEY;
-    delete process.env.GOOGLE_API_KEY;
-    expect(await needsOnboarding({})).toBe(false);
+  test("returns false when hasCompletedOnboarding is true", async () => {
+    expect(await needsOnboarding({ hasCompletedOnboarding: true })).toBe(false);
+  });
+
+  test("returns false with clark-cloud provider", async () => {
+    expect(await needsOnboarding({ provider: "clark-cloud" })).toBe(false);
   });
 
   test("returns false with ollama provider in config", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.OPENAI_API_KEY;
-    delete process.env.GOOGLE_API_KEY;
     expect(await needsOnboarding({ provider: "ollama" })).toBe(false);
   });
 });
 
 describe("resolveApiKey", () => {
-  const savedEnv: Record<string, string | undefined> = {};
-
-  beforeEach(() => {
-    savedEnv.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-    savedEnv.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-    savedEnv.GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
-  });
-
-  afterEach(() => {
-    process.env.ANTHROPIC_API_KEY = savedEnv.ANTHROPIC_API_KEY;
-    process.env.OPENAI_API_KEY = savedEnv.OPENAI_API_KEY;
-    process.env.GOOGLE_API_KEY = savedEnv.GOOGLE_API_KEY;
-  });
-
-  test("env var takes precedence over secret store for anthropic", async () => {
-    process.env.ANTHROPIC_API_KEY = "env-key";
-    expect(await resolveApiKey("anthropic", {})).toBe("env-key");
-  });
-
-  test("returns undefined when nothing is set", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
-    expect(await resolveApiKey("anthropic", {})).toBeUndefined();
+  test("returns cloud-managed for clark-cloud", async () => {
+    expect(await resolveApiKey("clark-cloud", {})).toBe("cloud-managed");
   });
 
   test("returns not-required for ollama", async () => {
     expect(await resolveApiKey("ollama", {})).toBe("not-required");
   });
+
+  test("returns undefined for unknown provider", async () => {
+    expect(await resolveApiKey("unknown", {})).toBeUndefined();
+  });
 });
 
 describe("applyConfigToEnv", () => {
-  const savedEnv: Record<string, string | undefined> = {};
-
-  beforeEach(() => {
-    savedEnv.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-    savedEnv.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-    savedEnv.GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
-    savedEnv.OLLAMA_HOST = process.env.OLLAMA_HOST;
-  });
+  const savedOllamaHost = process.env.OLLAMA_HOST;
 
   afterEach(() => {
-    process.env.ANTHROPIC_API_KEY = savedEnv.ANTHROPIC_API_KEY;
-    process.env.OPENAI_API_KEY = savedEnv.OPENAI_API_KEY;
-    process.env.GOOGLE_API_KEY = savedEnv.GOOGLE_API_KEY;
-    process.env.OLLAMA_HOST = savedEnv.OLLAMA_HOST;
+    process.env.OLLAMA_HOST = savedOllamaHost;
   });
 
   test("sets ollama host when not in env", () => {
@@ -154,8 +109,8 @@ describe("saveConfig / loadConfig (file I/O)", () => {
 
   test("saveConfig and loadConfig round-trip", async () => {
     const testConfig: ClarkConfig = {
-      provider: "anthropic",
-      model: "claude-sonnet-4-5-20250929",
+      provider: "clark-cloud",
+      model: "claude-sonnet-4-6",
       pdfExportDir: "/exports",
     };
 

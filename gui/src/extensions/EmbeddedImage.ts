@@ -17,6 +17,15 @@ function isEmbeddableAssetReference(src: string): boolean {
   return /\.(png|jpe?g|gif|svg|webp|bmp|tiff?|pdf)$/i.test(src);
 }
 
+function matchEmbeddedAsset(src: string): RegExpMatchArray | null {
+  return src.match(/^!\[\[([^\]]+)\]\]/);
+}
+
+function extractStandaloneEmbeddedAssetPath(text: string): string | null {
+  const match = text.trim().match(/^!\[\[([^\]]+)\]\]$/);
+  return match ? match[1] : null;
+}
+
 export function normalizeEmbeddedAssetPath(src: string): string {
   const normalized = src.replace(/\\/g, "/");
   const resourcesIndex = normalized.lastIndexOf("/Resources/");
@@ -80,11 +89,11 @@ export const EmbeddedImage = Image.extend<EmbeddedImageOptions>({
   // @ts-ignore
   markdownTokenizer: {
     name: "embeddedImage",
-    level: "inline",
+    level: "block",
     start: "![[",
     tokenize(src: string) {
-      const match = src.match(/^!\[\[([^\]]+)\]\]/);
-      if (!match) return;
+      const match = matchEmbeddedAsset(src);
+      if (!match || !isEmbeddableAssetReference(match[1])) return;
 
       return {
         type: "embeddedImage",
@@ -147,6 +156,8 @@ export const EmbeddedImage = Image.extend<EmbeddedImageOptions>({
       img.style.height = "auto";
       img.style.width = "100%";
       img.style.objectFit = "contain";
+      img.loading = "lazy";
+      img.decoding = "async";
       dom.append(img, warning);
 
       const setWarning = (message: string | null) => {
@@ -157,6 +168,7 @@ export const EmbeddedImage = Image.extend<EmbeddedImageOptions>({
 
       const applyAttributes = (attrs: Record<string, unknown>) => {
         for (const [key, value] of Object.entries(attrs)) {
+          if (key === "src") continue;
           if (value == null) {
             img.removeAttribute(key);
             continue;
@@ -178,9 +190,21 @@ export const EmbeddedImage = Image.extend<EmbeddedImageOptions>({
         return typeof attrs.src === "string" ? attrs.src : "";
       };
 
-      const loadAsDataUrl = async (src: string) => {
-        currentSource = src;
+      img.onload = () => {
+        if (destroyed || !currentSource) return;
+        img.title = currentAssetPath;
         setWarning(null);
+      };
+
+      img.onerror = () => {
+        if (destroyed || !currentSource) return;
+        img.removeAttribute("src");
+        img.title = currentAssetPath;
+        setWarning(`"${currentAssetPath}" could not be loaded.`);
+      };
+
+      const loadSource = (src: string) => {
+        currentSource = src;
 
         if (!src) {
           img.removeAttribute("src");
@@ -188,40 +212,13 @@ export const EmbeddedImage = Image.extend<EmbeddedImageOptions>({
           return;
         }
 
-        try {
-          const response = await fetch(src);
-          if (!response.ok) {
-            if (response.status === 404) {
-              throw new Error(`"${currentAssetPath}" could not be found.`);
-            }
-            throw new Error(`Asset request failed (${response.status})`);
-          }
-
-          const blob = await response.blob();
-          const reader = new FileReader();
-          reader.onload = () => {
-            if (destroyed || currentSource !== src || typeof reader.result !== "string") return;
-            img.src = reader.result;
-            img.title = currentAssetPath;
-            setWarning(null);
-          };
-          reader.onerror = () => {
-            if (destroyed || currentSource !== src) return;
-            setWarning(`"${currentAssetPath}" could not be loaded.`);
-          };
-          reader.readAsDataURL(blob);
-        } catch (error) {
-          if (destroyed || currentSource !== src) return;
-          const message = error instanceof Error ? error.message : String(error);
-          img.removeAttribute("src");
-          img.title = message;
-          setWarning(message);
-          console.error("Embedded image failed to load", { src, error });
-        }
+        img.title = currentAssetPath;
+        setWarning(null);
+        img.src = src;
       };
 
       applyAttributes(HTMLAttributes);
-      void loadAsDataUrl(resolvedSourceFor(node.attrs));
+      loadSource(resolvedSourceFor(node.attrs));
 
       return {
         dom,
@@ -239,13 +236,18 @@ export const EmbeddedImage = Image.extend<EmbeddedImageOptions>({
 
           const nextSrc = resolvedSourceFor(updatedNode.attrs);
           if (nextSrc !== currentSource) {
-            void loadAsDataUrl(nextSrc);
+            loadSource(nextSrc);
+          } else {
+            img.title = currentAssetPath;
+            setWarning(null);
           }
 
           return true;
         },
         destroy: () => {
           destroyed = true;
+          img.onload = null;
+          img.onerror = null;
         },
       };
     };
@@ -281,36 +283,24 @@ export const EmbeddedImage = Image.extend<EmbeddedImageOptions>({
               return;
             }
 
-            if (!node.isText || !node.text) return;
+            if (node.type.name !== "paragraph" || node.childCount !== 1 || !node.firstChild?.isText) return;
 
-            const re = /!\[\[([^\]]+)\]\]/g;
-            let m: RegExpExecArray | null;
-            while ((m = re.exec(node.text)) !== null) {
-              if (!isEmbeddableAssetReference(m[1])) continue;
-              const matchFrom = pos + m.index;
-              const matchTo = matchFrom + m[0].length;
+            const assetPath = extractStandaloneEmbeddedAssetPath(node.textContent);
+            if (!assetPath || !isEmbeddableAssetReference(assetPath)) return;
 
-              // Skip if cursor is inside the match (user is still typing)
-              const cursorPos = newState.selection.from;
-              if (cursorPos > matchFrom && cursorPos < matchTo) continue;
+            // Skip if cursor is inside the paragraph (user is still typing)
+            const cursorPos = newState.selection.from;
+            if (cursorPos > pos && cursorPos < pos + node.nodeSize - 1) return;
 
-              replacements.push({ from: matchFrom, to: matchTo, src: m[1] });
-            }
+            replacements.push({ from: pos, to: pos + node.nodeSize, src: assetPath });
           });
 
           if (replacements.length === 0 && normalizations.length === 0) return null;
 
           const tr = newState.tr;
-          // Process in reverse to avoid position drift
-          replacements.sort((a, b) => b.from - a.from);
-
-          for (const { from, to, src } of replacements) {
-            const assetPath = normalizeEmbeddedAssetPath(src);
-            const assetUrl = resolveEmbeddedImageAssetUrl(assetPath, options);
-            const imageNode = imageType.create({ src: assetUrl, alt: assetPath, assetPath });
-            tr.replaceWith(from, to, imageNode);
-          }
-
+          // Normalize existing image attrs before structural replacements so
+          // collected positions stay valid.
+          normalizations.sort((a, b) => b.pos - a.pos);
           for (const { pos, src, assetPath } of normalizations) {
             const resolvedSrc = resolveEmbeddedImageAssetUrl(assetPath, options);
             if (src === resolvedSrc) continue;
@@ -320,6 +310,16 @@ export const EmbeddedImage = Image.extend<EmbeddedImageOptions>({
               alt: assetPath,
               assetPath,
             });
+          }
+
+          // Process block replacements in reverse to avoid position drift.
+          replacements.sort((a, b) => b.from - a.from);
+
+          for (const { from, to, src } of replacements) {
+            const assetPath = normalizeEmbeddedAssetPath(src);
+            const assetUrl = resolveEmbeddedImageAssetUrl(assetPath, options);
+            const imageNode = imageType.create({ src: assetUrl, alt: assetPath, assetPath });
+            tr.replaceWith(from, to, imageNode);
           }
 
           tr.setMeta("addToHistory", false);

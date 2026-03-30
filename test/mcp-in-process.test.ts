@@ -96,6 +96,24 @@ describe("In-Process MCP Tool Dispatch", () => {
 			}
 		});
 
+		test("search_notes tool rejects missing query cleanly", async () => {
+			const tools = createTools({
+				getBroker: () => null,
+				vaultDir: TEST_VAULT,
+				getSaveCanvas: () => null,
+			});
+
+			const searchTool = tools.find((t) => t.name === "search_notes")!;
+			// @ts-expect-error - intentionally testing invalid input
+			const result = await searchTool.handler({});
+
+			expect(result.isError).toBe(true);
+			expect(result.content[0]!.type).toBe("text");
+			if (result.content[0]!.type === "text") {
+				expect(result.content[0]!.text).toContain("query must be a string");
+			}
+		});
+
 		test("list_files tool lists directory contents", async () => {
 			const tools = createTools({
 				getBroker: () => null,

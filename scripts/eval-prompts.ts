@@ -17,9 +17,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
 // Side-effect imports to register all providers
-import "../core/llm/anthropic.ts";
-import "../core/llm/openai.ts";
-import "../core/llm/gemini.ts";
+import "../core/llm/cloud.ts";
 import "../core/llm/ollama.ts";
 import "../core/llm/mock.ts";
 
@@ -136,15 +134,18 @@ function resolveModelName(provider: { name: string; model?: string }): string {
   return (provider as { model?: string }).model ?? "(unknown)";
 }
 
-// Map of env var names to try for each provider (Bun loads .env automatically)
+// Map of env var names to try for each provider (Bun loads .env automatically).
+// These are used when running evals directly against a provider (not via cloud proxy).
 const PROVIDER_API_KEY_ENV: Record<string, string[]> = {
   anthropic: ["ANTHROPIC_KEY", "ANTHROPIC_API_KEY"],
   openai: ["OPENAI_KEY", "OPENAI_API_KEY"],
   gemini: ["GEMINI_KEY", "GEMINI_API_KEY"],
+  "clark-cloud": [], // No API key needed — managed server-side
 };
 
 /** Resolve the API key for a provider from env vars. */
 function resolveApiKey(provider: string): string | undefined {
+  if (provider === "clark-cloud") return "cloud-managed";
   const candidates = PROVIDER_API_KEY_ENV[provider];
   if (!candidates) return undefined;
   for (const key of candidates) {

@@ -6,10 +6,6 @@ import type { CanvasSessionManager } from "./canvas-session.ts";
 import { expandPath } from "../library.ts";
 import { version } from "../version.ts";
 
-// Discord webhook for feedback collection
-const FEEDBACK_WEBHOOK_URL =
-  "https://discordapp.com/api/webhooks/1475314609127817408/u66q9H6KXWjNx9vZRWfjrF8yuF1JYgu9ImOG9gf29BZBTTy6Y7AG5Y9UNdYu6nfbuhHa";
-
 export interface CommandRouterOptions {
   canvas: CanvasSessionManager;
   getExportDir: () => string;
@@ -17,6 +13,8 @@ export interface CommandRouterOptions {
   persistExportDir?: (dir: string) => Promise<void>;
   conversation: Conversation;
   getProvider: () => LLMProvider;
+  /** Cloud proxy config — when set, feedback is routed through the proxy. */
+  cloudConfig?: { url: string; clientId: string };
 }
 
 export function createSlashCommandHandler(options: CommandRouterOptions) {
@@ -27,6 +25,7 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
     persistExportDir,
     conversation,
     getProvider,
+    cloudConfig,
   } = options;
 
   async function pathIsDirectory(path: string): Promise<boolean> {
@@ -265,13 +264,30 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
             ],
           };
 
-          // Send to Discord with 5-second timeout
-          const res = await fetch(FEEDBACK_WEBHOOK_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(5000),
-          });
+          // Send feedback: via cloud proxy if available, otherwise direct webhook
+          let res: Response;
+          if (cloudConfig) {
+            res = await fetch(`${cloudConfig.url}/api/feedback`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Clark-Client-Id": cloudConfig.clientId,
+              },
+              body: JSON.stringify(payload),
+              signal: AbortSignal.timeout(5000),
+            });
+          } else {
+            const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+            if (!webhookUrl) {
+              return "Feedback is not configured. Please report issues at https://github.com/alexracape/clark/issues";
+            }
+            res = await fetch(webhookUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+              signal: AbortSignal.timeout(5000),
+            });
+          }
 
           if (!res.ok) {
             throw new Error(`HTTP ${res.status}`);

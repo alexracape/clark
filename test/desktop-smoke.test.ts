@@ -74,9 +74,12 @@ describe("desktop smoke", () => {
     expect(ps.provider).toBe("ollama");
   });
 
-  test("POST /api/complete-onboarding rejects missing provider", async () => {
+  test("POST /api/complete-onboarding defaults to clark-cloud without provider", async () => {
     const res = await callRoute("/api/complete-onboarding", "POST", {});
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    const data = await res.json() as { ok: boolean; provider: string };
+    expect(data.ok).toBe(true);
+    expect(data.provider).toBe("clark-cloud");
   });
 
   test("GET /api/ollama-models returns models array and status", async () => {

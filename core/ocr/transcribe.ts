@@ -1,4 +1,5 @@
 import type { OCRProvider } from "./provider.ts";
+import type { CloudOCRProvider, ExtractedImage } from "./cloud.ts";
 import { renderPDFPages, checkPopplerAvailable, type RenderOptions } from "./pdf-renderer.ts";
 import { extractPDFText, getPDFInfo, POPPLER_DOCS_URL } from "../mcp/pdf.ts";
 
@@ -157,6 +158,8 @@ export interface TranscribePDFUnifiedResult {
   pageCount: number;
   /** Which method was used. */
   method: "vision-ocr" | "pdftotext";
+  /** Extracted images from cloud OCR (Obsidian wikilink refs in markdown). */
+  images?: ExtractedImage[];
 }
 
 /**
@@ -168,6 +171,28 @@ export interface TranscribePDFUnifiedResult {
 export async function transcribePDF(
   opts: TranscribePDFUnifiedOptions,
 ): Promise<TranscribePDFUnifiedResult> {
+  // 0. Cloud OCR — send full PDF to Mistral, skip poppler entirely
+  if (opts.ocrProvider?.name === "clark-cloud-ocr") {
+    const pdfBuffer = await Bun.file(opts.pdfPath).arrayBuffer();
+    const cloudProvider = opts.ocrProvider as CloudOCRProvider;
+    const result = await cloudProvider.transcribePDF(pdfBuffer, { extractImages: true });
+    const now = new Date().toISOString();
+    const markdown =
+      `---\nsource: ${opts.sourcePath}\n` +
+      `generated: ${now}\n` +
+      `pages: 1-${result.pageCount}\n` +
+      `method: cloud-ocr\n` +
+      `---\n\n` +
+      result.markdown;
+    return {
+      text: result.markdown,
+      markdown,
+      pageCount: result.pageCount,
+      method: "vision-ocr",
+      images: result.images.length > 0 ? result.images : undefined,
+    };
+  }
+
   // 1. Try vision OCR (requires both an OCR provider and poppler for rendering)
   if (opts.ocrProvider) {
     try {

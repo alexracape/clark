@@ -257,7 +257,7 @@ Cards and containers use subtle borders and spacing rather than heavy shadows or
 The TUI isn't an afterthought—it's the primary interface. Colors, typography, and spacing are optimized for terminal rendering. The design doesn't try to make the terminal look like a web app; it embraces its terminal nature with warmth.
 
 ### 6. Inline Over Modal
-Prefer dropdowns, popovers, and inline expansion over modal dialogs. Modals interrupt flow and feel heavy. Use them only for destructive actions or multi-step forms (e.g., API key entry). For selections (model, canvas), use compact dropdowns or popover panels.
+Prefer dropdowns, popovers, and inline expansion over modal dialogs. Modals interrupt flow and feel heavy. Use them only for destructive actions or multi-step forms. For selections (model, canvas), use compact dropdowns or popover panels.
 
 ### 7. Integrated Chrome
 UI chrome (status bars, toolbars) should feel like part of the window, not bolted on. Use the native titlebar area where possible. Avoid heavy colored bars. Status information should be present but not loud — subtle text alongside window controls, not a competing visual element.
@@ -354,8 +354,7 @@ The GUI is a Tauri desktop app with a React frontend. It shares the Library pale
 
 - **Trigger:** Clickable model name in titlebar or status area
 - **Presentation:** Dropdown/popover, not a modal
-- **Content:** Grouped by provider, current model highlighted with lamp-green dot
-- **API key flow:** Inline password input within the dropdown for unconfigured providers
+- **Content:** Grouped by provider (clark-cloud, ollama), current model highlighted with lamp-green dot
 - **Interaction:** Click or arrow keys to select, Escape to dismiss
 
 ### Canvas Picker

@@ -2,22 +2,27 @@ Some future enhancements and things that need fixing, organized into parallel ex
 
 ## Backlog of future enhancements
 
-GUI
-- Context visualization missing tool definitions
-
 General
-- Clark Cloud service for OCR, Embeddings, Model provider, usage data.
 - Inline PDF rendering
 - Delete file
-- Keep only most recent canva screenshot in context
+- Keep only most recent canvas screenshot in context
 - Rename sessions or do this automatically
+- Bash tool instead of so many MCP tools
+- build out telemetry
+- move websearch tool to gateway: https://vercel.com/docs/ai-gateway/capabilities#web-search
+- ignore Clark/Sessions from search results
+- specify no H1 + Title duplication in prompts
+- block latex is black on dark background
 
 Polish
-- Thinking indicator
+- Thinking indicator / general spinner
 - Animations and micro interactions
 - QR code
 - /note should auto focus on new note title to rename
+- /feedback + enter should not send blank message - cleanly enter
 - Graph view in bottom left of explorer
+- Context visualization missing tool definitions
+
 
 Bugs
 - Issue in resolve links in read tool:
@@ -38,12 +43,7 @@ Low Priority
   - Identify required features vs nice-to-have add-ons.
   - Acceptance: prioritized stories that can feed implementation tickets.
 
-- ~~**Session persistence**~~ ✅ Done — sessions saved incrementally to `Clark/Sessions/YYYY-MM-DD.md`; `/resume` command shows date picker to restore any past conversation.
-
 - **tldraw licensing review for production**
   - Verify licensing terms for intended distribution/commercial use.
   - Document obligations (attribution, restrictions, paid terms if applicable).
   - Acceptance: legal/licensing go/no-go criteria documented.
-
-- **Consider using CLI tools instead of MCP**
-  - Would the model do just as well with some bash commands instead of file tools?

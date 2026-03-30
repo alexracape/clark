@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSlashCommandHandler } from "../core/app/command-router.ts";
 import type { CanvasSessionManager } from "../core/app/canvas-session.ts";
+import { version } from "../core/version.ts";
 
 const minimalPNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
@@ -142,6 +143,45 @@ describe("createSlashCommandHandler /export", () => {
     } finally {
       process.chdir(previousCwd);
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("createSlashCommandHandler /feedback", () => {
+  test("includes the current Clark version in the feedback payload", async () => {
+    const originalFetch = globalThis.fetch;
+    let capturedBody: string | undefined;
+
+    globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedBody = init?.body ? String(init.body) : undefined;
+      return new Response(null, { status: 200 });
+    };
+
+    try {
+      const handler = createSlashCommandHandler({
+        canvas: {} as CanvasSessionManager,
+        getExportDir: () => tmpdir(),
+        setExportDir: () => {},
+        conversation: {} as never,
+        getProvider: () => ({ constructor: { name: "MockProvider" } } as never),
+        cloudConfig: {
+          url: "https://clark-cloud.test",
+          clientId: "client-123",
+        },
+      });
+
+      const result = await handler("feedback", "Version check");
+      expect(result).toBe("Feedback sent successfully. Thank you!");
+      expect(capturedBody).toBeDefined();
+
+      const payload = JSON.parse(capturedBody ?? "{}") as {
+        embeds?: Array<{ fields?: Array<{ name: string; value: string }> }>;
+      };
+      const versionField = payload.embeds?.[0]?.fields?.find((field) => field.name === "Clark Version");
+
+      expect(versionField?.value).toBe(version);
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 });

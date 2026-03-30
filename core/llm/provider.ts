@@ -26,6 +26,8 @@ export interface ToolUseContent {
   id: string;
   name: string;
   input: Record<string, unknown>;
+  /** Opaque provider metadata (e.g., Google's thoughtSignature). Echoed on round-trip. */
+  providerMetadata?: Record<string, unknown>;
 }
 
 export interface ToolResultContent {
@@ -70,7 +72,7 @@ export interface ToolInputSchema {
 export interface Tool {
   name: string;
   description: string;
-  parameters: ToolInputSchema;
+  inputSchema: ToolInputSchema;
 }
 
 // --- Streaming ---
@@ -84,6 +86,8 @@ export interface ToolUseDelta {
   type: "tool_use_start";
   id: string;
   name: string;
+  /** Opaque provider metadata (e.g., Google's thoughtSignature). */
+  providerMetadata?: Record<string, unknown>;
 }
 
 export interface ToolInputDelta {
@@ -123,6 +127,7 @@ const providers = new Map<string, (model?: string, options?: ProviderFactoryOpti
 
 export interface ProviderFactoryOptions {
   apiKey?: string;
+  cloudUrl?: string;
   maxTokens?: number;
   supportsVision?: boolean;
 }

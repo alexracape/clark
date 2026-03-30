@@ -34,15 +34,12 @@ import {
   onCanvasOpened,
   planFileDrop,
   planSendInput,
-  setOnboardingApiKey,
-  setOnboardingError,
-  setOnboardingOllamaModel,
-  setOnboardingOllamaModels,
-  setOnboardingProvider,
-  setOnboardingStepOllama,
-  setOnboardingSubmitting,
+  setOnboardingBetaCode,
+  setOnboardingUsageTracking,
   setOnboardingWorkspace,
   setOnboardingWorkspaceIsNew,
+  setOnboardingError,
+  setOnboardingSubmitting,
   setProviderInfo,
   setShowCanvasPicker,
   setShowContextPanel,
@@ -540,14 +537,21 @@ export function App() {
     if (!ob) return;
     setState((prev) => setOnboardingSubmitting(prev, true));
     try {
+      // Redeem beta code if provided
+      if (ob.betaCode.trim()) {
+        const result = (await invokeCommand("redeem_beta", {
+          code: ob.betaCode.trim(),
+        })) as { success?: boolean; error?: string };
+        if (!result.success) {
+          throw new Error(result.error ?? "Invalid beta code");
+        }
+      }
+
       await invokeCommand("complete_onboarding", {
-        provider: ob.selectedProvider,
-        apiKey: ob.apiKey || undefined,
         workspaceDir: ob.workspaceDir || undefined,
-        model: ob.selectedOllamaModel || undefined,
         workspaceIsNew: ob.workspaceIsNew,
+        usageTrackingEnabled: ob.usageTrackingEnabled,
       });
-      // Refresh status after onboarding
       const data = (await invokeCommand("get_status", {})) as { provider: string; model: string };
       setState((prev) => {
         let next = completeOnboarding(prev);
@@ -567,52 +571,7 @@ export function App() {
     try {
       return (await invokeCommand("pick_folder", {})) as string | null;
     } catch {
-      // User cancelled
       return null;
-    }
-  }, []);
-
-  const handleRefreshOllamaModels = useCallback(async () => {
-    try {
-      const data = (await invokeCommand("list_ollama_models", {})) as {
-        models: string[];
-        status: string;
-      };
-      setState((prev) => {
-        let next = setOnboardingOllamaModels(prev, data.models);
-        if (data.status === "not-running") {
-          next = setOnboardingError(next, "Ollama is not running. Start it with: ollama serve");
-        } else if (data.status === "no-models") {
-          next = setOnboardingError(next, "No models found. Pull one with: ollama pull llama3.2");
-        } else {
-          next = setOnboardingError(next, null);
-        }
-        return next;
-      });
-    } catch (err) {
-      setState((prev) => setOnboardingError(prev, String(err)));
-    }
-  }, []);
-
-  const handleOllamaNext = useCallback(async () => {
-    setState((prev) => setOnboardingStepOllama(prev));
-    // Auto-fetch models when entering the ollama setup step
-    try {
-      const data = (await invokeCommand("list_ollama_models", {})) as {
-        models: string[];
-        status: string;
-      };
-      setState((prev) => {
-        let next = setOnboardingOllamaModels(prev, data.models);
-        if (data.status === "not-running") {
-          next = setOnboardingError(next, "Ollama is not running. Start it with: ollama serve");
-        } else if (data.status === "no-models") {
-          next = setOnboardingError(next, "No models found. Pull one with: ollama pull llama3.2");
-        }
-        return next;
-      });
-    } catch {
-      // Will show instructions
     }
   }, []);
 
@@ -628,24 +587,12 @@ export function App() {
           state={state.onboarding}
           isTauri={isTauri}
           onNext={() => setState((prev) => onboardingNextStep(prev))}
-          onPrev={() => {
-            if (state.onboarding?.step === "ollama-setup") {
-              // Go back from ollama-setup to provider step
-              setState((prev) => prev.onboarding
-                ? { ...prev, onboarding: { ...prev.onboarding, step: "provider", error: null } }
-                : prev);
-            } else {
-              setState((prev) => onboardingPrevStep(prev));
-            }
-          }}
+          onPrev={() => setState((prev) => onboardingPrevStep(prev))}
+          onSetBetaCode={(code) => setState((prev) => setOnboardingBetaCode(prev, code))}
+          onSetUsageTrackingEnabled={(enabled) => setState((prev) => setOnboardingUsageTracking(prev, enabled))}
           onSetWorkspace={(dir) => setState((prev) => setOnboardingWorkspace(prev, dir))}
           onSetWorkspaceIsNew={(isNew) => setState((prev) => setOnboardingWorkspaceIsNew(prev, isNew))}
           onPickFolder={handlePickFolder}
-          onSetProvider={(p) => setState((prev) => setOnboardingProvider(prev, p))}
-          onSetApiKey={(k) => setState((prev) => setOnboardingApiKey(prev, k))}
-          onOllamaNext={handleOllamaNext}
-          onRefreshOllamaModels={handleRefreshOllamaModels}
-          onSelectOllamaModel={(m) => setState((prev) => setOnboardingOllamaModel(prev, m))}
           onComplete={handleOnboardingComplete}
         />
       </div>

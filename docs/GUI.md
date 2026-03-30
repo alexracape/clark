@@ -76,7 +76,7 @@ Proposed (GUI):
 **Competitive Positioning:**
 - Claude Code: CLI-only (developer-focused)
 - ChatGPT Desktop: Cloud-only, no local models
-- Clark GUI: Local-first, canvas-integrated, academic-focused **differentiation**
+- Clark GUI: Cloud-first with local model option, canvas-integrated, academic-focused **differentiation**
 
 **Decision:** GUI is necessary for product-market fit with target audience.
 
@@ -116,7 +116,7 @@ See [Phased Implementation Plan](#phased-implementation-plan) for details.
 │  │  Components:                              │ │
 │  │   - Chat UI (message list + input)        │ │
 │  │   - Canvas Panel (tldraw embedded)        │ │
-│  │   - Settings (API keys, model picker)     │ │
+│  │   - Settings (model picker)                │ │
 │  │   - Resource Library (drag-drop files)    │ │
 │  │                                           │ │
 │  └───────────────────────────────────────────┘ │
@@ -156,7 +156,7 @@ See [Phased Implementation Plan](#phased-implementation-plan) for details.
 2. Frontend calls `invoke('send_message', { text: '...' })`
 3. Tauri IPC forwards to Rust
 4. Rust forwards to Bun sidecar via HTTP POST
-5. Bun calls LLM provider (Anthropic API)
+5. Bun calls LLM provider (Clark Cloud proxy or Ollama)
 6. Response streams back: Bun → Rust → React (via WebSocket)
 
 **Why This Works for MVP:**
@@ -233,7 +233,7 @@ clark/
 ```
 clark/
 ├── core/                       # Shared business logic (UI-agnostic)
-│   ├── llm/                    # LLM providers (anthropic, openai, gemini, ollama)
+│   ├── llm/                    # LLM providers (clark-cloud, ollama)
 │   ├── mcp/                    # MCP server + tool implementations
 │   ├── canvas/                 # tldraw room management, broker
 │   ├── ocr/                    # PDF processing, transcription
@@ -372,7 +372,7 @@ clark/
 2. Create React components in `src-gui/`:
    - `Chat.tsx` - Message list + input
    - `Canvas.tsx` - Embed tldraw with `useSync`
-   - `Settings.tsx` - API key configuration
+   - `Settings.tsx` - Model and workspace configuration
 3. Connect to Bun backend via HTTP/WebSocket
 4. Implement IPC commands for file picker (via Tauri)
 
@@ -405,7 +405,7 @@ export function Canvas({ roomId }: { roomId: string }) {
 #### Week 3: Polish & Package
 
 **Tasks:**
-1. Add onboarding flow (first-run API key setup)
+1. Add onboarding flow (first-run welcome + beta code)
 2. Add app icons and branding
 3. Configure Tauri bundler for Mac/Windows
 4. Test build pipeline:
@@ -469,35 +469,20 @@ async fn start_server() {
 
 #### Stage 2.2: Move LLM API Calls to Rust
 
-**Replace:** `@anthropic-ai/sdk`, `openai` (TypeScript) with `reqwest` + `serde` (Rust)
+**Replace:** Clark Cloud TypeScript proxy client with `reqwest` + `serde` (Rust)
 
 **Implementation:**
 ```rust
-// src-tauri/src/llm/anthropic.rs
+// src-tauri/src/llm/cloud.rs
 use serde::{Deserialize, Serialize};
 use reqwest::Client;
 
-#[derive(Serialize)]
-struct AnthropicRequest {
-    model: String,
-    messages: Vec<Message>,
-    max_tokens: u32,
-}
-
-#[derive(Deserialize)]
-struct AnthropicResponse {
-    content: Vec<ContentBlock>,
-}
-
-pub async fn call_anthropic(
-    api_key: &str,
-    request: AnthropicRequest,
-) -> Result<AnthropicResponse, Error> {
+pub async fn call_cloud_proxy(
+    request: CloudRequest,
+) -> Result<CloudResponse, Error> {
     let client = Client::new();
     let res = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
+        .post("https://clark-cloud.vercel.app/api/chat")
         .json(&request)
         .send()
         .await?
@@ -508,7 +493,7 @@ pub async fn call_anthropic(
 }
 ```
 
-**Effort:** 5-7 days (for all 3 providers: Anthropic, OpenAI, Gemini)
+**Effort:** 3-5 days (clark-cloud proxy + ollama)
 **Benefit:** Faster API calls, lower memory, no SDK overhead
 
 ---

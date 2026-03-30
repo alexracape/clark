@@ -5,6 +5,8 @@ import { Markdown } from "@tiptap/markdown";
 import { WikiLink } from "../gui/src/extensions/WikiLink.ts";
 import { SmartPairs } from "../gui/src/extensions/SmartPairs.ts";
 import { EmbeddedImage } from "../gui/src/extensions/EmbeddedImage.ts";
+import { InlineMath } from "../gui/src/extensions/InlineMath.ts";
+import { BlockMath } from "../gui/src/extensions/BlockMath.ts";
 import { normalizeMarkdownEditorContent } from "../gui/src/editor-content.ts";
 import {
   getWikiLinkSuggestionItems,
@@ -25,6 +27,22 @@ function createMarkdownEditor(content = "") {
       WikiLink,
       SmartPairs,
       EmbeddedImage,
+    ],
+    content,
+    contentType: "markdown",
+  });
+}
+
+function createRichMarkdownEditor(content: string) {
+  return new Editor({
+    extensions: [
+      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      Markdown,
+      WikiLink,
+      SmartPairs,
+      EmbeddedImage,
+      InlineMath,
+      BlockMath,
     ],
     content,
     contentType: "markdown",
@@ -92,6 +110,93 @@ describe("wikilink autocomplete helpers", () => {
     expect(editor.getMarkdown()).toBe("");
   });
 
+  test("reloading transcript-style markdown does not crash the editor parser", () => {
+    const content = [
+      "# Attention Is All You Need",
+      "",
+      "![[Attention-Is-All-You-Need-img-0.jpeg]]",
+      "Figure 1: The Transformer - model architecture.",
+      "",
+      "#### 3.2.3 Applications of Attention in our Model",
+      "",
+      "$$",
+      "\\operatorname {A t t e n t i o n} (Q, K, V) = \\operatorname {s o f t m a x} \\left(\\frac {Q K ^ {T}}{\\sqrt {d _ {k}}}\\right) V \\tag {1}",
+      "$$",
+      "",
+      "| Layer Type | Complexity per Layer | Sequential Operations | Maximum Path Length |",
+      "| --- | --- | --- | --- |",
+      "| Self-Attention | O(n2·d) | O(1) | O(1) |",
+      "",
+      "- [6] Francois Chollet. Xception: Deep learning with depthwise separable convolutions.",
+    ].join("\n");
+
+    const editor = createRichMarkdownEditor(content);
+
+    expect(() => editor.state.doc.check()).not.toThrow();
+    expect(editor.getMarkdown()).toContain("Attention Is All You Need");
+    editor.commands.setContent(content, { contentType: "markdown" });
+    expect(() => editor.state.doc.check()).not.toThrow();
+    expect(editor.getMarkdown()).toContain("Attention Is All You Need");
+  });
+
+  test("reloading markdown with two distinct embedded images does not crash", () => {
+    const content = [
+      "# Figures",
+      "",
+      "![[figure-a.png]]",
+      "",
+      "![[figure-b.png]]",
+    ].join("\n");
+
+    const editor = createRichMarkdownEditor(content);
+
+    expect(() => editor.state.doc.check()).not.toThrow();
+    expect(editor.getMarkdown()).toBe(content);
+    editor.commands.setContent(content, { contentType: "markdown" });
+    expect(() => editor.state.doc.check()).not.toThrow();
+    expect(editor.getMarkdown()).toBe(content);
+  });
+
+  test("reloading markdown with repeated copies of the same embedded image does not crash", () => {
+    const content = [
+      "# Figures",
+      "",
+      "![[figure-a.png]]",
+      "",
+      "![[figure-a.png]]",
+    ].join("\n");
+
+    const editor = createRichMarkdownEditor(content);
+
+    expect(() => editor.state.doc.check()).not.toThrow();
+    expect(editor.getMarkdown()).toBe(content);
+    editor.commands.setContent(content, { contentType: "markdown" });
+    expect(() => editor.state.doc.check()).not.toThrow();
+    expect(editor.getMarkdown()).toBe(content);
+  });
+
+  test("reloading transcript-style captions around two embedded images keeps a valid document", () => {
+    const content = [
+      "# Figures",
+      "",
+      "![[figure-a.png]]",
+      "Scaled Dot-Product Attention",
+      "",
+      "![[figure-b.png]]",
+      "Multi-Head Attention",
+    ].join("\n");
+
+    const editor = createRichMarkdownEditor(content);
+
+    expect(() => editor.state.doc.check()).not.toThrow();
+    expect(editor.state.doc.toString()).toContain('image, paragraph("Scaled Dot-Product Attention"), image');
+
+    editor.commands.setContent(content, { contentType: "markdown" });
+
+    expect(() => editor.state.doc.check()).not.toThrow();
+    expect(editor.state.doc.toString()).toContain('image, paragraph("Scaled Dot-Product Attention"), image');
+  });
+
   test("filters note names by query", () => {
     const items = getWikiLinkSuggestionItems(
       [
@@ -144,11 +249,20 @@ describe("wikilink autocomplete helpers", () => {
     expect(editor.getMarkdown()).toBe("![[FullSizeRender.jpg]] ");
   });
 
+  test("converts standalone embedded-image markdown into a valid block image node", () => {
+    const editor = createMarkdownEditor("![[diagram.png]]");
+
+    expect(() => editor.state.doc.check()).not.toThrow();
+    expect(editor.state.doc.toString()).toBe("doc(image)");
+    expect(editor.getMarkdown()).toBe("![[diagram.png]]");
+  });
+
   test("keeps embed wikilinks as embeds rather than converting them to wiki-link marks", () => {
     const editor = createMarkdownEditor("![[diagram.png]]");
-    const firstNode = editor.getJSON().content?.[0]?.content?.[0];
+    const firstNode = editor.getJSON().content?.[0];
 
     expect(firstNode?.type).toBe("image");
+    expect(() => editor.state.doc.check()).not.toThrow();
     expect(editor.getMarkdown()).toBe("![[diagram.png]]");
   });
 });

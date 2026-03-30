@@ -5,6 +5,7 @@ interface ModelEntry {
   providerLabel: string;
   model: string;
   label: string;
+  contextWindow?: number;
 }
 
 interface ModelsResponse {
@@ -18,6 +19,12 @@ interface ModelPickerProps {
   invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
   onSelect: (provider: string, model: string) => void;
   onClose: () => void;
+}
+
+function formatContextWindow(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
+  return String(tokens);
 }
 
 export function ModelPicker({ invoke, onSelect, onClose }: ModelPickerProps) {
@@ -45,27 +52,33 @@ export function ModelPicker({ invoke, onSelect, onClose }: ModelPickerProps) {
     loadModels();
   }, [loadModels]);
 
-  // Build flat list of models + group structure for rendering
+  // Build flat list of models + group structure for rendering.
+  // Cloud models are grouped by their underlying provider (e.g. "Anthropic", "OpenAI")
+  // parsed from the providerLabel field. Ollama models are grouped separately.
   const { flatModels, groups } = useMemo(() => {
     if (!data) return { flatModels: [] as ModelEntry[], groups: [] as { label: string; available: boolean; models: ModelEntry[] }[] };
 
     const groupMap = new Map<string, ModelEntry[]>();
     for (const model of data.models) {
-      const existing = groupMap.get(model.provider);
+      // Group key: use providerLabel for display grouping
+      const groupKey = model.providerLabel;
+      const existing = groupMap.get(groupKey);
       if (existing) {
         existing.push(model);
       } else {
-        groupMap.set(model.provider, [model]);
+        groupMap.set(groupKey, [model]);
       }
     }
 
     const groups: { label: string; available: boolean; models: ModelEntry[] }[] = [];
     const flatModels: ModelEntry[] = [];
 
-    for (const [provider, models] of groupMap) {
+    for (const [label, models] of groupMap) {
+      // A group is available if its provider is available
+      const providerKey = models[0]?.provider ?? "";
       groups.push({
-        label: models[0]?.providerLabel ?? provider,
-        available: !!data.providerAvailability[provider],
+        label,
+        available: !!data.providerAvailability[providerKey],
         models,
       });
       flatModels.push(...models);
@@ -241,6 +254,11 @@ export function ModelPicker({ invoke, onSelect, onClose }: ModelPickerProps) {
                         {current && <span className="picker-item__dot" />}
                         {entry.label}
                       </span>
+                      {entry.contextWindow != null && (
+                        <span className="picker-item__context">
+                          {formatContextWindow(entry.contextWindow)}
+                        </span>
+                      )}
                     </div>
                   );
                 })}

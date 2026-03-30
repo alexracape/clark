@@ -1,0 +1,12 @@
+{
+  "functions": {
+    "api/chat.ts": { "maxDuration": 60 },
+    "api/ocr.ts": { "maxDuration": 60 },
+    "api/embed.ts": { "maxDuration": 30 },
+    "api/feedback.ts": { "maxDuration": 10 },
+    "api/telemetry.ts": { "maxDuration": 10 },
+    "api/auth/beta.ts": { "maxDuration": 10 },
+    "api/auth/status.ts": { "maxDuration": 10 },
+    "api/models.ts": { "maxDuration": 15 }
+  }
+}

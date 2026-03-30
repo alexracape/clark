@@ -1,0 +1,70 @@
+/**
+ * Cloud embedding provider — routes embedding requests through the Clark Cloud proxy.
+ *
+ * Uses OpenAI text-embedding-3-small (1536 dimensions) server-side.
+ * The embedding index (SQLite) stays local — only vector computation is remote.
+ */
+
+import type { EmbeddingProvider } from "./provider.ts";
+
+function isNumberArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "number" && Number.isFinite(item));
+}
+
+function extractEmbeddings(
+  result: unknown,
+): number[][] | null {
+  if (!result || typeof result !== "object") return null;
+
+  const standardEmbeddings = (result as { embeddings?: unknown }).embeddings;
+  if (Array.isArray(standardEmbeddings) && standardEmbeddings.every(isNumberArray)) {
+    return standardEmbeddings;
+  }
+
+  const openAIStyleData = (result as { data?: unknown }).data;
+  if (!Array.isArray(openAIStyleData)) return null;
+
+  const embeddings = openAIStyleData.map((item) =>
+    (item && typeof item === "object" ? (item as { embedding?: unknown }).embedding : null)
+  );
+
+  return embeddings.every(isNumberArray) ? embeddings : null;
+}
+
+export class CloudEmbeddingProvider implements EmbeddingProvider {
+  readonly name = "clark-cloud";
+  readonly modelId = "text-embedding-3-small";
+  readonly dimensions = 1536;
+
+  constructor(
+    private cloudUrl: string,
+    private clientId: string,
+  ) {}
+
+  async embed(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) return [];
+
+    const res = await fetch(`${this.cloudUrl}/api/embed`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Clark-Client-Id": this.clientId,
+      },
+      body: JSON.stringify({ texts }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Cloud embedding error (${res.status}): ${text}`);
+    }
+
+    const result = await res.json() as unknown;
+    const embeddings = extractEmbeddings(result);
+    if (!embeddings) {
+      throw new Error("Cloud embedding error: invalid response shape from /api/embed");
+    }
+
+    return embeddings;
+  }
+}

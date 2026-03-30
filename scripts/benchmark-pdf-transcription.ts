@@ -9,6 +9,8 @@ import { setProviderOptions } from "../core/llm/provider.ts";
 import { checkPopplerAvailable, getPopplerInstallInstructions } from "../core/ocr/pdf-renderer.ts";
 import type { OCRProvider } from "../core/ocr/provider.ts";
 import { VisionOCRProvider } from "../core/ocr/provider.ts";
+import { CloudOCRProvider } from "../core/ocr/cloud.ts";
+import { resolveCloudConfig } from "../core/config.ts";
 import { runBenchmark } from "../core/ocr/benchmark.ts";
 import { transcribePDFToMarkdown } from "../core/ocr/transcribe.ts";
 
@@ -210,7 +212,13 @@ async function buildOCRProvider(args: ParsedArgs): Promise<OCRProvider> {
   const config = await loadConfig();
   applyConfigToEnv(config);
 
-  const providerName = resolveProviderName(args.provider ?? config.provider ?? "anthropic");
+  const providerName = resolveProviderName(args.provider ?? config.provider ?? "clark-cloud");
+
+  if (providerName === "clark-cloud") {
+    const cloud = resolveCloudConfig(config);
+    return new CloudOCRProvider(cloud.url, cloud.clientId);
+  }
+
   const modelName = args.model
     ?? process.env.CLARK_MODEL
     ?? config.model
@@ -221,10 +229,6 @@ async function buildOCRProvider(args: ParsedArgs): Promise<OCRProvider> {
   }
 
   const apiKey = await resolveApiKey(providerName, config);
-  if (providerName !== "ollama" && !apiKey) {
-    throw new Error(`Missing API key for provider "${providerName}". Set it in env or Clark config.`);
-  }
-
   setProviderOptions(providerName, {
     ...(apiKey && apiKey !== "not-required" ? { apiKey } : {}),
     ...(config.maxTokens ? { maxTokens: config.maxTokens } : {}),
@@ -235,7 +239,7 @@ async function buildOCRProvider(args: ParsedArgs): Promise<OCRProvider> {
 }
 
 function resolveProviderName(raw: string): ProviderName {
-  const valid = new Set<ProviderName>(["anthropic", "openai", "gemini", "ollama"]);
+  const valid = new Set<ProviderName>(["clark-cloud", "ollama"]);
   if (!valid.has(raw as ProviderName)) {
     throw new Error(`Unsupported provider "${raw}". Expected one of: ${[...valid].join(", ")}`);
   }

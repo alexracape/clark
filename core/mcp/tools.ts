@@ -75,6 +75,13 @@ export interface ToolsConfig {
   getSearchIndex?: () => EmbeddingIndex | null;
 }
 
+function invalidInputResult(message: string): ToolResult {
+  return {
+    content: [{ type: "text", text: `Error: ${message}` }],
+    isError: true,
+  };
+}
+
 /**
  * Find a transcript file for a given source file (PDF or image).
  * Checks common locations based on vault conventions.
@@ -256,7 +263,10 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
       },
       handler: async (input) => {
         const vaultDir = currentVaultDir();
-        const query = input.query as string;
+        const query = input.query;
+        if (typeof query !== "string") {
+          return invalidInputResult("query must be a string.");
+        }
         const embeddingProvider = config.getEmbeddingProvider?.() ?? null;
         const searchIndex = config.getSearchIndex?.() ?? null;
 

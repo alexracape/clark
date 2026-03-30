@@ -17,7 +17,11 @@ import { loadEffectiveSystemPrompt } from "./system-prompt.ts";
 import { CanvasSessionManager } from "../../core/app/canvas-session.ts";
 import { createSlashCommandHandler } from "../../core/app/command-router.ts";
 import { VisionOCRProvider } from "../../core/ocr/provider.ts";
+import { CloudOCRProvider } from "../../core/ocr/cloud.ts";
 import { checkPopplerAvailable, getPopplerInstallInstructions } from "../../core/ocr/pdf-renderer.ts";
+import { CloudEmbeddingProvider } from "../../core/embedding/cloud.ts";
+import { resolveCloudConfig } from "../../core/config.ts";
+import { version } from "../../core/version.ts";
 import { getWorkspaceDir } from "../../core/workspace.ts";
 
 function getLanIP(): string {
@@ -47,14 +51,20 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
     bindHost: "0.0.0.0",
   });
 
-  // Non-blocking poppler check — warn early if PDF features won't work
-  checkPopplerAvailable().then((available) => {
-    if (!available) {
-      console.error(
-        `\n⚠  poppler not found — PDF processing will not be available.\n   ${getPopplerInstallInstructions()}\n   See: https://alex.racape.com/clark/dependencies.html#pdf-processing-with-popp\n`,
-      );
-    }
-  });
+  // Resolve cloud config if using clark-cloud provider
+  const isCloud = activeConfig.provider === "clark-cloud";
+  const cloudConfig = isCloud ? resolveCloudConfig(activeConfig) : undefined;
+
+  // Non-blocking poppler check — only relevant for non-cloud users
+  if (!isCloud) {
+    checkPopplerAvailable().then((available) => {
+      if (!available) {
+        console.error(
+          `\n⚠  poppler not found — PDF processing will not be available.\n   ${getPopplerInstallInstructions()}\n   See: https://alex.racape.com/clark/dependencies.html#pdf-processing-with-popp\n`,
+        );
+      }
+    });
+  }
 
   const conversation = new Conversation();
 
@@ -63,7 +73,7 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
     workspaceDir,
   );
   let currentSessionPath: string | null = await sessionManager.createSession(
-    activeConfig.provider ?? "anthropic",
+    activeConfig.provider ?? "clark-cloud",
     modelName,
   ).catch(() => null);
   let sessionHasMessages = false;
@@ -97,6 +107,9 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
     getSaveCanvas: () => canvas.saveCanvas,
     onProgress: (msg) => progressCallback?.(msg),
     getOCRProvider: () => {
+      if (cloudConfig) {
+        return new CloudOCRProvider(cloudConfig.url, cloudConfig.secret, cloudConfig.clientId);
+      }
       if (!currentProvider.supportsVision) return null;
       return new VisionOCRProvider(currentProvider);
     },
@@ -114,6 +127,7 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
     },
     conversation,
     getProvider: () => currentProvider,
+    cloudConfig,
   });
 
   const history = new CommandHistory();
@@ -156,4 +170,18 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
       },
     }),
   );
+
+  // Fire-and-forget telemetry ping for cloud users
+  if (cloudConfig && process.env.CLARK_TELEMETRY !== "false") {
+    fetch(`${cloudConfig.url}/api/telemetry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientId: cloudConfig.clientId,
+        version,
+        provider: "clark-cloud",
+      }),
+      signal: AbortSignal.timeout(3000),
+    }).catch(() => {}); // silent failure
+  }
 }

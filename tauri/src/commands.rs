@@ -230,11 +230,12 @@ pub async fn get_onboarding_status(
 
 #[tauri::command]
 pub async fn complete_onboarding(
-    provider: String,
+    provider: Option<String>,
     api_key: Option<String>,
     workspace_dir: Option<String>,
     model: Option<String>,
     workspace_is_new: Option<bool>,
+    usage_tracking_enabled: Option<bool>,
     sidecar: State<'_, Sidecar>,
 ) -> Result<serde_json::Value, String> {
     sidecar_post(
@@ -246,6 +247,7 @@ pub async fn complete_onboarding(
             "workspaceDir": workspace_dir,
             "model": model,
             "workspaceIsNew": workspace_is_new,
+            "usageTrackingEnabled": usage_tracking_enabled,
         }),
     )
     .await
@@ -350,6 +352,14 @@ pub async fn write_clipboard_text(
     app.clipboard()
         .write_text(text)
         .map_err(|e| format!("Failed to write clipboard text: {}", e))
+}
+
+#[tauri::command]
+pub async fn redeem_beta(
+    code: String,
+    sidecar: State<'_, Sidecar>,
+) -> Result<serde_json::Value, String> {
+    sidecar_post(&sidecar, "/api/redeem-beta", serde_json::json!({ "code": code })).await
 }
 
 #[tauri::command]

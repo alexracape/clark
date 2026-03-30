@@ -138,6 +138,7 @@ pub fn run() {
             commands::read_file_content,
             commands::write_file_content,
             commands::rename_file,
+            commands::redeem_beta,
             commands::list_sessions,
             commands::load_session,
         ])

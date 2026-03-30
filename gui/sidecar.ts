@@ -39,17 +39,22 @@ import { Conversation } from "../core/llm/messages.ts";
 import { createProvider } from "../core/llm/index.ts";
 import { setProviderOptions } from "../core/llm/provider.ts";
 import type { LLMProvider } from "../core/llm/provider.ts";
-import { getDefaultModelForProvider, getCloudModelEntries, getProviderCatalogEntry, isApiKeyProvider } from "../core/llm/catalog.ts";
+import { getDefaultModelForProvider, getFallbackCloudEntries, cloudModelsToPickerEntries } from "../core/llm/catalog.ts";
+import type { CloudModelEntry, ModelPickerEntry } from "../core/llm/catalog.ts";
 import { createTools } from "../core/mcp/index.ts";
 import type { ToolDefinition } from "../core/mcp/tools.ts";
-import { loadConfig, saveConfig, resolveApiKey, setProviderApiKey, needsOnboarding } from "../core/config.ts";
+import { loadConfig, saveConfig, resolveApiKey, needsOnboarding } from "../core/config.ts";
 import type { ClarkConfig } from "../core/config.ts";
 import { scaffoldLibrary, clarkCanvasDirPath } from "../core/library.ts";
 import { loadEffectiveSystemPrompt } from "../cli/bootstrap/system-prompt.ts";
 import { CanvasSessionManager } from "../core/app/canvas-session.ts";
 import { createSlashCommandHandler } from "../core/app/command-router.ts";
 import { VisionOCRProvider } from "../core/ocr/provider.ts";
+import { CloudOCRProvider } from "../core/ocr/cloud.ts";
 import { OllamaEmbeddingProvider, type EmbeddingProvider } from "../core/embedding/provider.ts";
+import { CloudEmbeddingProvider } from "../core/embedding/cloud.ts";
+import { resolveCloudConfig } from "../core/config.ts";
+import { version } from "../core/version.ts";
 import { EmbeddingIndex } from "../core/embedding/index.ts";
 import { SessionManager } from "../core/sessions/index.ts";
 import { clarkSessionsDirPath } from "../core/library.ts";
@@ -85,6 +90,42 @@ let sessionManager: SessionManager | null = null;
 let currentSessionPath: string | null = null;
 let sessionHasMessages = false;
 
+/** Cached cloud model catalog from the proxy */
+let cachedCloudModels: ModelPickerEntry[] | null = null;
+let cloudModelsCacheTime = 0;
+const CLOUD_MODELS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Fetch available models from the Clark Cloud proxy.
+ * Returns cached data if fresh, falls back to hardcoded list on error.
+ */
+async function fetchCloudModels(cfg: ClarkConfig): Promise<ModelPickerEntry[]> {
+  const now = Date.now();
+  if (cachedCloudModels && (now - cloudModelsCacheTime) < CLOUD_MODELS_CACHE_TTL_MS) {
+    return cachedCloudModels;
+  }
+
+  const cloudConfig = cfg.cloud ?? {};
+  const cloudUrl = cloudConfig.url ?? process.env.CLARK_CLOUD_URL ?? "https://clark-cloud.vercel.app";
+
+  try {
+    const res = await fetch(`${cloudUrl}/api/models`, {
+      signal: AbortSignal.timeout(8_000),
+    });
+
+    if (!res.ok) throw new Error(`Cloud proxy returned ${res.status}`);
+
+    const body = await res.json() as { models: CloudModelEntry[] };
+    cachedCloudModels = cloudModelsToPickerEntries(body.models);
+    cloudModelsCacheTime = now;
+    return cachedCloudModels;
+  } catch (err) {
+    console.error("[sidecar] Failed to fetch cloud models, using fallback:", err);
+    // Return cached data if available (even if stale), otherwise fallback
+    return cachedCloudModels ?? getFallbackCloudEntries();
+  }
+}
+
 /** Connected WebSocket clients for streaming events */
 const streamClients = new Set<{ send(data: string): void }>();
 const streamListeners = new Set<(event: SidecarStreamEvent) => void>();
@@ -108,6 +149,22 @@ export function subscribeStreamEvents(listener: (event: SidecarStreamEvent) => v
   return () => streamListeners.delete(listener);
 }
 
+function rebuildSlashCommandHandler(): void {
+  const cloudCfg = providerName === "clark-cloud" ? resolveCloudConfig(config) : undefined;
+  onSlashCommand = createSlashCommandHandler({
+    canvas,
+    getExportDir: () => exportDir,
+    setExportDir: (dir: string) => { exportDir = dir; },
+    persistExportDir: async (dir: string) => {
+      const currentConfig = await loadConfig();
+      await saveConfig({ ...currentConfig, pdfExportDir: dir });
+    },
+    conversation,
+    getProvider: () => provider,
+    cloudConfig: cloudCfg,
+  });
+}
+
 // --- Bootstrap ---
 
 function getLanIP(): string {
@@ -127,7 +184,7 @@ async function resolveProviderFromConfig(cfg: ClarkConfig): Promise<{
   modelName: string;
   provider: LLMProvider;
 }> {
-  const pName = cfg.provider ?? "anthropic";
+  const pName = cfg.provider ?? "clark-cloud";
   let mName =
     cfg.model
     ?? getDefaultModelForProvider(pName);
@@ -143,14 +200,22 @@ async function resolveProviderFromConfig(cfg: ClarkConfig): Promise<{
     }
   }
 
-  // Keep the sidecar bootable even when no cloud API keys are configured.
-  // This allows the GUI model picker to load and collect missing keys.
-  const apiKey = await resolveApiKey(pName, cfg);
+  const providerOptions: { apiKey?: string; cloudUrl?: string; maxTokens?: number } = {};
+  if (cfg.maxTokens) providerOptions.maxTokens = cfg.maxTokens;
 
-  setProviderOptions(pName, {
-    ...(apiKey ? { apiKey } : {}),
-    ...(cfg.maxTokens ? { maxTokens: cfg.maxTokens } : {}),
-  });
+  if (pName === "clark-cloud") {
+    const cloud = resolveCloudConfig(cfg);
+    // The cloud provider expects the anonymous client ID in the apiKey slot.
+    providerOptions.apiKey = cloud.clientId;
+    providerOptions.cloudUrl = cloud.url;
+  } else {
+    // Keep the sidecar bootable even when no local API keys are configured.
+    // This allows the GUI model picker to load and collect missing keys.
+    const apiKey = await resolveApiKey(pName, cfg);
+    if (apiKey) providerOptions.apiKey = apiKey;
+  }
+
+  setProviderOptions(pName, providerOptions);
 
   try {
     return {
@@ -195,12 +260,22 @@ function setupEmbedding(cfg: ClarkConfig, wsDir: string): void {
   embeddingProvider = null;
   searchIndex = null;
 
-  if (cfg.embedding?.provider === "ollama" && cfg.embedding.model) {
+  const embeddingCfg = cfg.embedding?.provider ?? (cfg.provider === "clark-cloud" ? "clark-cloud" : undefined);
+
+  if (embeddingCfg === "clark-cloud") {
+    try {
+      const cloud = resolveCloudConfig(cfg);
+      embeddingProvider = new CloudEmbeddingProvider(cloud.url, cloud.clientId);
+      searchIndex = new EmbeddingIndex(join(wsDir, "Clark", "search.db"));
+    } catch {
+      embeddingProvider = null;
+      searchIndex = null;
+    }
+  } else if (embeddingCfg === "ollama" && cfg.embedding?.model) {
     try {
       embeddingProvider = new OllamaEmbeddingProvider(cfg.embedding.model);
       searchIndex = new EmbeddingIndex(join(wsDir, "Clark", "search.db"));
     } catch {
-      // Embedding setup failed — fall back to keyword search
       embeddingProvider = null;
       searchIndex = null;
     }
@@ -261,6 +336,10 @@ async function bootstrap(): Promise<void> {
       broadcast({ type: "system_message", text: msg });
     },
     getOCRProvider: () => {
+      if (providerName === "clark-cloud") {
+        const cloud = resolveCloudConfig(config);
+        return new CloudOCRProvider(cloud.url, cloud.clientId);
+      }
       if (!provider.supportsVision) return null;
       return new VisionOCRProvider(provider);
     },
@@ -275,17 +354,24 @@ async function bootstrap(): Promise<void> {
     maxToolCallsPerTurn: config.maxToolCallsPerTurn,
   });
 
-  onSlashCommand = createSlashCommandHandler({
-    canvas,
-    getExportDir: () => exportDir,
-    setExportDir: (dir: string) => { exportDir = dir; },
-    persistExportDir: async (dir: string) => {
-      const currentConfig = await loadConfig();
-      await saveConfig({ ...currentConfig, pdfExportDir: dir });
-    },
-    conversation,
-    getProvider: () => provider,
-  });
+  rebuildSlashCommandHandler();
+
+  // Fire-and-forget telemetry ping for cloud users
+  const cloudCfg = providerName === "clark-cloud" ? resolveCloudConfig(config) : undefined;
+  if (cloudCfg && process.env.CLARK_TELEMETRY !== "false") {
+    fetch(`${cloudCfg.url}/api/telemetry`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Clark-Client-Id": cloudCfg.clientId,
+      },
+      body: JSON.stringify({
+        version,
+        provider: "clark-cloud",
+      }),
+      signal: AbortSignal.timeout(3000),
+    }).catch(() => {}); // silent failure
+  }
 }
 
 // --- Helpers ---
@@ -443,9 +529,11 @@ function runIngestionInBackground(fileName: string, destPath: string, ingestKey:
     })
     .join("\n");
 
-  const ocrProvider = provider.supportsVision
-    ? new VisionOCRProvider(provider)
-    : null;
+  const ocrProvider = providerName === "clark-cloud"
+    ? new CloudOCRProvider(resolveCloudConfig(config).url, resolveCloudConfig(config).clientId)
+    : provider.supportsVision
+      ? new VisionOCRProvider(provider)
+      : null;
 
   runIngestionPipeline({
     filePath: join(workspaceDir, destPath),
@@ -457,6 +545,7 @@ function runIngestionInBackground(fileName: string, destPath: string, ingestKey:
     systemPrompt: systemPromptText,
     conversationContext: contextMessages,
     ocrProvider,
+    fileRouting: config.fileRouting,
     onProgress: (stage, message) => {
       broadcast({ type: "ingest_progress", fileName, stage, message });
     },
@@ -604,6 +693,7 @@ async function handleRenameFile(req: Request): Promise<Response> {
 /** GET /api/status — Current provider/model info */
 function handleStatus(): Response {
   return jsonResponse({
+    version,
     provider: providerName,
     model: modelName,
     workspace: workspaceDir,
@@ -665,15 +755,10 @@ async function handleProviderSwitch(req: Request): Promise<Response> {
 
   try {
     let newConfig = await loadConfig();
-    if (body.apiKey && body.provider) {
-      if (!isApiKeyProvider(body.provider)) {
-        return jsonResponse({ error: `Provider "${body.provider}" does not accept API keys.` }, 400);
-      }
-      newConfig = await setProviderApiKey(body.provider, body.apiKey, newConfig);
-    }
     if (body.provider) newConfig.provider = body.provider;
     if (body.model) newConfig.model = body.model;
     await saveConfig(newConfig);
+    config = newConfig;
 
     const resolved = await resolveProviderFromConfig(newConfig);
     provider = resolved.provider;
@@ -694,6 +779,10 @@ async function handleProviderSwitch(req: Request): Promise<Response> {
         broadcast({ type: "system_message", text: msg });
       },
       getOCRProvider: () => {
+        if (providerName === "clark-cloud") {
+          const cloud = resolveCloudConfig(config);
+          return new CloudOCRProvider(cloud.url, cloud.clientId);
+        }
         if (!provider.supportsVision) return null;
         return new VisionOCRProvider(provider);
       },
@@ -701,6 +790,7 @@ async function handleProviderSwitch(req: Request): Promise<Response> {
       getSearchIndex: () => searchIndex,
     });
     engine.setTools(tools);
+    rebuildSlashCommandHandler();
 
     broadcast({ type: "status_update", provider: providerName, model: modelName });
     return jsonResponse({ provider: providerName, model: modelName });
@@ -726,20 +816,16 @@ function handleHistory(): Response {
 
 /** GET /api/models — Available models with provider availability */
 async function handleModels(): Promise<Response> {
-  const cloudModels = getCloudModelEntries();
-
-  // Check which providers have API keys
-  const providerAvailability: Record<string, boolean> = {};
   const currentConfig = await loadConfig();
-  for (const entry of cloudModels) {
-    if (!(entry.provider in providerAvailability)) {
-      const key = await resolveApiKey(entry.provider, currentConfig);
-      providerAvailability[entry.provider] = !!key;
-    }
-  }
+  const cloudModels = await fetchCloudModels(currentConfig);
+
+  // Clark Cloud is always "available" (managed server-side, no local API key)
+  const providerAvailability: Record<string, boolean> = {
+    "clark-cloud": true,
+  };
 
   // Check for Ollama models
-  let ollamaModels: Array<{ provider: string; providerLabel: string; model: string; label: string }> = [];
+  let ollamaModels: ModelPickerEntry[] = [];
   let ollamaStatus = "not-running";
   try {
     const { listLocalModels } = await import("../core/llm/ollama.ts");
@@ -749,8 +835,8 @@ async function handleModels(): Promise<Response> {
     } else {
       ollamaStatus = "running";
       ollamaModels = models.map((m) => ({
-        provider: "ollama",
-        providerLabel: getProviderCatalogEntry("ollama")?.label ?? "Ollama (Local)",
+        provider: "ollama" as const,
+        providerLabel: "Ollama (Local)",
         model: m.name,
         label: m.name,
       }));
@@ -880,6 +966,10 @@ async function handleUpdateSettings(req: Request): Promise<Response> {
           broadcast({ type: "system_message", text: msg });
         },
         getOCRProvider: () => {
+          if (providerName === "clark-cloud") {
+            const cloud = resolveCloudConfig(config);
+            return new CloudOCRProvider(cloud.url, cloud.clientId);
+          }
           if (!provider.supportsVision) return null;
           return new VisionOCRProvider(provider);
         },
@@ -935,32 +1025,130 @@ async function handleOnboardingStatus(): Promise<Response> {
   return jsonResponse({ needsOnboarding: needs });
 }
 
+/** POST /api/redeem-beta — Redeem a beta code via the cloud proxy */
+async function handleRedeemBeta(req: Request): Promise<Response> {
+  const body = await req.json() as { code?: string };
+  if (!body.code) {
+    return jsonResponse({ error: "Missing beta code" }, 400);
+  }
+
+  let cfg = await loadConfig();
+  const cloud = resolveCloudConfig(cfg);
+  if (cfg.cloud?.clientId !== cloud.clientId) {
+    cfg = {
+      ...cfg,
+      cloud: { ...cfg.cloud, clientId: cloud.clientId },
+    };
+    await saveConfig(cfg);
+  }
+
+  try {
+    const res = await fetch(`${cloud.url}/api/auth/beta`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Clark-Client-Id": cloud.clientId,
+      },
+      body: JSON.stringify({ code: body.code }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    const text = await res.text();
+    let result: { success?: boolean; tier?: string; error?: string } = {};
+    try {
+      result = JSON.parse(text);
+    } catch {
+      console.error("[sidecar] Beta endpoint returned non-JSON:", res.status, text.slice(0, 200));
+      return jsonResponse({ success: false, error: `Cloud service unavailable (${res.status})` }, 502);
+    }
+
+    if (res.ok && result.success) {
+      // Persist betaRedeemed flag
+      const updated = await loadConfig();
+      updated.cloud = {
+        ...updated.cloud,
+        clientId: cloud.clientId,
+        betaRedeemed: true,
+      };
+      await saveConfig(updated);
+      config = updated;
+      return jsonResponse({ success: true, tier: result.tier });
+    }
+
+    console.warn("[sidecar] Beta redemption rejected", {
+      status: res.status,
+      error: result.error ?? null,
+    });
+    return jsonResponse({ success: false, error: result.error ?? "Invalid beta code" });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[sidecar] Beta redemption failed", { error: msg });
+    return jsonResponse({ success: false, error: `Cloud service unavailable: ${msg}` });
+  }
+}
+
+/** GET /api/auth-status — Check auth tier via the cloud proxy */
+async function handleAuthStatus(): Promise<Response> {
+  const cfg = await loadConfig();
+  const cloud = resolveCloudConfig(cfg);
+
+  try {
+    const res = await fetch(`${cloud.url}/api/auth/status`, {
+      method: "GET",
+      headers: { "X-Clark-Client-Id": cloud.clientId },
+      signal: AbortSignal.timeout(5_000),
+    });
+
+    const result = await res.json() as { tier?: string };
+    const tier = result.tier ?? "anonymous";
+
+    // If server says anonymous but we think we're beta, clear the flag
+    if (tier === "anonymous" && cfg.cloud?.betaRedeemed) {
+      const updated = await loadConfig();
+      if (updated.cloud) {
+        updated.cloud.betaRedeemed = false;
+      }
+      await saveConfig(updated);
+    }
+
+    return jsonResponse({ tier });
+  } catch {
+    // Can't reach cloud — return cached status
+    return jsonResponse({ tier: cfg.cloud?.betaRedeemed ? "beta" : "anonymous" });
+  }
+}
+
 /** POST /api/complete-onboarding — Save provider, API key, workspace, and mark onboarding done */
 async function handleCompleteOnboarding(req: Request): Promise<Response> {
   const body = await req.json() as {
-    provider: string;
+    provider?: string;
     apiKey?: string;
     workspaceDir?: string;
     model?: string;
     workspaceIsNew?: boolean;
+    usageTrackingEnabled?: boolean;
   };
-  if (!body.provider) {
-    return jsonResponse({ error: "Missing 'provider' field" }, 400);
-  }
 
   try {
     let newConfig = await loadConfig();
 
-    // Save API key to system secret store (sets secretStoreBackend on config)
-    if (body.apiKey && isApiKeyProvider(body.provider)) {
-      newConfig = await setProviderApiKey(body.provider, body.apiKey, newConfig);
+    // Default to clark-cloud if no provider specified
+    const selectedProvider = body.provider || "clark-cloud";
+
+    // Generate cloud clientId for cloud users
+    if (selectedProvider === "clark-cloud") {
+      const cloud = resolveCloudConfig(newConfig);
+      newConfig.cloud = { ...newConfig.cloud, clientId: cloud.clientId };
     }
 
     // Set provider and model. Use explicit model if provided (e.g. Ollama),
     // otherwise fall back to catalog default.
-    newConfig.provider = body.provider;
-    newConfig.model = body.model || getDefaultModelForProvider(body.provider);
+    newConfig.provider = selectedProvider;
+    newConfig.model = body.model || getDefaultModelForProvider(selectedProvider);
     newConfig.hasCompletedOnboarding = true;
+    if (typeof body.usageTrackingEnabled === "boolean") {
+      newConfig.usageTrackingEnabled = body.usageTrackingEnabled;
+    }
 
     // Set pdfExportDir: for new workspaces use Resources/PDFs, otherwise workspace root
     const targetWorkspace = body.workspaceDir || workspaceDir;
@@ -971,6 +1159,7 @@ async function handleCompleteOnboarding(req: Request): Promise<Response> {
       newConfig.pdfExportDir = newConfig.pdfExportDir ?? targetWorkspace;
     }
     await saveConfig(newConfig);
+    config = newConfig;
 
     // Update module-level state so /api/files reflects the new workspace immediately
     workspaceDir = targetWorkspace;
@@ -984,6 +1173,8 @@ async function handleCompleteOnboarding(req: Request): Promise<Response> {
     provider = resolved.provider;
     providerName = resolved.providerName;
     modelName = resolved.modelName;
+    setupEmbedding(config, workspaceDir);
+    rebuildSlashCommandHandler();
 
     broadcast({ type: "status_update", provider: providerName, model: modelName });
     return jsonResponse({ ok: true, provider: providerName, model: modelName });
@@ -1087,6 +1278,12 @@ export async function createSidecarServer(): Promise<{
       }
       if (url.pathname === "/api/complete-onboarding" && req.method === "POST") {
         return await handleCompleteOnboarding(req);
+      }
+      if (url.pathname === "/api/redeem-beta" && req.method === "POST") {
+        return await handleRedeemBeta(req);
+      }
+      if (url.pathname === "/api/auth-status" && req.method === "GET") {
+        return await handleAuthStatus();
       }
       if (url.pathname === "/api/sessions" && req.method === "GET") {
         return await handleListSessions();

@@ -9,6 +9,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { createTools, type ToolsConfig, type ToolDefinition } from "./tools.ts";
+import { version } from "../version.ts";
 
 export interface MCPServerOptions extends ToolsConfig {
   /** Run over stdio (default) or return the server instance for in-process use */
@@ -21,7 +22,7 @@ export interface MCPServerOptions extends ToolsConfig {
 export function createMCPServer(options: MCPServerOptions) {
   const server = new McpServer({
     name: "clark",
-    version: "0.1.0",
+    version,
   });
 
   const tools = createTools(options);

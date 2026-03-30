@@ -2,7 +2,7 @@ import { createProvider } from "../../core/llm/index.ts";
 import { setProviderOptions } from "../../core/llm/provider.ts";
 import type { LLMProvider } from "../../core/llm/provider.ts";
 import type { ClarkConfig } from "../../core/config.ts";
-import { resolveApiKey } from "../../core/config.ts";
+import { resolveApiKey, resolveCloudConfig, saveConfig } from "../../core/config.ts";
 import { getDefaultModelForProvider } from "../../core/llm/catalog.ts";
 import type { CliArgs } from "./args.ts";
 
@@ -13,7 +13,7 @@ export interface ProviderResolution {
 }
 
 export async function resolveProvider(config: ClarkConfig, args: CliArgs): Promise<ProviderResolution> {
-  const providerName = args.provider ?? config.provider ?? "anthropic";
+  const providerName = args.provider ?? config.provider ?? "clark-cloud";
 
   let modelName = args.model
     ?? process.env.CLARK_MODEL
@@ -63,10 +63,35 @@ export async function resolveProvider(config: ClarkConfig, args: CliArgs): Promi
     }
   }
 
-  const resolvedModelName = modelName ?? getDefaultModelForProvider("anthropic");
-  if (!resolvedModelName) {
-    throw new Error("No default model configured for fallback provider \"anthropic\".");
+  if (providerName === "clark-cloud") {
+    // Resolve cloud config and ensure clientId is persisted
+    const { url, clientId } = resolveCloudConfig(config);
+    if (!config.cloud?.clientId) {
+      config.cloud = { ...config.cloud, url, clientId };
+      await saveConfig(config);
+    }
+
+    const resolvedModel = modelName ?? "claude-sonnet-4-6";
+
+    // Pass cloud config through provider options
+    // clientId is passed via the apiKey slot for convenience
+    setProviderOptions("clark-cloud", {
+      apiKey: clientId,
+      ...(config.maxTokens ? { maxTokens: config.maxTokens } : {}),
+    });
+
+    // Set cloud URL in env for the provider to pick up
+    process.env.CLARK_CLOUD_URL = url;
+
+    return {
+      providerName,
+      modelName: resolvedModel,
+      provider: createProvider("clark-cloud", resolvedModel),
+    };
   }
+
+  // Legacy/Ollama path
+  const resolvedModelName = modelName ?? getDefaultModelForProvider("clark-cloud") ?? "claude-sonnet-4-6";
   const apiKey = await resolveApiKey(providerName, config);
   if (providerName !== "ollama" && !apiKey) {
     throw new Error(`Missing API key for provider "${providerName}". Configure one in onboarding or /model.`);
