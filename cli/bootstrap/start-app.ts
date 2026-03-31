@@ -86,12 +86,31 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
     } catch { /* best-effort */ }
   }
 
+  let titleGenerated = false;
+
   function onAfterTurn(newMessages: Message[]): void {
     if (!currentSessionPath) return;
     sessionManager.appendMessages(currentSessionPath, newMessages).catch((err) => {
       console.error("[session] Failed to save messages:", err);
     });
     sessionHasMessages = true;
+
+    // Generate a title after the first turn
+    if (!titleGenerated) {
+      titleGenerated = true;
+      const firstUserText = newMessages
+        .filter((m) => m.role === "user")
+        .flatMap((m) => m.content.filter((c) => c.type === "text"))
+        .map((c) => (c as { text: string }).text)
+        .join(" ")
+        .slice(0, 200);
+      if (firstUserText) {
+        sessionManager
+          .generateTitle(currentSessionPath, currentProvider, firstUserText)
+          .then((newPath) => { currentSessionPath = newPath; })
+          .catch(() => {});
+      }
+    }
   }
 
   // Mutable ref for progress callback — set by the App component once mounted
@@ -166,6 +185,7 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
         await cleanupEmptySession();
         currentSessionPath = path;
         sessionHasMessages = true;
+        titleGenerated = true; // Don't re-title loaded sessions
         return result;
       },
     }),

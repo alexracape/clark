@@ -12,9 +12,7 @@ GUI Related
 - /note should auto focus on new note title to rename
 - /feedback + enter should not send blank message - cleanly enter
 - Graph view in bottom left of explorer
-- Issue in resolve links in read tool:
-  [embed] [[Resources/Images/FullSizeRender.jpg]] → (not found)
-  [embed] [[FullSizeRender.jpg]] → Resources/Images/FullSizeRender.jpg
+
 
 
 Core Related
@@ -33,6 +31,9 @@ Core Related
 - specify no H1 + Title duplication in prompts
   - this applies to ingestion and using defined structures
   - should follow obsidian standard where the filename is displayed at the top of the doc as if it were H1
+- Issue in resolve links in read tool:
+  [embed] [[Resources/Images/FullSizeRender.jpg]] → (not found)
+  [embed] [[FullSizeRender.jpg]] → Resources/Images/FullSizeRender.jpg
 
 Low Priority
 - Build out telemetry

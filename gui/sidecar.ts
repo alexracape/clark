@@ -89,6 +89,7 @@ let searchIndex: EmbeddingIndex | null = null;
 let sessionManager: SessionManager | null = null;
 let currentSessionPath: string | null = null;
 let sessionHasMessages = false;
+let titleGenerated = false;
 
 /** Cached cloud model catalog from the proxy */
 let cachedCloudModels: ModelPickerEntry[] | null = null;
@@ -448,6 +449,23 @@ async function handleChat(req: Request): Promise<Response> {
       if (newMessages.length > 0) {
         await sessionManager.appendMessages(currentSessionPath, newMessages).catch(() => {});
         sessionHasMessages = true;
+
+        // Generate a title after the first turn
+        if (!titleGenerated) {
+          titleGenerated = true;
+          const firstUserText = newMessages
+            .filter((m) => m.role === "user")
+            .flatMap((m) => m.content.filter((c) => c.type === "text"))
+            .map((c) => (c as { text: string }).text)
+            .join(" ")
+            .slice(0, 200);
+          if (firstUserText) {
+            sessionManager
+              .generateTitle(currentSessionPath, provider, firstUserText)
+              .then((newPath) => { currentSessionPath = newPath; })
+              .catch(() => {});
+          }
+        }
       }
     }
   });
@@ -1006,6 +1024,7 @@ async function handleLoadSession(req: Request): Promise<Response> {
     await cleanupEmptySession();
     currentSessionPath = body.path;
     sessionHasMessages = true;
+    titleGenerated = true; // Don't re-title loaded sessions
 
     return jsonResponse({ ok: true, messages, date: frontmatter.created });
   } catch (err) {

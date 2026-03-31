@@ -34,6 +34,7 @@ export interface SessionFrontmatter {
   created: string;
   provider: string;
   model: string;
+  title?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +179,7 @@ function parseFrontmatter(text: string): SessionFrontmatter {
     created: get("created"),
     provider: get("provider"),
     model: get("model"),
+    title: get("title") || undefined,
   };
 }
 

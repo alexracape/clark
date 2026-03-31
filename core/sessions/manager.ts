@@ -9,15 +9,24 @@
  * after each turn, so crashes only lose the in-progress turn.
  */
 
-import { mkdir, readdir, appendFile } from "node:fs/promises";
-import { join } from "node:path";
-import type { Message } from "../llm/provider.ts";
+import { mkdir, readdir, appendFile, rename, readFile, writeFile } from "node:fs/promises";
+import { join, dirname, basename } from "node:path";
+import type { LLMProvider, Message } from "../llm/provider.ts";
 import {
   serializeMessages,
   deserializeSession,
   parseFirstUserMessage,
   type SessionFrontmatter,
 } from "./format.ts";
+
+/** Load the title generation prompt from core/prompts/title.md */
+let titlePromptCache: string | null = null;
+async function loadTitlePrompt(): Promise<string> {
+  if (titlePromptCache) return titlePromptCache;
+  const promptPath = join(import.meta.dir, "..", "prompts", "title.md");
+  titlePromptCache = await Bun.file(promptPath).text();
+  return titlePromptCache;
+}
 
 export interface SessionInfo {
   path: string;
@@ -27,6 +36,8 @@ export interface SessionInfo {
   sessionId: string;
   provider: string;
   model: string;
+  /** LLM-generated session title */
+  title?: string;
   /** Preview of the first user message (up to 80 chars) */
   firstUserMessage: string;
 }
@@ -93,10 +104,11 @@ export class SessionManager {
           sessions.push({
             path: filePath,
             filename,
-            date: filename.replace(/(-\d+)?\.md$/, ""),
+            date: frontmatter.created ? frontmatter.created.split("T")[0]! : filename.replace(/(-\d+)?\.md$/, ""),
             sessionId: frontmatter.sessionId,
             provider: frontmatter.provider,
             model: frontmatter.model,
+            title: frontmatter.title,
             firstUserMessage,
           });
         } catch {
@@ -116,6 +128,51 @@ export class SessionManager {
   ): Promise<{ frontmatter: SessionFrontmatter; messages: Message[] }> {
     const content = await Bun.file(filePath).text();
     return deserializeSession(content);
+  }
+
+  /**
+   * Generate a short title for a session using the LLM provider, then rename
+   * the session file and update its frontmatter. Returns the new file path,
+   * or the original path if title generation fails.
+   */
+  async generateTitle(
+    filePath: string,
+    provider: LLMProvider,
+    firstUserMessage: string,
+  ): Promise<string> {
+    try {
+      const systemPrompt = await loadTitlePrompt();
+      const messages: Message[] = [
+        { role: "user", content: [{ type: "text", text: firstUserMessage }] },
+      ];
+
+      let title = "";
+      for await (const chunk of provider.chat(messages, [], systemPrompt)) {
+        if (chunk.type === "text_delta") title += chunk.text;
+      }
+
+      title = title.trim().replace(/[^\w\s'-]/g, "").trim();
+      if (!title || title.length > 60) return filePath;
+
+      // Slugify for filename: "Linear Algebra Review" → "Linear-Algebra-Review"
+      const slug = title.replace(/\s+/g, "-");
+      const dir = dirname(filePath);
+      const oldName = basename(filePath, ".md");
+      const newName = `${oldName} ${slug}`;
+      const newPath = join(dir, `${newName}.md`);
+
+      // Update frontmatter to include title
+      const content = await Bun.file(filePath).text();
+      const updated = content.replace(
+        /^(---\n[\s\S]*?)(---\n)/,
+        `$1title: ${title}\n$2`,
+      );
+      await writeFile(filePath, updated);
+      await rename(filePath, newPath);
+      return newPath;
+    } catch {
+      return filePath; // Silently fall back to date-only name
+    }
   }
 
   /** Find the next available session file path for a given date string. */
