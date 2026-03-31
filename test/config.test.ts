@@ -8,8 +8,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   DEFAULT_MAX_TOOL_CALLS_PER_TURN,
+  DEFAULT_CLOUD_URL,
   needsOnboarding,
   resolveApiKey,
+  resolveCloudConfig,
   resolveMaxToolCallsPerTurn,
   applyConfigToEnv,
   loadConfig,
@@ -118,5 +120,23 @@ describe("saveConfig / loadConfig (file I/O)", () => {
 
     const loaded = await loadConfig(tmpConfigPath);
     expect(loaded).toEqual(testConfig);
+  });
+
+  test("loadConfig normalizes legacy cloud URLs", async () => {
+    await saveConfig({
+      cloud: {
+        url: "https://clark-cloud.vercel.app/",
+      },
+    }, tmpConfigPath);
+
+    const loaded = await loadConfig(tmpConfigPath);
+    expect(loaded.cloud?.url).toBe(DEFAULT_CLOUD_URL);
+  });
+});
+
+describe("resolveCloudConfig", () => {
+  test("falls back to the current production cloud URL", () => {
+    const resolved = resolveCloudConfig({});
+    expect(resolved.url).toBe(DEFAULT_CLOUD_URL);
   });
 });

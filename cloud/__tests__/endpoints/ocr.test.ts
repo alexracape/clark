@@ -170,13 +170,17 @@ describe("POST /api/ocr", () => {
 
   test("returns 502 when Mistral API returns an error", async () => {
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = async (input: any) => {
-      const url = typeof input === "string" ? input : input.url;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
       if (url.includes("api.mistral.ai")) {
         return new Response("Service Unavailable", { status: 503 });
       }
       return originalFetch(input);
-    };
+    }) as typeof fetch;
     try {
       const res = await handler(
         clientRequest("/api/ocr", { body: { image: "data" } }),

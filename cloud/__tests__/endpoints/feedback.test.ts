@@ -76,13 +76,17 @@ describe("POST /api/feedback", () => {
   test("returns 502 when Discord webhook fails", async () => {
     // Temporarily replace the fetch mock with one that returns an error
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = async (input: any) => {
-      const url = typeof input === "string" ? input : input.url;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
       if (url.includes("discord.com")) {
         return new Response("Internal Server Error", { status: 500 });
       }
       return originalFetch(input);
-    };
+    }) as typeof fetch;
     try {
       const res = await handler(
         clientRequest("/api/feedback", {

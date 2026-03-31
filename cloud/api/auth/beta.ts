@@ -12,6 +12,12 @@ import { errorResponse, methodNotAllowed } from "../../lib/errors.ts";
 
 const limiter = createRateLimiter(3, "60 s");
 
+function getSubmittedCode(body: unknown): string {
+  if (!body || typeof body !== "object") return "";
+  const { code } = body as { code?: unknown };
+  return typeof code === "string" ? code.trim() : "";
+}
+
 export default {
   async fetch(req: Request): Promise<Response> {
     if (req.method !== "POST") return methodNotAllowed();
@@ -25,7 +31,7 @@ export default {
     const rateLimited = await checkRateLimit(limiter, clientId);
     if (rateLimited) return rateLimited;
 
-    let body: { code?: string };
+    let body: unknown;
     try {
       body = await req.json();
     } catch {
@@ -38,7 +44,7 @@ export default {
       return errorResponse(500, "Server misconfigured: missing BETA_CODE");
     }
 
-    const submittedCode = typeof body.code === "string" ? body.code.trim() : "";
+    const submittedCode = getSubmittedCode(body);
     if (!submittedCode || submittedCode !== betaCode) {
       console.warn("[auth/beta] invalid beta code", {
         clientId,

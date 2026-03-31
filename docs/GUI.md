@@ -482,7 +482,7 @@ pub async fn call_cloud_proxy(
 ) -> Result<CloudResponse, Error> {
     let client = Client::new();
     let res = client
-        .post("https://clark-cloud.vercel.app/api/chat")
+        .post("https://clark-steel.vercel.app/api/chat")
         .json(&request)
         .send()
         .await?

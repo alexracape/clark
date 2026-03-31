@@ -32,8 +32,8 @@ describe("rate-limit", () => {
     // This tests that the factory function works without needing a real Redis connection.
     // The limiter object is created lazily — Redis is only contacted on .limit() calls.
     const limiter = createRateLimiter(10, "60 s");
-    expect(limiter).toBeDefined();
-    expect(typeof limiter.limit).toBe("function");
+    expect(limiter).not.toBeNull();
+    expect(typeof limiter!.limit).toBe("function");
   });
 
   test("createRateLimiter returns null when Upstash env is missing", () => {
@@ -49,7 +49,7 @@ describe("rate-limit", () => {
     expect(result).not.toBeNull();
     expect(result!.status).toBe(500);
 
-    const body = await result!.json();
+    const body = await result!.json() as { error: string };
     expect(body.error).toContain("missing Upstash Redis configuration");
   });
 
@@ -85,7 +85,7 @@ describe("rate-limit", () => {
     expect(result).not.toBeNull();
     expect(result!.status).toBe(429);
 
-    const body = await result!.json();
+    const body = await result!.json() as { error: string; retryAfter: number };
     expect(body.error).toBe("Rate limit exceeded");
     expect(typeof body.retryAfter).toBe("number");
     expect(result!.headers.get("Retry-After")).toBeTruthy();
@@ -102,7 +102,7 @@ describe("rate-limit", () => {
     expect(result).not.toBeNull();
     expect(result!.status).toBe(500);
 
-    const body = await result!.json();
+    const body = await result!.json() as { error: string };
     expect(body.error).toContain("Rate limiting unavailable");
   });
 });

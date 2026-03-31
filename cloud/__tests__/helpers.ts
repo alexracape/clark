@@ -140,6 +140,7 @@ export function anonRequest(
 // ---------------------------------------------------------------------------
 
 const _originalFetch = globalThis.fetch;
+type FetchInput = string | URL | Request;
 
 /**
  * Install a fetch interceptor that routes upstream API calls to mocks
@@ -151,12 +152,12 @@ export function useFetchMock(
   interceptor: (url: string, init?: RequestInit) => Response | Promise<Response> | null,
 ) {
   beforeEach(() => {
-    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    globalThis.fetch = (async (input: FetchInput, init?: RequestInit): Promise<Response> => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       const result = interceptor(url, init);
       if (result !== null) return result instanceof Promise ? result : result;
       return _originalFetch(input, init);
-    };
+    }) as typeof fetch;
   });
 
   afterEach(() => {

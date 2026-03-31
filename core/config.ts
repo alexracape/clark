@@ -13,6 +13,10 @@ import { mkdir } from "node:fs/promises";
 const DEFAULT_CONFIG_DIR = join(homedir(), ".clark");
 const DEFAULT_CONFIG_PATH = join(DEFAULT_CONFIG_DIR, "config.json");
 export const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 8;
+export const DEFAULT_CLOUD_URL = "https://clark-steel.vercel.app";
+const LEGACY_CLOUD_URLS = new Set([
+  "https://clark-cloud.vercel.app",
+]);
 
 export interface ClarkConfig {
   provider?: string;
@@ -76,7 +80,19 @@ export async function loadConfig(path?: string): Promise<ClarkConfig> {
   try {
     const file = Bun.file(targetPath);
     if (await file.exists()) {
-      return await file.json();
+      const config = await file.json() as ClarkConfig;
+      const cloudUrl = normalizeCloudUrl(config.cloud?.url);
+      if (config.cloud?.url === cloudUrl) return config;
+      const { url: _legacyUrl, ...restCloud } = config.cloud ?? {};
+      return {
+        ...config,
+        cloud: config.cloud
+          ? {
+              ...restCloud,
+              ...(cloudUrl ? { url: cloudUrl } : {}),
+            }
+          : config.cloud,
+      };
     }
   } catch {
     // Corrupt or missing config — start fresh
@@ -125,6 +141,14 @@ export function applyConfigToEnv(config: ClarkConfig) {
   }
 }
 
+export function normalizeCloudUrl(url?: string): string | undefined {
+  if (typeof url !== "string") return undefined;
+  const trimmed = url.trim().replace(/\/+$/, "");
+  if (!trimmed) return undefined;
+  if (LEGACY_CLOUD_URLS.has(trimmed)) return DEFAULT_CLOUD_URL;
+  return trimmed;
+}
+
 /**
  * Check if onboarding is needed.
  *
@@ -142,7 +166,9 @@ export async function needsOnboarding(config: ClarkConfig): Promise<boolean> {
  * Generates a clientId on first call if one doesn't exist.
  */
 export function resolveCloudConfig(config: ClarkConfig): { url: string; clientId: string } {
-  const url = config.cloud?.url ?? process.env.CLARK_CLOUD_URL ?? "https://clark-cloud.vercel.app";
+  const url = normalizeCloudUrl(config.cloud?.url)
+    ?? normalizeCloudUrl(process.env.CLARK_CLOUD_URL)
+    ?? DEFAULT_CLOUD_URL;
   let clientId = config.cloud?.clientId;
   if (!clientId) {
     clientId = crypto.randomUUID();

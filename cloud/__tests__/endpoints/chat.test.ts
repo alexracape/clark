@@ -232,13 +232,17 @@ describe("POST /api/chat", () => {
 
   test("streams error event when upstream throws", async () => {
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = async (input: any) => {
-      const url = typeof input === "string" ? input : input.url;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
       if (url.includes("ai-gateway.vercel.sh")) {
         throw new Error("Network connection refused");
       }
       return originalFetch(input);
-    };
+    }) as typeof fetch;
     try {
       const res = await handler(
         clientRequest("/api/chat", { body: validBody }),

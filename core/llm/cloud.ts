@@ -19,6 +19,7 @@ import type {
 } from "./provider.ts";
 import { registerProvider } from "./provider.ts";
 import { extractProvider, DEFAULT_CLOUD_MODEL } from "./catalog.ts";
+import { DEFAULT_CLOUD_URL, normalizeCloudUrl } from "../config.ts";
 
 /**
  * Ensure a model ID is in Gateway "provider/model" format.
@@ -135,7 +136,9 @@ export class CloudLLMProvider implements LLMProvider {
 
 // Register the cloud provider
 registerProvider("clark-cloud", (model, options) => {
-  const cloudUrl = options?.cloudUrl ?? process.env.CLARK_CLOUD_URL ?? "https://clark-cloud.vercel.app";
+  const cloudUrl = normalizeCloudUrl(options?.cloudUrl)
+    ?? normalizeCloudUrl(process.env.CLARK_CLOUD_URL)
+    ?? DEFAULT_CLOUD_URL;
   const clientId = options?.apiKey ?? ""; // clientId is passed via the apiKey option slot
 
   const resolvedModel = model ?? DEFAULT_CLOUD_MODEL;

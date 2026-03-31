@@ -51,6 +51,40 @@ export interface CloudModelEntry {
   tags: string[];
 }
 
+function getTags(model: GatewayModel): string[] {
+  return Array.isArray(model.tags)
+    ? model.tags.filter((tag): tag is string => typeof tag === "string")
+    : [];
+}
+
+function getProvider(model: GatewayModel): string | null {
+  if (typeof model.owned_by === "string" && model.owned_by.trim()) {
+    return model.owned_by.trim();
+  }
+
+  const provider = model.id.split("/")[0];
+  return provider ? provider : null;
+}
+
+function toCloudModelEntry(model: GatewayModel): CloudModelEntry | null {
+  const tags = getTags(model);
+  const provider = getProvider(model);
+
+  if (model.type !== "language") return null;
+  if (!provider) return null;
+  if (!tags.includes("tool-use") || !tags.includes("vision")) return null;
+  if (!ALLOWED_PROVIDERS.has(provider)) return null;
+
+  return {
+    id: model.id,
+    name: model.name,
+    provider,
+    contextWindow: model.context_window,
+    maxTokens: model.max_tokens,
+    tags,
+  };
+}
+
 async function fetchModelsFromGateway(): Promise<CloudModelEntry[]> {
   const res = await fetch(GATEWAY_MODELS_URL, {
     signal: AbortSignal.timeout(10_000),
@@ -63,43 +97,11 @@ async function fetchModelsFromGateway(): Promise<CloudModelEntry[]> {
   const body = await res.json() as { data: GatewayModel[] };
   const models = body.data;
 
-  return models
-    .filter((m) => {
-      const tags = Array.isArray(m.tags)
-        ? m.tags.filter((tag): tag is string => typeof tag === "string")
-        : [];
-      const provider = typeof m.owned_by === "string" && m.owned_by
-        ? m.owned_by
-        : m.id.split("/")[0];
-
-      // Must be a language model
-      if (m.type !== "language") return false;
-      // Must support tool use and vision
-      if (!tags.includes("tool-use") || !tags.includes("vision")) return false;
-      // Must be from an allowed provider
-      if (!ALLOWED_PROVIDERS.has(provider)) return false;
-      return true;
-    })
-    .map((m) => ({
-      tags: Array.isArray(m.tags)
-        ? m.tags.filter((tag): tag is string => typeof tag === "string")
-        : [],
-      provider: typeof m.owned_by === "string" && m.owned_by
-        ? m.owned_by
-        : m.id.split("/")[0],
-      id: m.id,
-      name: m.name,
-      contextWindow: m.context_window,
-      maxTokens: m.max_tokens,
-    }))
-    .map((m) => ({
-      id: m.id,
-      name: m.name,
-      provider: m.provider,
-      contextWindow: m.contextWindow,
-      maxTokens: m.maxTokens,
-      tags: m.tags,
-    }));
+  return models.reduce<CloudModelEntry[]>((entries, model) => {
+    const entry = toCloudModelEntry(model);
+    if (entry) entries.push(entry);
+    return entries;
+  }, []);
 }
 
 async function getCachedModels(): Promise<CloudModelEntry[] | null> {

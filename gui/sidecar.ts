@@ -105,8 +105,7 @@ async function fetchCloudModels(cfg: ClarkConfig): Promise<ModelPickerEntry[]> {
     return cachedCloudModels;
   }
 
-  const cloudConfig = cfg.cloud ?? {};
-  const cloudUrl = cloudConfig.url ?? process.env.CLARK_CLOUD_URL ?? "https://clark-cloud.vercel.app";
+  const cloudUrl = resolveCloudConfig(cfg).url;
 
   try {
     const res = await fetch(`${cloudUrl}/api/models`, {
