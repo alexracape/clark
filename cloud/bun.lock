@@ -5,7 +5,10 @@
     "": {
       "name": "clark-cloud",
       "dependencies": {
+        "@ai-sdk/anthropic": "^3.0.64",
         "@ai-sdk/gateway": "^3.0.82",
+        "@ai-sdk/google": "^3.0.54",
+        "@ai-sdk/openai": "^3.0.49",
         "@upstash/ratelimit": "^2.0.0",
         "@upstash/redis": "^1.34.0",
         "ai": "^6.0.140",
@@ -17,7 +20,13 @@
     },
   },
   "packages": {
+    "@ai-sdk/anthropic": ["@ai-sdk/anthropic@3.0.64", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@ai-sdk/provider-utils": "4.0.21" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-rwLi/Rsuj2pYniQXIrvClHvXDzgM4UQHHnvHTWEF14efnlKclG/1ghpNC+adsRujAbCTr6gRsSbDE2vEqriV7g=="],
+
     "@ai-sdk/gateway": ["@ai-sdk/gateway@3.0.82", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@ai-sdk/provider-utils": "4.0.21", "@vercel/oidc": "3.1.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-ddB9FrkHZank1zyx13vypU0RrPjsXWj3NvlsrJ4yFQnrpR+xh48W4wO9ijndUueBsaADjlvMz2Ghv8yq5tZGCQ=="],
+
+    "@ai-sdk/google": ["@ai-sdk/google@3.0.54", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@ai-sdk/provider-utils": "4.0.21" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-EgYYdA2LpHZefLDU/FIpmeTlL5Hi4WKQZY3nACMh0wVhrS1fAvlfrdwnD1G4ISCOKWMWrMcRZX9ubs3NM/KHfA=="],
+
+    "@ai-sdk/openai": ["@ai-sdk/openai@3.0.49", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@ai-sdk/provider-utils": "4.0.21" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-U2f0pCyNn/jQH3wjgxr8o9VvCkuDFTtXbIhbFFtgXqCzMbed6rBnvzQcAMEK0/Pa44byL9zfcvCOFOflvkRA8w=="],
 
     "@ai-sdk/provider": ["@ai-sdk/provider@3.0.8", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-oGMAgGoQdBXbZqNG0Ze56CHjDZ1IDYOwGYxYjO5KLSlz5HiNQ9udIXsPZ61VWaHGZ5XW/jyjmr6t2xz2jGVwbQ=="],
 

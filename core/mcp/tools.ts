@@ -73,6 +73,12 @@ export interface ToolsConfig {
   getEmbeddingProvider?: () => EmbeddingProvider | null;
   /** Dynamic getter for the embedding search index. Returns null if not configured. */
   getSearchIndex?: () => EmbeddingIndex | null;
+  /**
+   * When true, include the local DuckDuckGo websearch tool (for Ollama/local providers).
+   * When false or omitted, include a lightweight websearch stub — the cloud proxy
+   * replaces it with native provider search (Anthropic, OpenAI, Google) or Perplexity.
+   */
+  useLocalWebSearch?: boolean;
 }
 
 function invalidInputResult(message: string): ToolResult {
@@ -1019,81 +1025,6 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
       },
     },
 
-    {
-      name: "websearch",
-      description:
-        "Search the web using DuckDuckGo. Returns titles, URLs, and snippets from search results. Use this when local notes don't contain the information needed.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          query: {
-            type: "string",
-            description: "Search query to send to DuckDuckGo",
-          },
-          max_results: {
-            type: "number",
-            description:
-              "Maximum number of results to return (default: 5, max: 10)",
-          },
-        },
-        required: ["query"],
-      },
-      annotations: {
-        readOnlyHint: true,
-        openWorldHint: true,
-      },
-      handler: async (input) => {
-        const query = (input.query as string).trim();
-
-        if (!query) {
-          return {
-            content: [
-              { type: "text", text: "Error: search query cannot be empty." },
-            ],
-            isError: true,
-          };
-        }
-
-        const maxResults = Math.min((input.max_results as number) ?? 5, 10);
-
-        try {
-          const results = await performWebSearch(query, maxResults);
-
-          if (results.length === 0) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `No web results found for query: "${query}"`,
-                },
-              ],
-              isError: false,
-            };
-          }
-
-          const formatted = results
-            .map(
-              (r, i) =>
-                `${i + 1}. **${r.title}**\n   URL: ${r.url}\n   ${r.snippet}`,
-            )
-            .join("\n\n");
-
-          const summary = `Found ${results.length} web result${results.length > 1 ? "s" : ""} for "${query}":\n\n`;
-          return {
-            content: [{ type: "text", text: summary + formatted }],
-            isError: false,
-          };
-        } catch (err) {
-          return {
-            content: [
-              { type: "text", text: `Error performing web search: ${err}` },
-            ],
-            isError: true,
-          };
-        }
-      },
-    },
-
     // --- OCR tools ---
 
     {
@@ -1262,6 +1193,110 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
       },
     },
   ];
+
+  // Web search: local DuckDuckGo scraper for Ollama, lightweight stub for cloud providers
+  if (config.useLocalWebSearch) {
+    tools.push({
+      name: "websearch",
+      description:
+        "Search the web using DuckDuckGo. Returns titles, URLs, and snippets from search results. Use this when local notes don't contain the information needed.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search query to send to DuckDuckGo",
+          },
+          max_results: {
+            type: "number",
+            description:
+              "Maximum number of results to return (default: 5, max: 10)",
+          },
+        },
+        required: ["query"],
+      },
+      annotations: {
+        readOnlyHint: true,
+        openWorldHint: true,
+      },
+      handler: async (input) => {
+        const query = (input.query as string).trim();
+
+        if (!query) {
+          return {
+            content: [
+              { type: "text", text: "Error: search query cannot be empty." },
+            ],
+            isError: true,
+          };
+        }
+
+        const maxResults = Math.min((input.max_results as number) ?? 5, 10);
+
+        try {
+          const results = await performWebSearch(query, maxResults);
+
+          if (results.length === 0) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `No web results found for query: "${query}"`,
+                },
+              ],
+              isError: false,
+            };
+          }
+
+          const formatted = results
+            .map(
+              (r, i) =>
+                `${i + 1}. **${r.title}**\n   URL: ${r.url}\n   ${r.snippet}`,
+            )
+            .join("\n\n");
+
+          const summary = `Found ${results.length} web result${results.length > 1 ? "s" : ""} for "${query}":\n\n`;
+          return {
+            content: [{ type: "text", text: summary + formatted }],
+            isError: false,
+          };
+        } catch (err) {
+          return {
+            content: [
+              { type: "text", text: `Error performing web search: ${err}` },
+            ],
+            isError: true,
+          };
+        }
+      },
+    });
+  } else {
+    // Cloud provider stub — the tool definition is sent to the cloud proxy which
+    // replaces it with native provider search. The handler is never called locally.
+    tools.push({
+      name: "websearch",
+      description:
+        "Search the web for current information. Use this when local notes don't contain the information needed.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search query",
+          },
+        },
+        required: ["query"],
+      },
+      annotations: {
+        readOnlyHint: true,
+        openWorldHint: true,
+      },
+      handler: async () => ({
+        content: [{ type: "text" as const, text: "Web search is handled by the cloud proxy." }],
+        isError: true,
+      }),
+    });
+  }
 
   return tools.map((tool) => withToolDebugLogging(tool));
 }

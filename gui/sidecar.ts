@@ -345,6 +345,7 @@ async function bootstrap(): Promise<void> {
     },
     getEmbeddingProvider: () => embeddingProvider,
     getSearchIndex: () => searchIndex,
+    useLocalWebSearch: providerName === "ollama",
   });
 
   engine = new ConversationEngine({

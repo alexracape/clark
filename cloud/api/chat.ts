@@ -10,6 +10,9 @@
  */
 
 import { streamText, gateway, jsonSchema } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { openai } from "@ai-sdk/openai";
+import { google } from "@ai-sdk/google";
 import { authenticate, requireTier } from "../lib/auth.ts";
 import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.ts";
 import { errorResponse, methodNotAllowed } from "../lib/errors.ts";
@@ -105,16 +108,36 @@ function convertMessages(messages: any[]): any[] {
 
 /**
  * Convert Clark's Tool[] format to AI SDK v6 tool definitions.
+ * If the tool list contains "websearch", it is removed from the converted
+ * tools — native provider search is injected separately in the streamText call.
  */
 function convertTools(tools: any[]): Record<string, any> {
   const result: Record<string, any> = {};
   for (const tool of tools) {
+    if (tool.name === "websearch") continue; // handled by injectWebSearchTool
     result[tool.name] = {
       description: tool.description,
       inputSchema: jsonSchema(tool.inputSchema),
     };
   }
   return result;
+}
+
+/**
+ * Returns native provider web search tools based on the model's provider.
+ * Falls back to Perplexity Search (provider-agnostic) for unsupported providers.
+ */
+function getWebSearchTools(provider: string): Record<string, any> {
+  switch (provider) {
+    case "anthropic":
+      return { web_search: anthropic.tools.webSearch_20250305() };
+    case "openai":
+      return { web_search: openai.tools.webSearch({}) };
+    case "google":
+      return { google_search: google.tools.googleSearch({}) };
+    default:
+      return { perplexity_search: gateway.tools.perplexitySearch() };
+  }
 }
 
 export default {
@@ -149,11 +172,18 @@ export default {
       const convertedMessages = convertMessages(messages);
       const convertedTools = tools?.length ? convertTools(tools) : undefined;
 
+      // Inject native web search tools if the client sent a "websearch" tool
+      const hasWebSearch = tools?.some((t: any) => t.name === "websearch");
+      const provider = gatewayModelId.split("/")[0] ?? "";
+      const webSearchTools = hasWebSearch ? getWebSearchTools(provider) : {};
+
+      const allTools = { ...convertedTools, ...webSearchTools };
+
       const result = streamText({
         model: gateway(gatewayModelId),
         messages: convertedMessages,
         system: systemPrompt,
-        ...(convertedTools ? { tools: convertedTools } : {}),
+        ...(Object.keys(allTools).length > 0 ? { tools: allTools } : {}),
         maxOutputTokens: body.maxTokens ?? 4096,
         abortSignal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       });

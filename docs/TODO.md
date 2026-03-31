@@ -16,10 +16,6 @@ GUI Related
 
 
 Core Related
-- Keep only most recent canvas screenshot in context
-  - We currently keep all saved snapshots even though the old ones are outdated and induce context bloat
-- Rename sessions or do this automatically
-  - Use LLM generated name with a lightweight prompt and rename based on the first conversation turn
 - Bash tool instead of so many MCP tools
   - Reduce redundant file call tools with one standard bash tool
   - Follow industry standards from Anthropic and Google for how to best set this up
@@ -44,6 +40,7 @@ Low Priority
 - Add lines to the pdf pages optionally
 - Fix windows tests (3)
 - Transition architecture to Rust
+- Keep only most recent canvas screenshot in context
 
 - **Office hours + class notes user stories**
   - Write concrete user journeys (student, TA/instructor) for office hours and notes workflows.

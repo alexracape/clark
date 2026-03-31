@@ -563,15 +563,47 @@ describe("MCP Tools", () => {
     });
   });
 
-  describe("websearch", () => {
+  describe("websearch (cloud stub)", () => {
+    test("cloud stub websearch tool is included by default", () => {
+      const tool = findTool("websearch");
+      expect(tool).toBeDefined();
+      expect(tool.description).toContain("Search the web");
+    });
+
+    test("cloud stub handler returns error (not meant for local dispatch)", async () => {
+      const tool = findTool("websearch");
+      const result = await tool.handler({ query: "test" });
+      expect(result.isError).toBe(true);
+      const text = (result.content[0] as { type: "text"; text: string }).text;
+      expect(text).toContain("cloud proxy");
+    });
+  });
+
+  describe("websearch (local DuckDuckGo)", () => {
     const originalFetch = globalThis.fetch;
+    let localTools: ToolDefinition[];
+
+    beforeEach(() => {
+      localTools = createTools({
+        getBroker: () => broker,
+        vaultDir: TEST_VAULT,
+        getSaveCanvas: () => null,
+        useLocalWebSearch: true,
+      });
+    });
 
     afterEach(() => {
       globalThis.fetch = originalFetch;
     });
 
+    function findLocalTool(name: string): ToolDefinition {
+      const tool = localTools.find((t) => t.name === name);
+      if (!tool) throw new Error(`Tool not found: ${name}`);
+      return tool;
+    }
+
     test("returns error for empty query", async () => {
-      const tool = findTool("websearch");
+      const tool = findLocalTool("websearch");
       const result = await tool.handler({ query: "" });
       expect(result.isError).toBe(true);
 
@@ -580,7 +612,7 @@ describe("MCP Tools", () => {
     });
 
     test("performs basic web search or handles CAPTCHA gracefully", async () => {
-      const tool = findTool("websearch");
+      const tool = findLocalTool("websearch");
       const result = await tool.handler({ query: "wikipedia" });
 
       // Note: This test requires internet access and may encounter CAPTCHA
@@ -601,7 +633,7 @@ describe("MCP Tools", () => {
     }, 15000); // 15 second timeout for network request
 
     test("respects max_results parameter when successful", async () => {
-      const tool = findTool("websearch");
+      const tool = findLocalTool("websearch");
       const result = await tool.handler({ query: "wikipedia", max_results: 2 });
 
       // Only verify max_results if we got successful results
@@ -633,7 +665,7 @@ describe("MCP Tools", () => {
         );
       }) as typeof fetch;
 
-      const tool = findTool("websearch");
+      const tool = findLocalTool("websearch");
       const result = await tool.handler({ query: "example query" });
       expect(result.isError).toBe(false);
 
@@ -655,7 +687,7 @@ describe("MCP Tools", () => {
         );
       }) as typeof fetch;
 
-      const tool = findTool("websearch");
+      const tool = findLocalTool("websearch");
       const result = await tool.handler({ query: "redirect parse" });
       expect(result.isError).toBe(false);
 

@@ -41,7 +41,7 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
   await scaffoldLibrary(workspaceDir);
 
   let exportDir = activeConfig.pdfExportDir ?? workspaceDir;
-  const { provider, modelName } = await resolveProvider(activeConfig, args);
+  const { provider, providerName, modelName } = await resolveProvider(activeConfig, args);
   const systemPrompt = await loadEffectiveSystemPrompt(workspaceDir);
 
   const canvas = new CanvasSessionManager({
@@ -132,6 +132,7 @@ export async function startClarkApp(activeConfig: ClarkConfig, args: CliArgs): P
       if (!currentProvider.supportsVision) return null;
       return new VisionOCRProvider(currentProvider);
     },
+    useLocalWebSearch: providerName === "ollama",
   });
 
   const onSlashCommand = createSlashCommandHandler({
