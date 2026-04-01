@@ -7,7 +7,7 @@ When a resource is added, you should create a markdown transcript. Save it to ei
 - `Clark/Transcripts/<filename>.md` (recommended default)
 - Same directory as the source file with .md extension
 
-The transcript should be in markdown format while preserving headers and bullet points for the structure of the document. Images or diagrams should be tagged with a markdown link. Math should be formatted in LaTeX.
+The transcript should be in markdown format while preserving headers and bullet points for the structure of the document. Images or diagrams should be tagged with a markdown link. Math should be formatted in LaTeX. Do not begin the transcript body with a title H1 that only repeats the filename or document title; Clark already shows the filename as the note title.
 
 If reading the plain resource yields a significant amount of text, use that to create the markdown. Otherwise you can use the provided transcription tool (`transcribe_pdf`).
 

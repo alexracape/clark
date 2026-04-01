@@ -209,6 +209,55 @@ describe("POST /api/chat", () => {
     });
   });
 
+  test("forwards websearch as a normal function tool", async () => {
+    lastGatewayRequestBody = null;
+
+    const res = await handler(
+      clientRequest("/api/chat", {
+        body: {
+          ...validBody,
+          tools: [
+            {
+              name: "websearch",
+              description: "Search the web for current information",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  query: {
+                    type: "string",
+                    description: "Search query",
+                  },
+                  max_results: {
+                    type: "number",
+                    description: "Maximum number of results to return",
+                  },
+                },
+                required: ["query"],
+              },
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(lastGatewayRequestBody?.tools).toHaveLength(1);
+    expect(lastGatewayRequestBody?.tools[0]).toMatchObject({
+      type: "function",
+      name: "websearch",
+      description: "Search the web for current information",
+    });
+    expect(lastGatewayRequestBody?.tools[0]?.inputSchema?.properties?.query).toMatchObject({
+      type: "string",
+      description: "Search query",
+    });
+    expect(lastGatewayRequestBody?.tools[0]?.inputSchema?.properties?.max_results).toMatchObject({
+      type: "number",
+      description: "Maximum number of results to return",
+    });
+  });
+
   test("handles legacy bare model IDs", async () => {
     const res = await handler(
       clientRequest("/api/chat", {

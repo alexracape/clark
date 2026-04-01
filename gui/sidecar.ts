@@ -53,6 +53,7 @@ import { VisionOCRProvider } from "../core/ocr/provider.ts";
 import { CloudOCRProvider } from "../core/ocr/cloud.ts";
 import { OllamaEmbeddingProvider, type EmbeddingProvider } from "../core/embedding/provider.ts";
 import { CloudEmbeddingProvider } from "../core/embedding/cloud.ts";
+import { CloudSearchProvider } from "../core/search/cloud.ts";
 import { resolveCloudConfig } from "../core/config.ts";
 import { version } from "../core/version.ts";
 import { EmbeddingIndex } from "../core/embedding/index.ts";
@@ -90,6 +91,11 @@ let sessionManager: SessionManager | null = null;
 let currentSessionPath: string | null = null;
 let sessionHasMessages = false;
 let titleGenerated = false;
+
+function createCloudSearchProvider(cfg: ClarkConfig): CloudSearchProvider {
+  const cloud = resolveCloudConfig(cfg);
+  return new CloudSearchProvider(cloud.url, cloud.clientId);
+}
 
 /** Cached cloud model catalog from the proxy */
 let cachedCloudModels: ModelPickerEntry[] | null = null;
@@ -355,7 +361,7 @@ async function bootstrap(): Promise<void> {
     },
     getEmbeddingProvider: () => embeddingProvider,
     getSearchIndex: () => searchIndex,
-    useLocalWebSearch: providerName === "ollama",
+    getWebSearchProvider: () => createCloudSearchProvider(config),
   });
 
   engine = new ConversationEngine({
@@ -830,6 +836,7 @@ async function handleProviderSwitch(req: Request): Promise<Response> {
       },
       getEmbeddingProvider: () => embeddingProvider,
       getSearchIndex: () => searchIndex,
+      getWebSearchProvider: () => createCloudSearchProvider(config),
     });
     engine.setTools(tools);
     rebuildSlashCommandHandler();
@@ -1017,6 +1024,7 @@ async function handleUpdateSettings(req: Request): Promise<Response> {
         },
         getEmbeddingProvider: () => embeddingProvider,
         getSearchIndex: () => searchIndex,
+        getWebSearchProvider: () => createCloudSearchProvider(config),
       });
       engine.setTools(tools);
     }

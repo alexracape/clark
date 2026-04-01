@@ -181,6 +181,7 @@ describe("scaffoldLibrary", () => {
     ).text();
     expect(quoteContent).toContain("#quote");
     expect(quoteContent).toContain("## Generation");
+    expect(quoteContent).toContain("Do not repeat that quote as a leading # heading");
   });
 
   test("creates a default CLARK.md with template content", async () => {
@@ -188,6 +189,7 @@ describe("scaffoldLibrary", () => {
     await scaffoldLibrary(libPath);
     const content = await Bun.file(join(libPath, "Clark", "CLARK.md")).text();
     expect(content).toContain("Workspace Layout");
+    expect(content).toContain("filename already acts as the visible note title");
   });
 
   test("does not scaffold top-level defaults when workspace already has content", async () => {

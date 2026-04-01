@@ -231,6 +231,7 @@ When processing PDFs and images:
 - Include YAML frontmatter with source path, timestamp, and page range
 - For scanned/handwritten PDFs, use OCR via \`transcribe_pdf\`
 - For text-based PDFs, extract text directly via \`read_file\`
+- For markdown notes and transcripts, the filename already acts as the visible note title, so do not start the body with a duplicate H1 unless the user explicitly asks for one
 
 **Auto-detection**: When you call \`read_file\` on a PDF or image, Clark automatically checks for a markdown transcript and uses it if available. Transcripts are found by checking:
 1. Same directory with .md extension (e.g., \`Resources/PDFs/lecture.pdf\` → \`Resources/PDFs/lecture.md\`)

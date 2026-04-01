@@ -5,9 +5,8 @@
  * File tools are scoped to the vault directory. Canvas tools delegate to the CanvasBroker.
  */
 
-import { readdir, mkdir, rename, unlink, appendFile } from "node:fs/promises";
+import { readdir, mkdir, rename, unlink } from "node:fs/promises";
 import { join, extname, dirname, relative, basename } from "node:path";
-import { homedir } from "node:os";
 import type { CanvasBroker } from "../canvas/server.ts";
 import { exportPDFToFile } from "../canvas/pdf-export.ts";
 import { extractPDFText, getPDFInfo, POPPLER_DOCS_URL } from "./pdf.ts";
@@ -17,6 +16,7 @@ import type { EmbeddingProvider } from "../embedding/provider.ts";
 import type { EmbeddingIndex } from "../embedding/index.ts";
 import { SearchIndexer } from "../embedding/indexer.ts";
 import { transcribePDF } from "../ocr/transcribe.ts";
+import type { WebSearchProvider } from "../search/provider.ts";
 import {
   extractWikilinks,
   buildLinkFooter,
@@ -77,12 +77,8 @@ export interface ToolsConfig {
   getEmbeddingProvider?: () => EmbeddingProvider | null;
   /** Dynamic getter for the embedding search index. Returns null if not configured. */
   getSearchIndex?: () => EmbeddingIndex | null;
-  /**
-   * When true, include the local DuckDuckGo websearch tool (for Ollama/local providers).
-   * When false or omitted, include a lightweight websearch stub — the cloud proxy
-   * replaces it with native provider search (Anthropic, OpenAI, Google) or Perplexity.
-   */
-  useLocalWebSearch?: boolean;
+  /** Dynamic getter for the cloud-backed web search provider. */
+  getWebSearchProvider?: () => WebSearchProvider | null;
 }
 
 function invalidInputResult(message: string): ToolResult {
@@ -90,6 +86,44 @@ function invalidInputResult(message: string): ToolResult {
     content: [{ type: "text", text: `Error: ${message}` }],
     isError: true,
   };
+}
+
+function formatWebSearchResults(
+  query: string,
+  results: Array<{
+    title: string;
+    url: string;
+    snippet: string;
+    date?: string;
+    lastUpdated?: string;
+  }>,
+): string {
+  if (results.length === 0) {
+    return `No web results found for query: "${query}"`;
+  }
+
+  const formatted = results
+    .map((result, index) => {
+      const metadata = [
+        result.date ? `Published: ${result.date}` : null,
+        result.lastUpdated ? `Updated: ${result.lastUpdated}` : null,
+      ]
+        .filter((value): value is string => value !== null)
+        .join(" | ");
+
+      return [
+        `${index + 1}. **${result.title}**`,
+        `   URL: ${result.url}`,
+        metadata ? `   ${metadata}` : null,
+        result.snippet ? `   ${result.snippet}` : null,
+      ]
+        .filter((value): value is string => value !== null)
+        .join("\n");
+    })
+    .join("\n\n");
+
+  const summary = `Found ${results.length} web result${results.length === 1 ? "" : "s"} for "${query}":\n\n`;
+  return summary + formatted;
 }
 
 /**
@@ -1214,177 +1248,69 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
     },
   ];
 
-  // Web search: local DuckDuckGo scraper for Ollama, lightweight stub for cloud providers
-  if (config.useLocalWebSearch) {
-    tools.push({
-      name: "websearch",
-      description:
-        "Search the web using DuckDuckGo. Returns titles, URLs, and snippets from search results. Use this when local notes don't contain the information needed.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          query: {
-            type: "string",
-            description: "Search query to send to DuckDuckGo",
-          },
-          max_results: {
-            type: "number",
-            description:
-              "Maximum number of results to return (default: 5, max: 10)",
-          },
+  tools.push({
+    name: "websearch",
+    description:
+      "Search the web for current information. Returns titles, URLs, and snippets from search results. Use this when local notes don't contain the information needed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Search query",
         },
-        required: ["query"],
-      },
-      annotations: {
-        readOnlyHint: true,
-        openWorldHint: true,
-      },
-      handler: async (input) => {
-        const query = (input.query as string).trim();
-
-        if (!query) {
-          return {
-            content: [
-              { type: "text", text: "Error: search query cannot be empty." },
-            ],
-            isError: true,
-          };
-        }
-
-        const maxResults = Math.min((input.max_results as number) ?? 5, 10);
-
-        try {
-          const results = await performWebSearch(query, maxResults);
-
-          if (results.length === 0) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `No web results found for query: "${query}"`,
-                },
-              ],
-              isError: false,
-            };
-          }
-
-          const formatted = results
-            .map(
-              (r, i) =>
-                `${i + 1}. **${r.title}**\n   URL: ${r.url}\n   ${r.snippet}`,
-            )
-            .join("\n\n");
-
-          const summary = `Found ${results.length} web result${results.length > 1 ? "s" : ""} for "${query}":\n\n`;
-          return {
-            content: [{ type: "text", text: summary + formatted }],
-            isError: false,
-          };
-        } catch (err) {
-          return {
-            content: [
-              { type: "text", text: `Error performing web search: ${err}` },
-            ],
-            isError: true,
-          };
-        }
-      },
-    });
-  } else {
-    // Cloud provider stub — the tool definition is sent to the cloud proxy which
-    // replaces it with native provider search. The handler is never called locally.
-    tools.push({
-      name: "websearch",
-      description:
-        "Search the web for current information. Use this when local notes don't contain the information needed.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          query: {
-            type: "string",
-            description: "Search query",
-          },
+        max_results: {
+          type: "number",
+          description:
+            "Maximum number of results to return (default: 5, max: 20)",
         },
-        required: ["query"],
       },
-      annotations: {
-        readOnlyHint: true,
-        openWorldHint: true,
-      },
-      handler: async () => ({
-        content: [{ type: "text" as const, text: "Web search is handled by the cloud proxy." }],
-        isError: true,
-      }),
-    });
-  }
-
-  return tools.map((tool) => withToolDebugLogging(tool));
-}
-
-function withToolDebugLogging(tool: ToolDefinition): ToolDefinition {
-  const originalHandler = tool.handler;
-  return {
-    ...tool,
+      required: ["query"],
+    },
+    annotations: {
+      readOnlyHint: true,
+      openWorldHint: true,
+    },
     handler: async (input) => {
-      const startedAt = Date.now();
-      await appendDebugLog("tool_call_start", [
-        `tool=${tool.name}`,
-        `input=${stringifyForDebug(input)}`,
-      ]);
+      const query = typeof input.query === "string" ? input.query.trim() : "";
+      if (!query) {
+        return invalidInputResult("search query cannot be empty.");
+      }
+
+      const searchProvider = config.getWebSearchProvider?.() ?? null;
+      if (!searchProvider) {
+        return {
+          content: [{ type: "text", text: "Error: web search is unavailable right now." }],
+          isError: true,
+        };
+      }
+
+      const requestedMaxResults = typeof input.max_results === "number"
+        ? input.max_results
+        : 5;
+      const maxResults = Math.max(1, Math.min(20, Math.floor(requestedMaxResults)));
+
       try {
-        const result = await originalHandler(input);
-        await appendDebugLog("tool_call_end", [
-          `tool=${tool.name}`,
-          `duration_ms=${Date.now() - startedAt}`,
-          `is_error=${result.isError === true}`,
-          `result=${stringifyForDebug(result)}`,
-        ]);
-        return result;
+        const response = await searchProvider.search(query, maxResults);
+        return {
+          content: [{
+            type: "text",
+            text: formatWebSearchResults(query, response.results),
+          }],
+          isError: false,
+        };
       } catch (err) {
-        await appendDebugLog("tool_call_throw", [
-          `tool=${tool.name}`,
-          `duration_ms=${Date.now() - startedAt}`,
-          `error=${err instanceof Error ? err.message : String(err)}`,
-        ]);
-        throw err;
+        return {
+          content: [
+            { type: "text", text: `Error performing web search: ${err}` },
+          ],
+          isError: true,
+        };
       }
     },
-  };
-}
+  });
 
-async function appendDebugLog(event: string, lines: string[]): Promise<void> {
-  const timestamp = new Date().toISOString();
-  const entry = `\n[${timestamp}] ${event}\n${lines.join("\n")}\n`;
-  try {
-    await mkdir(dirname(DEBUG_LOG_PATH), { recursive: true });
-    await appendFile(DEBUG_LOG_PATH, entry, "utf8");
-  } catch {
-    // Never fail tool calls due to debug logging.
-  }
-}
-
-function stringifyForDebug(value: unknown): string {
-  const seen = new WeakSet<object>();
-  try {
-    const text = JSON.stringify(value, (_key, raw) => {
-      if (typeof raw === "object" && raw !== null) {
-        if (seen.has(raw)) return "[circular]";
-        seen.add(raw);
-      }
-      if (typeof raw === "string") {
-        if (_key === "data" && raw.length > 256) {
-          return `[omitted base64 data: ${raw.length} chars]`;
-        }
-        if (raw.length > DEBUG_LOG_MAX_STRING_CHARS) {
-          return `${raw.slice(0, DEBUG_LOG_MAX_STRING_CHARS)}...[truncated ${raw.length - DEBUG_LOG_MAX_STRING_CHARS} chars]`;
-        }
-      }
-      return raw;
-    });
-    return text ?? String(value);
-  } catch {
-    return String(value);
-  }
+  return tools;
 }
 
 // --- Search helpers ---
@@ -1636,250 +1562,3 @@ async function searchFileForTag(
 }
 
 // --- Web search helpers ---
-
-interface WebSearchResult {
-  title: string;
-  url: string;
-  snippet: string;
-}
-
-interface CacheEntry {
-  results: WebSearchResult[];
-  timestamp: number;
-}
-
-// Simple in-memory cache with 5-minute TTL
-const searchCache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-// Rate limiting: max 10 requests per minute
-const rateLimitQueue: number[] = [];
-const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 10;
-const DDG_SEARCH_ENDPOINTS = [
-  "https://html.duckduckgo.com/html/?q=",
-  "https://lite.duckduckgo.com/lite/?q=",
-];
-const DEBUG_LOG_PATH = join(homedir(), ".clark", "debug.txt");
-const DEBUG_LOG_MAX_STRING_CHARS = 8_000;
-const WEBSEARCH_DEBUG_HTML_MAX_CHARS = 200_000;
-
-/**
- * Check rate limit and wait if necessary.
- */
-async function checkRateLimit(): Promise<void> {
-  const now = Date.now();
-
-  // Remove old timestamps outside the window
-  while (
-    rateLimitQueue.length > 0 &&
-    rateLimitQueue[0]! < now - RATE_LIMIT_WINDOW_MS
-  ) {
-    rateLimitQueue.shift();
-  }
-
-  // If we've hit the limit, wait until the oldest request expires
-  if (rateLimitQueue.length >= RATE_LIMIT_MAX_REQUESTS) {
-    const oldestRequest = rateLimitQueue[0]!;
-    const waitTime = oldestRequest + RATE_LIMIT_WINDOW_MS - now;
-    if (waitTime > 0) {
-      await new Promise((resolve) => setTimeout(resolve, waitTime));
-    }
-    // After waiting, remove the expired request
-    rateLimitQueue.shift();
-  }
-
-  // Record this request
-  rateLimitQueue.push(now);
-}
-
-/**
- * Perform a web search using DuckDuckGo HTML scraping.
- */
-async function performWebSearch(
-  query: string,
-  maxResults: number,
-): Promise<WebSearchResult[]> {
-  // Check cache first
-  const cacheKey = `${query}:${maxResults}`;
-  const cached = searchCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return cached.results;
-  }
-
-  // Apply rate limiting
-  await checkRateLimit();
-
-  const errors: string[] = [];
-
-  for (const endpoint of DDG_SEARCH_ENDPOINTS) {
-    const searchUrl = `${endpoint}${encodeURIComponent(query)}`;
-
-    try {
-      const response = await fetch(searchUrl, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        },
-        signal: AbortSignal.timeout(10000), // 10 second timeout
-      });
-
-      if (!response.ok) {
-        errors.push(`${searchUrl} returned status ${response.status}`);
-        await appendDebugLog("websearch_attempt", [
-          `query=${query}`,
-          `endpoint=${searchUrl}`,
-          `status=${response.status}`,
-          "result=http_error",
-        ]);
-        continue;
-      }
-
-      const html = await response.text();
-
-      // Detect CAPTCHA/anomaly detection
-      if (html.includes("anomaly-modal") || html.includes("challenge-form")) {
-        errors.push(`${searchUrl} returned CAPTCHA challenge`);
-        await appendDebugLog("websearch_attempt", [
-          `query=${query}`,
-          `endpoint=${searchUrl}`,
-          `status=${response.status}`,
-          "result=captcha",
-          "raw_html_begin",
-          truncateForDebugLog(html),
-          "raw_html_end",
-        ]);
-        continue;
-      }
-
-      const results = parseDuckDuckGoResults(html, maxResults);
-      await appendDebugLog("websearch_attempt", [
-        `query=${query}`,
-        `endpoint=${searchUrl}`,
-        `status=${response.status}`,
-        `parsed_results=${results.length}`,
-        "raw_html_begin",
-        truncateForDebugLog(html),
-        "raw_html_end",
-      ]);
-      if (results.length > 0) {
-        // Cache successful results
-        searchCache.set(cacheKey, {
-          results,
-          timestamp: Date.now(),
-        });
-        return results;
-      }
-    } catch (err) {
-      errors.push(
-        `${searchUrl} failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      await appendDebugLog("websearch_attempt", [
-        `query=${query}`,
-        `endpoint=${searchUrl}`,
-        `result=exception`,
-        `error=${err instanceof Error ? err.message : String(err)}`,
-      ]);
-    }
-  }
-
-  if (errors.length === DDG_SEARCH_ENDPOINTS.length) {
-    throw new Error(`Web search failed: ${errors.join(" | ")}`);
-  }
-
-  return [];
-}
-
-/**
- * Parse DuckDuckGo HTML results.
- * Simple regex-based extraction (no DOM parser needed).
- */
-function parseDuckDuckGoResults(
-  html: string,
-  maxResults: number,
-): WebSearchResult[] {
-  const results: WebSearchResult[] = [];
-  const resultBlocks = [
-    ...html.matchAll(
-      /<div[^>]*class="[^"]*\bresult\b[^"]*"[^>]*>[\s\S]*?<\/div>/gi,
-    ),
-    ...html.matchAll(/<tr[\s\S]*?<\/tr>/gi),
-  ]
-    .map((match) => match[0])
-    .filter((block) => /result__a|result-link/i.test(block));
-
-  for (const resultHtml of resultBlocks) {
-    if (results.length >= maxResults) break;
-
-    const titleMatch = resultHtml.match(
-      /<a[^>]*class="[^"]*(?:result__a|result-link)[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i,
-    );
-    if (!titleMatch) continue;
-
-    const rawHref = titleMatch[1] || "";
-    const url = normalizeDuckDuckGoUrl(rawHref);
-    const title = stripHtmlTags(titleMatch[2] || "").trim();
-    const snippetMatch = resultHtml.match(
-      /<(?:a|div|span|td)[^>]*class="[^"]*(?:result__snippet|result-snippet|snippet)[^"]*"[^>]*>([\s\S]*?)<\/(?:a|div|span|td)>/i,
-    );
-    const snippet = stripHtmlTags(snippetMatch?.[1] || "").trim();
-
-    if (title && url) {
-      results.push({ title, url, snippet });
-    }
-  }
-
-  return results;
-}
-
-function normalizeDuckDuckGoUrl(rawHref: string): string {
-  const decodedHtmlHref = stripHtmlTags(rawHref).replace(/&amp;/g, "&").trim();
-  if (!decodedHtmlHref) return "";
-
-  const href = decodedHtmlHref.startsWith("//")
-    ? `https:${decodedHtmlHref}`
-    : decodedHtmlHref;
-
-  try {
-    const parsed = new URL(href, "https://duckduckgo.com");
-    const isDuckDuckGoRedirect =
-      (parsed.hostname === "duckduckgo.com" ||
-        parsed.hostname === "www.duckduckgo.com") &&
-      parsed.pathname.startsWith("/l/");
-    if (isDuckDuckGoRedirect) {
-      const uddg = parsed.searchParams.get("uddg");
-      if (uddg) return safeDecodeURIComponent(uddg);
-    }
-    return safeDecodeURIComponent(parsed.toString());
-  } catch {
-    return safeDecodeURIComponent(href);
-  }
-}
-
-function safeDecodeURIComponent(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-function truncateForDebugLog(value: string): string {
-  if (value.length <= WEBSEARCH_DEBUG_HTML_MAX_CHARS) return value;
-  return `${value.slice(0, WEBSEARCH_DEBUG_HTML_MAX_CHARS)}\n[truncated ${value.length - WEBSEARCH_DEBUG_HTML_MAX_CHARS} chars]`;
-}
-
-/**
- * Simple HTML tag stripper.
- */
-function stripHtmlTags(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, "") // Remove tags
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " "); // Normalize whitespace
-}

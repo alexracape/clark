@@ -2,7 +2,7 @@
 This file corresponds to an academic paper that I read.
 
 ## Generation
-It should contain headings for "Key Ideas" and "Questions." It will also link out to the pdf version of the paper. These files should be marked with the #paper tag. Do not fill in any of the ideas or questions unless you are able to read them from the annotations on the PDF.
+It should contain headings for "Key Ideas" and "Questions." It will also link out to the pdf version of the paper. These files should be marked with the #paper tag. Do not fill in any of the ideas or questions unless you are able to read them from the annotations on the PDF. Do not repeat the filename/title as a leading H1 in the markdown body because Clark already shows the filename as the note title.
 
 ## Template
 #paper

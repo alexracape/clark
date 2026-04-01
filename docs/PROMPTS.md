@@ -139,15 +139,17 @@ This prompt is sent as a user message to `ConversationEngine.runTurn()` with the
 
 Used when transcribing scanned PDFs or images via the LLM's vision API.
 
-**Defined in:** [`core/ocr/provider.ts`](../core/ocr/provider.ts)
+**Defined in:** [`core/prompts/ocr/transcription-system.md`](../core/prompts/ocr/transcription-system.md), [`core/prompts/ocr/transcription-user.md`](../core/prompts/ocr/transcription-user.md), [`core/prompts/ocr/consolidation-system.md`](../core/prompts/ocr/consolidation-system.md), [`core/prompts/ocr/consolidation-user.md`](../core/prompts/ocr/consolidation-user.md)
+
+**Loaded by:** [`core/ocr/provider.ts`](../core/ocr/provider.ts)
 
 **a) Page Transcription** — transcribes a single page image to markdown:
 - System: `"You are a document transcription assistant. Output only the transcribed content in markdown format."`
-- User: Instructs to preserve structure (headings, bullets), format math as LaTeX, describe diagrams in italics, skip page numbers.
+- User: Instructs to preserve structure (headings, bullets), format math as LaTeX, describe diagrams in italics, skip page numbers, and avoid a redundant title H1 when it only repeats the document title.
 
 **b) Multi-Page Consolidation** — merges page-by-page transcripts into one document:
 - System: `"You are a document consolidation assistant. Your task is to merge multi-page transcriptions into a single coherent document."`
-- User: Instructs to remove duplicate headers/footers, merge into cohesive flow, preserve unique content and markdown formatting.
+- User: Instructs to remove duplicate headers/footers, merge into cohesive flow, preserve unique content and markdown formatting, and strip a leading title H1 when it only repeats the document title.
 
 **Called from:** `VisionOCRProvider.transcribeImage()` and `VisionOCRProvider.consolidateTranscript()`
 
@@ -166,7 +168,7 @@ Reformats garbled raw text extraction (e.g., from `pdf-parse`) into clean markdo
 
 **Defined in:** [`core/app/ingest.ts`](../core/app/ingest.ts) — `cleanupTranscript()`
 
-- System: `"You are a document formatting assistant. Reformat the raw extracted text into clean, well-structured Markdown. Preserve ALL content — do not summarize or omit anything. Fix spacing/tab issues, add proper heading hierarchy, format lists and tables correctly. Format math as LaTeX. Output ONLY the formatted markdown, no preamble."`
+- System: `"You are a document formatting assistant. Reformat the raw extracted text into clean, well-structured Markdown. Preserve ALL content — do not summarize or omit anything. Fix spacing/tab issues, add proper heading hierarchy, format lists and tables correctly. Format math as LaTeX. Do not create or preserve a leading document-title H1 when it only repeats the filename or document title. Output ONLY the formatted markdown, no preamble."`
 - User: Receives the document filename and raw extracted text (truncated to ~100k chars).
 
 ### 9. Conversation Compaction Prompt
@@ -283,7 +285,8 @@ All files involved in prompt and context management:
 | [`core/library.ts`](../core/library.ts) | CLARK.md loading, structure templates, workspace scaffolding |
 | [`core/mcp/tools.ts`](../core/mcp/tools.ts) | Tool definitions and handlers |
 | [`core/app/ingest.ts`](../core/app/ingest.ts) | Ingestion pipeline, file naming, transcript cleanup prompts |
-| [`core/ocr/provider.ts`](../core/ocr/provider.ts) | OCR transcription and consolidation prompts |
+| [`core/ocr/provider.ts`](../core/ocr/provider.ts) | OCR prompt loading and provider implementation |
+| [`core/prompts/ocr/`](../core/prompts/ocr/) | OCR transcription and consolidation prompt text |
 | [`core/app/command-router.ts`](../core/app/command-router.ts) | Conversation compaction prompt (`/compact`) |
 | [`core/llm/messages.ts`](../core/llm/messages.ts) | Conversation state and message management |
 | [`core/llm/provider.ts`](../core/llm/provider.ts) | Provider interface |

@@ -4,6 +4,7 @@ import { rm, mkdir, mkdtemp, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createTools, type ToolDefinition } from "../core/mcp/tools.ts";
 import { CanvasBroker } from "../core/canvas/server.ts";
+import type { WebSearchProvider } from "../core/search/provider.ts";
 import {
   extractWikilinks,
   buildFileIndex,
@@ -563,47 +564,23 @@ describe("MCP Tools", () => {
     });
   });
 
-  describe("websearch (cloud stub)", () => {
-    test("cloud stub websearch tool is included by default", () => {
+  describe("websearch", () => {
+    test("websearch tool is included by default", () => {
       const tool = findTool("websearch");
       expect(tool).toBeDefined();
       expect(tool.description).toContain("Search the web");
     });
 
-    test("cloud stub handler returns error (not meant for local dispatch)", async () => {
+    test("returns unavailable error when no cloud search provider is configured", async () => {
       const tool = findTool("websearch");
       const result = await tool.handler({ query: "test" });
       expect(result.isError).toBe(true);
       const text = (result.content[0] as { type: "text"; text: string }).text;
-      expect(text).toContain("cloud proxy");
+      expect(text).toContain("web search is unavailable");
     });
-  });
-
-  describe("websearch (local DuckDuckGo)", () => {
-    const originalFetch = globalThis.fetch;
-    let localTools: ToolDefinition[];
-
-    beforeEach(() => {
-      localTools = createTools({
-        getBroker: () => broker,
-        vaultDir: TEST_VAULT,
-        getSaveCanvas: () => null,
-        useLocalWebSearch: true,
-      });
-    });
-
-    afterEach(() => {
-      globalThis.fetch = originalFetch;
-    });
-
-    function findLocalTool(name: string): ToolDefinition {
-      const tool = localTools.find((t) => t.name === name);
-      if (!tool) throw new Error(`Tool not found: ${name}`);
-      return tool;
-    }
 
     test("returns error for empty query", async () => {
-      const tool = findLocalTool("websearch");
+      const tool = findTool("websearch");
       const result = await tool.handler({ query: "" });
       expect(result.isError).toBe(true);
 
@@ -611,89 +588,94 @@ describe("MCP Tools", () => {
       expect(text).toContain("cannot be empty");
     });
 
-    test("performs basic web search or handles CAPTCHA gracefully", async () => {
-      const tool = findLocalTool("websearch");
-      const result = await tool.handler({ query: "wikipedia" });
+    test("calls the configured cloud search provider and formats results", async () => {
+      const calls: Array<{ query: string; maxResults?: number }> = [];
+      const searchProvider: WebSearchProvider = {
+        name: "test-search",
+        async search(query, maxResults) {
+          calls.push({ query, maxResults });
+          return {
+            query,
+            backend: "tavily",
+            tier: "beta",
+            isFallback: false,
+            results: [
+              {
+                title: "Result One",
+                url: "https://example.com/1",
+                snippet: "Snippet one",
+                date: "2026-03-30",
+                lastUpdated: "2026-03-31",
+              },
+              {
+                title: "Result Two",
+                url: "https://example.com/2",
+                snippet: "Snippet two",
+              },
+            ],
+          };
+        },
+      };
 
-      // Note: This test requires internet access and may encounter CAPTCHA
-      // DuckDuckGo may block automated requests with CAPTCHA challenges
-      const text = (result.content[0] as { type: "text"; text: string }).text;
+      const searchTools = createTools({
+        getBroker: () => broker,
+        vaultDir: TEST_VAULT,
+        getSaveCanvas: () => null,
+        getWebSearchProvider: () => searchProvider,
+      });
+      const tool = searchTools.find((t) => t.name === "websearch")!;
+      const result = await tool.handler({ query: "example query", max_results: 2 });
 
-      if (result.isError) {
-        // If error, should be CAPTCHA or other network issue
-        expect(text).toMatch(/CAPTCHA|search failed/i);
-      } else if (text.includes("No web results found")) {
-        // CAPTCHA prevented results - this is acceptable
-        expect(text).toContain("No web results found");
-      } else {
-        // If successful, should have results with URLs
-        expect(text).toContain("web result");
-        expect(text).toMatch(/https?:\/\//);
-      }
-    }, 15000); // 15 second timeout for network request
-
-    test("respects max_results parameter when successful", async () => {
-      const tool = findLocalTool("websearch");
-      const result = await tool.handler({ query: "wikipedia", max_results: 2 });
-
-      // Only verify max_results if we got successful results
-      if (!result.isError) {
-        const text = (result.content[0] as { type: "text"; text: string }).text;
-        // Results should be limited to 2
-        const matches = text.match(/^\d+\./gm); // Count numbered list items
-        if (matches) {
-          expect(matches.length).toBeLessThanOrEqual(2);
-        }
-      }
-      // If CAPTCHA or error, test passes (can't verify max_results)
-    }, 15000);
-
-    test("falls back to lite endpoint when html endpoint fails", async () => {
-      globalThis.fetch = (async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.includes("html.duckduckgo.com")) {
-          return new Response("blocked", { status: 403 });
-        }
-        return new Response(
-          `<html><body>
-            <tr>
-              <td><a class="result-link" href="https://example.com/lite">Example Lite</a></td>
-              <td class="result-snippet">Lite endpoint snippet</td>
-            </tr>
-          </body></html>`,
-          { status: 200, headers: { "Content-Type": "text/html" } },
-        );
-      }) as typeof fetch;
-
-      const tool = findLocalTool("websearch");
-      const result = await tool.handler({ query: "example query" });
       expect(result.isError).toBe(false);
+      expect(calls).toEqual([{ query: "example query", maxResults: 2 }]);
 
       const text = (result.content[0] as { type: "text"; text: string }).text;
-      expect(text).toContain("Example Lite");
-      expect(text).toContain("https://example.com/lite");
+      expect(text).toContain('Found 2 web results for "example query"');
+      expect(text).toContain("Result One");
+      expect(text).toContain("https://example.com/1");
+      expect(text).toContain("Published: 2026-03-30");
+      expect(text).toContain("Updated: 2026-03-31");
+      expect(text).toContain("Snippet two");
     });
 
-    test("parses duckduckgo redirect links without throwing on malformed encodings", async () => {
-      globalThis.fetch = (async () => {
-        return new Response(
-          `<html><body>
-            <div class="result">
-              <a class="result__a" href="https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fbad%ZZ">Example Redirect</a>
-              <a class="result__snippet">Snippet text</a>
-            </div>
-          </body></html>`,
-          { status: 200, headers: { "Content-Type": "text/html" } },
-        );
-      }) as typeof fetch;
+    test("formats normalized results the same way for Tavily and DuckDuckGo backends", async () => {
+      const buildToolText = async (backend: "tavily" | "duckduckgo", tier: "beta" | "anonymous") => {
+        const searchProvider: WebSearchProvider = {
+          name: `${backend}-search`,
+          async search(query) {
+            return {
+              query,
+              backend,
+              tier,
+              isFallback: backend === "duckduckgo",
+              results: [
+                {
+                  title: "Shared Result",
+                  url: "https://example.com/shared",
+                  snippet: "Shared snippet",
+                },
+              ],
+            };
+          },
+        };
 
-      const tool = findLocalTool("websearch");
-      const result = await tool.handler({ query: "redirect parse" });
-      expect(result.isError).toBe(false);
+        const searchTools = createTools({
+          getBroker: () => broker,
+          vaultDir: TEST_VAULT,
+          getSaveCanvas: () => null,
+          getWebSearchProvider: () => searchProvider,
+        });
 
-      const text = (result.content[0] as { type: "text"; text: string }).text;
-      expect(text).toContain("Example Redirect");
-      expect(text).toContain("https://example.com/bad%ZZ");
+        const tool = searchTools.find((t) => t.name === "websearch")!;
+        const result = await tool.handler({ query: "shared query" });
+        expect(result.isError).toBe(false);
+        return (result.content[0] as { type: "text"; text: string }).text;
+      };
+
+      const tavilyText = await buildToolText("tavily", "beta");
+      const duckDuckGoText = await buildToolText("duckduckgo", "anonymous");
+
+      expect(tavilyText).toBe(duckDuckGoText);
     });
   });
 });

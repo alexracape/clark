@@ -244,7 +244,7 @@ async function cleanupTranscript(
   return await simpleLLMCall(
     provider,
     `Document: ${fileName}\n\nRaw extracted text:\n${truncated}`,
-    `You are a document formatting assistant. Reformat the raw extracted text into clean, well-structured Markdown. Preserve ALL content — do not summarize or omit anything. Fix spacing/tab issues, add proper heading hierarchy, format lists and tables correctly. Format math as LaTeX. Output ONLY the formatted markdown, no preamble.`,
+    `You are a document formatting assistant. Reformat the raw extracted text into clean, well-structured Markdown. Preserve ALL content — do not summarize or omit anything. Fix spacing/tab issues, add proper heading hierarchy, format lists and tables correctly. Format math as LaTeX. Do not create or preserve a leading document-title H1 when it only repeats the filename or document title, because Clark already shows the filename as the note title. Output ONLY the formatted markdown, no preamble.`,
   );
 }
 
@@ -255,6 +255,43 @@ function sanitizeFileName(name: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .substring(0, 80);
+}
+
+function normalizeComparableTitle(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function stripLeadingDuplicateTitleHeading(
+  markdown: string,
+  candidateTitles: string[],
+): string {
+  const normalizedCandidates = candidateTitles
+    .map(normalizeComparableTitle)
+    .filter(Boolean);
+  if (normalizedCandidates.length === 0) return markdown;
+
+  let prefix = "";
+  let body = markdown;
+  const frontmatterMatch = markdown.match(/^(---\n[\s\S]*?\n---\n*)([\s\S]*)$/);
+  if (frontmatterMatch) {
+    prefix = frontmatterMatch[1]!;
+    body = frontmatterMatch[2]!;
+  }
+
+  const headingMatch = body.match(/^(\s*)# (.+?)\s*\n+/);
+  if (!headingMatch) return markdown;
+
+  const headingTitle = normalizeComparableTitle(headingMatch[2]!);
+  if (!headingTitle || !normalizedCandidates.includes(headingTitle)) {
+    return markdown;
+  }
+
+  const remaining = body.slice(headingMatch[0].length).replace(/^\n+/, "");
+  return prefix + remaining;
 }
 
 /** Find an available sibling path by appending a numeric suffix when needed. */
@@ -441,6 +478,11 @@ export async function runIngestionPipeline(
       console.error(`[ingest] Failed to save extracted images for ${finalFileName}:`, err);
     }
   }
+
+  fileContent = stripLeadingDuplicateTitleHeading(fileContent, [
+    finalBaseName,
+    baseName,
+  ]);
 
   // --- Step 4b: Save transcript ---
   const desiredTranscriptAbsPath = join(opts.workspaceDir, "Clark", "Transcripts", `${finalBaseName}.md`);

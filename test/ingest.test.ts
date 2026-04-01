@@ -198,4 +198,41 @@ describe("runIngestionPipeline", () => {
       await rm(workspaceDir, { recursive: true, force: true });
     }
   });
+
+  test("strips a leading H1 that duplicates the final transcript title", async () => {
+    const workspaceDir = await mkdtemp(join(tmpdir(), "clark-ingest-pipeline-"));
+    const provider = new MockProvider([
+      { text: "Existing Name" },
+      { text: "Linked to related notes." },
+    ], false);
+
+    try {
+      await mkdir(join(workspaceDir, "Resources"), { recursive: true });
+      await writeFile(
+        join(workspaceDir, "Resources", "original.txt"),
+        "# Existing Name\n\nKey points go here.\n",
+      );
+
+      const result = await runIngestionPipeline({
+        filePath: join(workspaceDir, "Resources", "original.txt"),
+        destPath: "Resources/original.txt",
+        fileName: "original.txt",
+        workspaceDir,
+        provider,
+        tools: [],
+        systemPrompt: "test prompt",
+        conversationContext: "",
+        ocrProvider: null,
+        onProgress: () => {},
+      });
+
+      expect(result.finalFileName).toBe("Existing Name.txt");
+      expect(result.transcriptPath).toBe("Clark/Transcripts/Existing Name.md");
+      expect(
+        await Bun.file(join(workspaceDir, "Clark", "Transcripts", "Existing Name.md")).text(),
+      ).toBe("Key points go here.\n");
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true });
+    }
+  });
 });

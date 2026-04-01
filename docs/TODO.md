@@ -21,9 +21,6 @@ Core Related
   - Follow industry standards from Anthropic and Google for how to best set this up
 - move websearch tool to gateway: https://vercel.com/docs/ai-gateway/capabilities#web-search
   - Reuse existing code and standard tools when possible
-- ignore Clark/Sessions from search results
-  - Currently old conversation histories show up in Search results
-  - This could be useful in some circumstances, but I think we should add a flag or function argument to ignore this directory
 - specify no H1 + Title duplication in prompts
   - this applies to ingestion and using defined structures
   - should follow obsidian standard where the filename is displayed at the top of the doc as if it were H1

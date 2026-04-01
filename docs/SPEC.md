@@ -497,7 +497,10 @@ clark/
 │   │   └── transcribe.ts      # PDF transcription pipeline
 │   │
 │   └── prompts/
-│       └── system.md          # Socratic system prompt
+│       ├── system.md          # Socratic system prompt
+│       ├── ingest.md          # Ingestion/linking prompt
+│       ├── title.md           # Session title prompt
+│       └── ocr/               # OCR prompt text
 │
 ├── cli/                       # Terminal UI (Ink/React)
 │   ├── bootstrap/             # CLI startup (args, provider, system prompt)

@@ -84,8 +84,6 @@ export const ingestionCases: EvalCase[] = [
           "",
           "## Template",
           "```",
-          "# {Title}",
-          "",
           "## Metadata",
           "- Authors:",
           "- Year:",

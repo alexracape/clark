@@ -6,6 +6,10 @@
  */
 
 import type { LLMProvider, Message } from "../llm/provider.ts";
+import consolidationSystemPrompt from "../prompts/ocr/consolidation-system.md" with { type: "text" };
+import consolidationUserPrompt from "../prompts/ocr/consolidation-user.md" with { type: "text" };
+import transcriptionSystemPrompt from "../prompts/ocr/transcription-system.md" with { type: "text" };
+import transcriptionUserPrompt from "../prompts/ocr/transcription-user.md" with { type: "text" };
 
 export interface OCRProvider {
   readonly name: string;
@@ -22,26 +26,10 @@ export interface OCRProvider {
   consolidateTranscript(rawTranscript: string): Promise<string>;
 }
 
-const TRANSCRIPTION_SYSTEM_PROMPT =
-  "You are a document transcription assistant. Output only the transcribed content in markdown format.";
-
-const TRANSCRIPTION_USER_PROMPT =
-  "Transcribe this document to markdown. Preserve the structure including headings, bullet points, and formatting. Format math expressions in LaTeX. If there are diagrams or figures, describe them briefly in italics. Do not copy over page numbers.";
-
-const CONSOLIDATION_SYSTEM_PROMPT =
-  "You are a document consolidation assistant. Your task is to merge multi-page transcriptions into a single coherent document.";
-
-const CONSOLIDATION_USER_PROMPT = `The following is a page-by-page transcription of a document. Please consolidate it by:
-1. Removing duplicate headers, footers, and navigation elements that repeat across pages
-2. Merging content into a cohesive flow without page breaks
-3. Preserving all unique content and maintaining the logical structure
-4. Keeping the markdown formatting (headings, lists, math, etc.)
-
-Output only the consolidated markdown content.
-
----
-
-`;
+const TRANSCRIPTION_SYSTEM_PROMPT = transcriptionSystemPrompt.trim();
+const TRANSCRIPTION_USER_PROMPT = transcriptionUserPrompt.trim();
+const CONSOLIDATION_SYSTEM_PROMPT = consolidationSystemPrompt.trim();
+const CONSOLIDATION_USER_PROMPT = consolidationUserPrompt;
 
 /**
  * OCR provider that delegates to the LLM's vision API.

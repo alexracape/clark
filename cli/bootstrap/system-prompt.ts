@@ -26,6 +26,7 @@ async function loadStructureSummary(workspaceDir: string): Promise<string> {
       "",
       "The student's workspace contains Structure definitions in Clark/Structures/.",
       "When they want to create a new structure, read the full definition file for instructions.",
+      "Use the filename as the note title and do not repeat it as a leading # heading unless the user explicitly asks.",
       "",
       ...lines,
     ].join("\n");

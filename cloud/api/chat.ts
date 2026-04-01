@@ -10,18 +10,13 @@
  */
 
 import { streamText, gateway, jsonSchema } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { openai } from "@ai-sdk/openai";
-import { google } from "@ai-sdk/google";
 import { authenticate, requireTier } from "../lib/auth.ts";
+import { hashClientId, logDevEvent, isDevLoggingEnabled } from "../lib/dev-logging.ts";
 import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.ts";
 import { errorResponse, methodNotAllowed } from "../lib/errors.ts";
 
 const chatLimiter = createRateLimiter(30, "60 s");
 const UPSTREAM_TIMEOUT_MS = 25_000;
-
-/** Enable verbose request logging during local development (vercel dev). */
-const DEV_LOGGING = process.env.VERCEL_ENV === "development" || process.env.NODE_ENV === "development";
 
 /**
  * Ensure model ID is in Gateway "provider/model" format.
@@ -109,48 +104,16 @@ function convertMessages(messages: any[]): any[] {
   });
 }
 
-/**
- * Convert Clark's Tool[] format to AI SDK v6 tool definitions.
- * If the tool list contains "websearch", it is removed from the converted
- * tools — native provider search is injected separately in the streamText call.
- */
+/** Convert Clark's Tool[] format to AI SDK v6 tool definitions. */
 function convertTools(tools: any[]): Record<string, any> {
   const result: Record<string, any> = {};
   for (const tool of tools) {
-    if (tool.name === "websearch") continue; // handled by injectWebSearchTool
     result[tool.name] = {
       description: tool.description,
       inputSchema: jsonSchema(tool.inputSchema),
     };
   }
   return result;
-}
-
-/**
- * Returns native provider web search tools based on the model's provider,
- * plus the set of tool names that are handled server-side (should not be
- * forwarded to the client for local dispatch).
- */
-function getWebSearchTools(provider: string): {
-  tools: Record<string, any>;
-  nativeToolNames: Set<string>;
-} {
-  let tools: Record<string, any>;
-  switch (provider) {
-    case "anthropic":
-      tools = { web_search: anthropic.tools.webSearch_20250305() };
-      break;
-    case "openai":
-      tools = { web_search: openai.tools.webSearch({}) };
-      break;
-    case "google":
-      tools = { google_search: google.tools.googleSearch({}) };
-      break;
-    default:
-      tools = { perplexity_search: gateway.tools.perplexitySearch() };
-      break;
-  }
-  return { tools, nativeToolNames: new Set(Object.keys(tools)) };
 }
 
 export default {
@@ -184,27 +147,16 @@ export default {
       const gatewayModelId = toGatewayModelId(model, body.provider);
       const convertedMessages = convertMessages(messages);
       const convertedTools = tools?.length ? convertTools(tools) : undefined;
-
-      // Inject native web search tools if the client sent a "websearch" tool
-      const hasWebSearch = tools?.some((t: any) => t.name === "websearch");
       const providerName = gatewayModelId.split("/")[0] ?? "";
-      const { tools: webSearchTools, nativeToolNames } = hasWebSearch
-        ? getWebSearchTools(providerName)
-        : { tools: {}, nativeToolNames: new Set<string>() };
+      const allTools = convertedTools ?? {};
 
-      const allTools = { ...convertedTools, ...webSearchTools };
-
-      if (DEV_LOGGING) {
-        const clientToolNames = tools?.map((t: any) => t.name) ?? [];
-        const nativeNames = [...nativeToolNames];
-        console.log("[chat] request", {
-          clientId: auth.clientId,
+      if (isDevLoggingEnabled()) {
+        logDevEvent("chat_request", {
+          clientIdHash: hashClientId(auth.clientId),
           model: gatewayModelId,
           provider: providerName,
           messageCount: messages.length,
-          clientTools: clientToolNames,
-          hasWebSearch,
-          ...(hasWebSearch ? { nativeSearchTools: nativeNames } : {}),
+          clientTools: tools?.map((t: any) => t.name) ?? [],
           resolvedTools: Object.keys(allTools),
           maxTokens: body.maxTokens ?? 4096,
         });
@@ -227,9 +179,6 @@ export default {
             // Track tool IDs that were already streamed via tool-input-start
             // to avoid duplicates when tool-call fires after streaming
             const streamedToolIds = new Set<string>();
-            // Track tool IDs belonging to native provider tools (web search etc.)
-            // These are handled server-side and should not be forwarded to the client.
-            const nativeToolIds = new Set<string>();
 
             for await (const part of result.fullStream) {
               let chunk: string | null = null;
@@ -242,17 +191,6 @@ export default {
                   chunk = JSON.stringify({ type: "thinking_delta", text: part.text });
                   break;
                 case "tool-input-start": {
-                  // Skip native provider tools — they're fulfilled server-side
-                  if (nativeToolNames.has(part.toolName)) {
-                    nativeToolIds.add(part.id);
-                    if (DEV_LOGGING) {
-                      console.log("[chat] native tool started (not forwarded)", {
-                        tool: part.toolName,
-                        id: part.id,
-                      });
-                    }
-                    break;
-                  }
                   streamedToolIds.add(part.id);
                   const startChunk: any = {
                     type: "tool_use_start",
@@ -266,8 +204,6 @@ export default {
                   break;
                 }
                 case "tool-input-delta":
-                  // Skip deltas for native provider tools
-                  if (nativeToolIds.has(part.id)) break;
                   chunk = JSON.stringify({
                     type: "tool_input_delta",
                     id: part.id,
@@ -275,17 +211,6 @@ export default {
                   });
                   break;
                 case "tool-call": {
-                  // Skip native provider tool calls
-                  if (nativeToolNames.has(part.toolName)) {
-                    nativeToolIds.add(part.toolCallId);
-                    if (DEV_LOGGING) {
-                      console.log("[chat] native tool call (not forwarded)", {
-                        tool: part.toolName,
-                        id: part.toolCallId,
-                      });
-                    }
-                    break;
-                  }
                   // Skip if already streamed via tool-input-start/delta
                   if (streamedToolIds.has(part.toolCallId)) break;
                   // Non-streaming tool call — emit start + input as a single pair
@@ -312,7 +237,7 @@ export default {
                     ? part.error.message
                     : JSON.stringify(part.error);
                   console.error("[chat] upstream error part", {
-                    clientId: auth.clientId,
+                    clientIdHash: hashClientId(auth.clientId),
                     model: gatewayModelId,
                     error: msg,
                   });
@@ -328,10 +253,9 @@ export default {
                         ? "max_tokens"
                         : "end_turn",
                   });
-                  if (DEV_LOGGING) {
-                    console.log("[chat] stream finished", {
+                  if (isDevLoggingEnabled()) {
+                    logDevEvent("chat_stream_finished", {
                       finishReason: part.finishReason,
-                      nativeToolsUsed: nativeToolIds.size,
                     });
                   }
                   break;
@@ -344,7 +268,7 @@ export default {
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             console.error("[chat] stream failed", {
-              clientId: auth.clientId,
+              clientIdHash: hashClientId(auth.clientId),
               model: gatewayModelId,
               error: msg,
             });
@@ -368,7 +292,7 @@ export default {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[chat] handler failed", {
-        clientId: auth.clientId,
+        clientIdHash: hashClientId(auth.clientId),
         model,
         error: msg,
       });
