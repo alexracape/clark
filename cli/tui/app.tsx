@@ -258,9 +258,12 @@ export function App({
       try {
         const { messages } = await onLoadSession(session.path);
         conversation.loadMessages(messages);
+        const label = session.title?.trim()
+          ? `Resumed session "${session.title}" (${messages.length} messages loaded).`
+          : `Resumed session from ${session.date} (${messages.length} messages loaded).`;
         addMessage(
           "system",
-          `Resumed session from ${session.date} (${messages.length} messages loaded).`,
+          label,
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

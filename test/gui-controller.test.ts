@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import {
+  applyRestoredSession,
   applySendError,
   applySlashCommandError,
   applySlashCommandResult,
@@ -178,5 +179,30 @@ describe("gui app controller", () => {
     const state = createInitialAppState();
     const result = updateEditorContent(state, "content");
     expect(result.editorFile).toBeNull();
+  });
+
+  test("restored session copy prefers the generated title", () => {
+    const restored = applyRestoredSession(createInitialAppState(), [], {
+      date: "2026-03-31",
+      title: "Matrix Basics",
+    });
+
+    const msgs = getMessages(restored);
+    expect(msgs.at(-1)).toMatchObject({
+      role: "system",
+      text: 'Session "Matrix Basics" resumed. Continuing conversation below.',
+    });
+  });
+
+  test("restored session copy falls back to the session date", () => {
+    const restored = applyRestoredSession(createInitialAppState(), [], {
+      date: "2026-03-31",
+    });
+
+    const msgs = getMessages(restored);
+    expect(msgs.at(-1)).toMatchObject({
+      role: "system",
+      text: "Session from 2026-03-31 resumed. Continuing conversation below.",
+    });
   });
 });

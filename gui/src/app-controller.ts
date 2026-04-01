@@ -83,6 +83,7 @@ export interface SessionInfo {
   sessionId: string;
   provider: string;
   model: string;
+  title?: string;
   firstUserMessage: string;
 }
 
@@ -247,15 +248,18 @@ export function messagesToChatItems(
 export function applyRestoredSession(
   state: AppState,
   messages: LLMMessage[],
-  date: string,
+  session: Pick<SessionInfo, "date" | "title">,
 ): AppState {
   const { items, nextId } = messagesToChatItems(messages, state.nextMessageId + 1);
+  const label = session.title?.trim()
+    ? `Session "${session.title}" resumed. Continuing conversation below.`
+    : `Session from ${session.date} resumed. Continuing conversation below.`;
   const systemMessage: ChatItem = {
     type: "message",
     message: {
       id: String(nextId),
       role: "system",
-      text: `Session from ${date} resumed. Continuing conversation below.`,
+      text: label,
     },
   };
   return {

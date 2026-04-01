@@ -131,6 +131,16 @@ const streamClients = new Set<{ send(data: string): void }>();
 const streamListeners = new Set<(event: SidecarStreamEvent) => void>();
 const activeIngestions = new Set<string>();
 
+function logSidecarDebug(message: string, details?: Record<string, unknown>): void {
+  const suffix = details ? ` ${JSON.stringify(details)}` : "";
+  console.log(`[DEBUG] [sidecar] ${message}${suffix}`);
+}
+
+function logSidecarWarn(message: string, details?: Record<string, unknown>): void {
+  const suffix = details ? ` ${JSON.stringify(details)}` : "";
+  console.warn(`[sidecar] ${message}${suffix}`);
+}
+
 /** Broadcast an event to all connected stream clients */
 function broadcast(event: SidecarStreamEvent): void {
   const data = JSON.stringify(event);
@@ -463,8 +473,22 @@ async function handleChat(req: Request): Promise<Response> {
           if (firstUserText) {
             sessionManager
               .generateTitle(currentSessionPath, provider, firstUserText)
-              .then((newPath) => { currentSessionPath = newPath; })
-              .catch(() => {});
+              .then((newPath) => {
+                if (newPath !== currentSessionPath) {
+                  logSidecarDebug("Updated active session path after rename", {
+                    oldPath: currentSessionPath,
+                    newPath,
+                  });
+                }
+                currentSessionPath = newPath;
+              })
+              .catch((err) => {
+                const message = err instanceof Error ? err.message : String(err);
+                logSidecarWarn("Unexpected title generation rejection", {
+                  path: currentSessionPath,
+                  error: message,
+                });
+              });
           }
         }
       }

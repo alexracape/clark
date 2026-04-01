@@ -26,6 +26,10 @@ import {
   isPDFFile,
   imageMimeType,
 } from "./vault.ts";
+import { CLARK_DIR_NAME, CLARK_SESSIONS_DIR_NAME } from "../library.ts";
+
+/** Relative path prefix for session files (e.g. "Clark/Sessions/") */
+const SESSIONS_PREFIX = `${CLARK_DIR_NAME}/${CLARK_SESSIONS_DIR_NAME}/`;
 
 export interface ToolAnnotations {
   /** If true, the tool does not modify its environment. */
@@ -260,6 +264,11 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
             type: "string",
             description: "Search query (keyword or phrase)",
           },
+          include_sessions: {
+            type: "boolean",
+            description:
+              "Include past conversation history in results (default: false). Set to true when searching for previous conversations.",
+          },
         },
         required: ["query"],
       },
@@ -270,6 +279,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
       handler: async (input) => {
         const vaultDir = currentVaultDir();
         const query = input.query;
+        const includeSessions = (input.include_sessions as boolean) ?? false;
         if (typeof query !== "string") {
           return invalidInputResult("query must be a string.");
         }
@@ -294,7 +304,11 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
           try {
             const [queryVec] = await embeddingProvider.embed([query]);
             if (queryVec && queryVec.length > 0) {
-              const results = searchIndex.searchSimilar(queryVec, embeddingProvider.modelId, 30);
+              let results = searchIndex.searchSimilar(queryVec, embeddingProvider.modelId, 30);
+
+              if (!includeSessions) {
+                results = results.filter((r) => !r.path.startsWith(SESSIONS_PREFIX));
+              }
 
               if (results.length > 0) {
                 // Aggregate by file path
@@ -334,7 +348,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         }
 
         // Keyword search fallback
-        const keywordResults = await searchDirectory(vaultDir, query.toLowerCase());
+        const keywordResults = await searchDirectory(vaultDir, query.toLowerCase(), includeSessions);
         if (keywordResults.length === 0) {
           return {
             content: [
@@ -961,6 +975,11 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
             type: "number",
             description: "Maximum number of results to return (default: 10)",
           },
+          include_sessions: {
+            type: "boolean",
+            description:
+              "Include past conversation history in results (default: false). Set to true when searching for previous conversations.",
+          },
         },
         required: ["tag"],
       },
@@ -970,6 +989,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
       },
       handler: async (input) => {
         const vaultDir = currentVaultDir();
+        const includeSessions = (input.include_sessions as boolean) ?? false;
         let tag = (input.tag as string).trim();
 
         // Normalize tag: remove leading # if present
@@ -987,7 +1007,7 @@ export function createTools(config: ToolsConfig): ToolDefinition[] {
         const maxResults = (input.max_results as number) ?? 10;
 
         try {
-          const results = await searchByTag(vaultDir, tag, maxResults);
+          const results = await searchByTag(vaultDir, tag, maxResults, includeSessions);
 
           if (results.length === 0) {
             return {
@@ -1459,11 +1479,14 @@ function queueFileReindex(relativePath: string, toolsConfig: ToolsConfig): void 
 async function searchDirectory(
   dirPath: string,
   query: string,
+  includeSessions = false,
 ): Promise<SearchResult[]> {
   const entries = await readdir(dirPath, { recursive: true });
   const candidates = entries.filter((e) => {
     const ext = extname(e).toLowerCase();
-    return ext === ".md" || ext === ".txt";
+    if (ext !== ".md" && ext !== ".txt") return false;
+    if (!includeSessions && e.startsWith(SESSIONS_PREFIX)) return false;
+    return true;
   });
 
   const BATCH_SIZE = 20;
@@ -1533,11 +1556,14 @@ async function searchByTag(
   dirPath: string,
   tag: string,
   maxResults: number,
+  includeSessions = false,
 ): Promise<SearchResult[]> {
   const entries = await readdir(dirPath, { recursive: true });
   const candidates = entries.filter((e) => {
     const ext = extname(e).toLowerCase();
-    return ext === ".md" || ext === ".txt";
+    if (ext !== ".md" && ext !== ".txt") return false;
+    if (!includeSessions && e.startsWith(SESSIONS_PREFIX)) return false;
+    return true;
   });
 
   const BATCH_SIZE = 20;

@@ -56,6 +56,7 @@ export function SessionPicker({
       ) : (
         sessions.map((session, i) => {
           const selected = i === list.selected;
+          const label = session.title?.trim() || session.date;
           const preview = session.firstUserMessage
             ? `"${session.firstUserMessage}${session.firstUserMessage.length >= 80 ? "…" : ""}"`
             : theme.dim("(empty session)");
@@ -66,11 +67,11 @@ export function SessionPicker({
                   ? componentTheme.hints.selected("> ")
                   : componentTheme.hints.unselected("  ")}
                 {selected
-                  ? theme.selectedText(session.date)
-                  : theme.dim(session.date)}
+                  ? theme.selectedText(label)
+                  : theme.dim(label)}
                 {" "}
                 <Text color={hex.dim}>
-                  {session.provider}/{session.model}
+                  {session.date} · {session.provider}/{session.model}
                 </Text>
               </Text>
               {selected && (

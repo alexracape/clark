@@ -64,43 +64,28 @@ export function SessionPicker({ sessions, onSelect, onClose }: SessionPickerProp
         </div>
 
         <div className="picker-list" ref={listRef}>
-          {sessions.map((session, i) => (
-            <div
-              key={session.path}
-              className={`picker-item ${i === selectedIndex ? "picker-item--selected" : ""}`}
-              onClick={() => onSelect(session)}
-              onMouseEnter={() => setSelectedIndex(i)}
-            >
-              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <span className="picker-item__label">{session.date}</span>
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      color: "var(--patina)",
-                      fontFamily: "var(--font-mono, monospace)",
-                    }}
-                  >
-                    {session.provider}/{session.model}
-                  </span>
+          {sessions.map((session, i) => {
+            const title = session.title?.trim() || session.firstUserMessage?.trim() || "Untitled session";
+            const preview = session.title?.trim() && session.firstUserMessage?.trim() && session.firstUserMessage.trim() !== title
+              ? session.firstUserMessage.trim()
+              : null;
+            return (
+              <div
+                key={session.path}
+                className={`picker-item session-picker__item ${i === selectedIndex ? "picker-item--selected" : ""}`}
+                onClick={() => onSelect(session)}
+                onMouseEnter={() => setSelectedIndex(i)}
+              >
+                <div className="session-picker__content">
+                  <span className="session-picker__title">{title}</span>
+                  <span className="session-picker__date">{session.date}</span>
+                  {preview && (
+                    <span className="session-picker__preview">{preview}</span>
+                  )}
                 </div>
-                {session.firstUserMessage && (
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      color: "var(--ink-dim, var(--patina))",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      maxWidth: "340px",
-                    }}
-                  >
-                    {session.firstUserMessage}
-                  </span>
-                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div

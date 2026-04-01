@@ -12,6 +12,7 @@ import { render, cleanup } from "ink-testing-library";
 import { App } from "../cli/tui/app.tsx";
 import { StatusBar } from "../cli/tui/status.tsx";
 import { Chat, type ChatMessage } from "../cli/tui/chat.tsx";
+import { SessionPicker } from "../cli/tui/session-picker.tsx";
 import { MockProvider } from "../core/llm/mock.ts";
 import { Conversation } from "../core/llm/messages.ts";
 import { createTools } from "../core/mcp/tools.ts";
@@ -136,6 +137,32 @@ describe("StatusBar", () => {
     );
 
     expect(lastFrame()!).toContain("thinking");
+  });
+});
+
+describe("SessionPicker", () => {
+  test("shows the generated title when available", () => {
+    const { lastFrame } = render(
+      <SessionPicker
+        sessions={[{
+          path: "/tmp/session.md",
+          filename: "2026-03-31 Matrix-Basics.md",
+          date: "2026-03-31",
+          sessionId: "abc123",
+          provider: "mock",
+          model: "test-model",
+          title: "Matrix Basics",
+          firstUserMessage: "What is a matrix?",
+        }]}
+        onSelect={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+
+    const frame = lastFrame()!;
+    expect(frame).toContain("Matrix Basics");
+    expect(frame).toContain("2026-03-31");
+    expect(frame).toContain("mock/test-model");
   });
 });
 

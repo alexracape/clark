@@ -9,9 +9,10 @@
  * after each turn, so crashes only lose the in-progress turn.
  */
 
-import { mkdir, readdir, appendFile, rename, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, appendFile, rename, writeFile } from "node:fs/promises";
 import { join, dirname, basename } from "node:path";
 import type { LLMProvider, Message } from "../llm/provider.ts";
+import titlePrompt from "../prompts/title.md" with { type: "text" };
 import {
   serializeMessages,
   deserializeSession,
@@ -19,13 +20,14 @@ import {
   type SessionFrontmatter,
 } from "./format.ts";
 
-/** Load the title generation prompt from core/prompts/title.md */
-let titlePromptCache: string | null = null;
-async function loadTitlePrompt(): Promise<string> {
-  if (titlePromptCache) return titlePromptCache;
-  const promptPath = join(import.meta.dir, "..", "prompts", "title.md");
-  titlePromptCache = await Bun.file(promptPath).text();
-  return titlePromptCache;
+function logSessionDebug(message: string, details?: Record<string, unknown>): void {
+  const suffix = details ? ` ${JSON.stringify(details)}` : "";
+  console.log(`[DEBUG] [session] ${message}${suffix}`);
+}
+
+function logSessionWarn(message: string, details?: Record<string, unknown>): void {
+  const suffix = details ? ` ${JSON.stringify(details)}` : "";
+  console.warn(`[session] ${message}${suffix}`);
 }
 
 export interface SessionInfo {
@@ -141,7 +143,12 @@ export class SessionManager {
     firstUserMessage: string,
   ): Promise<string> {
     try {
-      const systemPrompt = await loadTitlePrompt();
+      logSessionDebug("Generating title", {
+        filePath,
+        provider: provider.name,
+        preview: firstUserMessage.slice(0, 120),
+      });
+      const systemPrompt = titlePrompt;
       const messages: Message[] = [
         { role: "user", content: [{ type: "text", text: firstUserMessage }] },
       ];
@@ -152,7 +159,18 @@ export class SessionManager {
       }
 
       title = title.trim().replace(/[^\w\s'-]/g, "").trim();
-      if (!title || title.length > 60) return filePath;
+      if (!title) {
+        logSessionDebug("Title generation returned empty title", { filePath });
+        return filePath;
+      }
+      if (title.length > 60) {
+        logSessionDebug("Title generation returned overly long title", {
+          filePath,
+          length: title.length,
+          title,
+        });
+        return filePath;
+      }
 
       // Slugify for filename: "Linear Algebra Review" → "Linear-Algebra-Review"
       const slug = title.replace(/\s+/g, "-");
@@ -169,8 +187,19 @@ export class SessionManager {
       );
       await writeFile(filePath, updated);
       await rename(filePath, newPath);
+      logSessionDebug("Title generation succeeded", {
+        oldPath: filePath,
+        newPath,
+        title,
+      });
       return newPath;
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logSessionWarn("Title generation failed; keeping original filename", {
+        filePath,
+        provider: provider.name,
+        error: message,
+      });
       return filePath; // Silently fall back to date-only name
     }
   }

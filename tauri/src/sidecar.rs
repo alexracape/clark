@@ -12,6 +12,36 @@ use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tokio::sync::{Mutex, Notify};
 
+fn forward_sidecar_line(line: &str, is_stderr: bool) {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("[DEBUG] ") {
+        log::debug!("{}", rest);
+        return;
+    }
+    if let Some(rest) = trimmed.strip_prefix("[INFO] ") {
+        log::info!("{}", rest);
+        return;
+    }
+    if let Some(rest) = trimmed.strip_prefix("[WARN] ") {
+        log::warn!("{}", rest);
+        return;
+    }
+    if let Some(rest) = trimmed.strip_prefix("[ERROR] ") {
+        log::error!("{}", rest);
+        return;
+    }
+
+    if is_stderr {
+        log::warn!("[sidecar stderr] {}", trimmed);
+    } else {
+        log::info!("[sidecar] {}", trimmed);
+    }
+}
+
 /// Manages the sidecar process lifecycle.
 #[derive(Clone)]
 pub struct Sidecar {
@@ -68,7 +98,7 @@ impl Sidecar {
                     CommandEvent::Stdout(line_bytes) => {
                         let line = String::from_utf8_lossy(&line_bytes);
                         let line = line.trim();
-                        log::info!("[sidecar] {}", line);
+                        forward_sidecar_line(line, false);
                         if let Some(port_str) = line.strip_prefix("CLARK_SIDECAR_PORT=") {
                             if let Ok(p) = port_str.trim().parse::<u16>() {
                                 *port_notify.lock().await = Some(p);
@@ -80,11 +110,11 @@ impl Sidecar {
                                         match event {
                                             CommandEvent::Stdout(bytes) => {
                                                 let l = String::from_utf8_lossy(&bytes);
-                                                log::info!("[sidecar] {}", l.trim());
+                                                forward_sidecar_line(&l, false);
                                             }
                                             CommandEvent::Stderr(bytes) => {
                                                 let l = String::from_utf8_lossy(&bytes);
-                                                log::warn!("[sidecar stderr] {}", l.trim());
+                                                forward_sidecar_line(&l, true);
                                             }
                                             CommandEvent::Error(e) => {
                                                 log::error!("[sidecar error] {}", e);
@@ -107,7 +137,7 @@ impl Sidecar {
                     }
                     CommandEvent::Stderr(bytes) => {
                         let line = String::from_utf8_lossy(&bytes);
-                        log::warn!("[sidecar stderr] {}", line.trim());
+                        forward_sidecar_line(&line, true);
                     }
                     CommandEvent::Error(e) => {
                         log::error!("[sidecar error] {}", e);

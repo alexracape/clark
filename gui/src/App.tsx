@@ -302,7 +302,7 @@ export function App() {
         messages: LLMMessage[];
         date: string;
       };
-      setState((prev) => applyRestoredSession(prev, res.messages, session.date));
+      setState((prev) => applyRestoredSession(prev, res.messages, session));
     } catch (err) {
       setState((prev) => {
         const id = String(prev.nextMessageId + 1);
