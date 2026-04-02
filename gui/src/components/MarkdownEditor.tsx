@@ -29,9 +29,11 @@ interface MarkdownEditorProps {
   streamingText: string | null;
   isStreaming: boolean;
   pendingToolCalls: ToolCall[];
+  autoEditTitle?: boolean;
+  onAutoEditTitleConsumed?: () => void;
 }
 
-export function MarkdownEditor({ file, onSave, onClose, onDirtyChange, onOpenNote, onRename, onNewNote, noteNames, chatItems, streamingText, isStreaming, pendingToolCalls }: MarkdownEditorProps) {
+export function MarkdownEditor({ file, onSave, onClose, onDirtyChange, onOpenNote, onRename, onNewNote, noteNames, chatItems, streamingText, isStreaming, pendingToolCalls, autoEditTitle, onAutoEditTitleConsumed }: MarkdownEditorProps) {
   const [assetBaseUrl, setAssetBaseUrl] = useState<string>(
     "http://localhost:3456",
   );
@@ -65,7 +67,12 @@ export function MarkdownEditor({ file, onSave, onClose, onDirtyChange, onOpenNot
   // Keep draft in sync when file changes externally
   useEffect(() => {
     setTitleDraft(fileName);
-    setEditingTitle(false);
+    if (autoEditTitle) {
+      setEditingTitle(true);
+      onAutoEditTitleConsumed?.();
+    } else {
+      setEditingTitle(false);
+    }
   }, [fileName]);
 
   useEffect(() => {

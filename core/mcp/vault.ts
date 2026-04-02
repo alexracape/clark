@@ -49,6 +49,15 @@ export function extractWikilinks(content: string): WikiLink[] {
 let cachedIndex: { map: Map<string, string>; vaultDir: string; timestamp: number } | null = null;
 const INDEX_TTL_MS = 30_000;
 
+function normalizeIndexPath(value: string): string {
+  return value.replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/\/+/g, "/");
+}
+
+function pathWithoutExtension(filePath: string): string {
+  const extension = extname(filePath);
+  return extension ? filePath.slice(0, -extension.length) : filePath;
+}
+
 /**
  * Invalidate the cached file index. Call after any file tree mutation
  * (create_file, rename_file, delete_file).
@@ -59,7 +68,8 @@ export function invalidateFileIndex(): void {
 
 /**
  * Build an index of all files in the vault for wikilink resolution.
- * Maps lowercase filename (with and without extension) to relative path.
+ * Maps lowercase filenames and vault-relative paths (with and without extension)
+ * to relative paths.
  * Results are cached with a 30-second TTL for performance.
  */
 export async function buildFileIndex(vaultDir: string): Promise<Map<string, string>> {
@@ -72,15 +82,24 @@ export async function buildFileIndex(vaultDir: string): Promise<Map<string, stri
   const entries = await readdir(vaultDir, { recursive: true });
 
   for (const entry of entries) {
-    const nameWithExt = basename(entry).toLowerCase();
-    const nameWithoutExt = basename(entry, extname(entry)).toLowerCase();
+    const normalizedEntry = normalizeIndexPath(entry);
+    const relativePathWithExt = normalizedEntry.toLowerCase();
+    const relativePathWithoutExt = pathWithoutExtension(normalizedEntry).toLowerCase();
+    const nameWithExt = basename(normalizedEntry).toLowerCase();
+    const nameWithoutExt = basename(normalizedEntry, extname(normalizedEntry)).toLowerCase();
 
     // First match wins (Obsidian resolves ambiguity the same way)
+    if (!index.has(relativePathWithExt)) {
+      index.set(relativePathWithExt, normalizedEntry);
+    }
+    if (!index.has(relativePathWithoutExt)) {
+      index.set(relativePathWithoutExt, normalizedEntry);
+    }
     if (!index.has(nameWithoutExt)) {
-      index.set(nameWithoutExt, entry);
+      index.set(nameWithoutExt, normalizedEntry);
     }
     if (!index.has(nameWithExt)) {
-      index.set(nameWithExt, entry);
+      index.set(nameWithExt, normalizedEntry);
     }
   }
 
@@ -98,7 +117,7 @@ export async function resolveWikilink(
   index?: Map<string, string>,
 ): Promise<string | null> {
   const fileIndex = index ?? (await buildFileIndex(vaultDir));
-  return fileIndex.get(name.toLowerCase()) ?? null;
+  return fileIndex.get(normalizeIndexPath(name).toLowerCase()) ?? null;
 }
 
 /**

@@ -69,6 +69,12 @@ describe("Vault Utilities", () => {
       expect(index.has("reinforcement learning.md")).toBe(true);
       expect(index.has("lecture_1.pdf")).toBe(true);
     });
+
+    test("indexes files by vault-relative path with and without extension", async () => {
+      const index = await buildFileIndex(TEST_VAULT);
+      expect(index.get("resources/images/lecture_1_class_notes.png")).toBe("Resources/Images/lecture_1_class_notes.png");
+      expect(index.get("notes/reinforcement learning")).toBe("Notes/Reinforcement Learning.md");
+    });
   });
 
   describe("resolveWikilink", () => {
@@ -85,6 +91,16 @@ describe("Vault Utilities", () => {
     test("resolves image by filename", async () => {
       const result = await resolveWikilink("lecture_1_class_notes.png", TEST_VAULT);
       expect(result).toContain("lecture_1_class_notes.png");
+    });
+
+    test("resolves file by vault-relative path", async () => {
+      const result = await resolveWikilink("Resources/Images/lecture_1_class_notes.png", TEST_VAULT);
+      expect(result).toBe("Resources/Images/lecture_1_class_notes.png");
+    });
+
+    test("resolves markdown file by vault-relative path without extension", async () => {
+      const result = await resolveWikilink("Notes/Reinforcement Learning", TEST_VAULT);
+      expect(result).toBe("Notes/Reinforcement Learning.md");
     });
 
     test("returns null for nonexistent file", async () => {
@@ -106,6 +122,14 @@ describe("Vault Utilities", () => {
       const links = extractWikilinks("[[nonexistent]]");
       const footer = await buildLinkFooter(links, TEST_VAULT);
       expect(footer).toContain("(not found)");
+    });
+
+    test("resolves embeds that use vault-relative paths", async () => {
+      const links = extractWikilinks("![[Resources/Images/lecture_1_class_notes.png]]");
+      const footer = await buildLinkFooter(links, TEST_VAULT);
+      expect(footer).toContain("[embed] [[Resources/Images/lecture_1_class_notes.png]]");
+      expect(footer).toContain("Resources/Images/lecture_1_class_notes.png");
+      expect(footer).not.toContain("(not found)");
     });
 
     test("returns empty string for no links", async () => {
@@ -225,6 +249,37 @@ describe("MCP Tools", () => {
       const text = result.content[0] as { type: "text"; text: string };
       expect(text.text).toContain("Group relative policy optimization");
       expect(text.text).not.toContain("Linked files:");
+    });
+
+    test("resolves vault-relative embed paths in markdown footers", async () => {
+      const vault = await mkdtemp(join(tmpdir(), "clark-read-file-links-"));
+      try {
+        await mkdir(join(vault, "Notes"), { recursive: true });
+        await mkdir(join(vault, "Resources", "Images"), { recursive: true });
+        await Bun.write(
+          join(vault, "Notes", "Image Links.md"),
+          "# Image Links\n\n![[Resources/Images/diagram.png]]\n",
+        );
+        await Bun.write(join(vault, "Resources", "Images", "diagram.png"), "placeholder image bytes");
+
+        const tool = createTools({
+          getBroker: () => null,
+          vaultDir: vault,
+          getSaveCanvas: () => null,
+        }).find((candidate) => candidate.name === "read_file");
+
+        if (!tool) throw new Error("read_file tool not found");
+
+        const result = await tool.handler({ path: "Notes/Image Links.md" });
+        expect(result.isError).toBe(false);
+
+        const text = result.content[0] as { type: "text"; text: string };
+        expect(text.text).toContain("[embed] [[Resources/Images/diagram.png]]");
+        expect(text.text).toContain("Resources/Images/diagram.png");
+        expect(text.text).not.toContain("(not found)");
+      } finally {
+        await rm(vault, { recursive: true, force: true });
+      }
     });
 
     test("reads image file as base64", async () => {

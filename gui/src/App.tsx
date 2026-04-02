@@ -224,6 +224,7 @@ export function App() {
   } | null>(null);
   const [noteNames, setNoteNames] = useState<WikilinkTarget[]>([]);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+  const [autoEditTitle, setAutoEditTitle] = useState(false);
   const stateRef = useRef(state);
 
   useEffect(() => {
@@ -468,6 +469,7 @@ export function App() {
       const newPath = `${notesDir}/${newName}.md`;
       await invokeCommand("write_file_content", { path: newPath, content: "" });
       setState((prev) => openEditorFile(prev, newPath, ""));
+      setAutoEditTitle(true);
       setSidebarRefreshKey((k) => k + 1);
       loadWikiLinkTargets().then(setNoteNames).catch(() => {});
     } catch (err) {
@@ -637,6 +639,8 @@ export function App() {
               streamingText={state.streamingText}
               isStreaming={state.isStreaming}
               pendingToolCalls={state.pendingToolCalls}
+              autoEditTitle={autoEditTitle}
+              onAutoEditTitleConsumed={() => setAutoEditTitle(false)}
             />
           ) : (
             <ChatWindow
@@ -653,7 +657,16 @@ export function App() {
             onDismiss={(fileName) => setState((prev) => dismissIngestion(prev, fileName))}
           />
 
-          <Composer onSend={handleSend} disabled={state.isStreaming} />
+          <Composer
+            onSend={handleSend}
+            disabled={state.isStreaming}
+            invoke={invokeCommand}
+            onModelSelect={(provider, model) => {
+              setState((prev) => setProviderInfo(prev, { provider, model }));
+            }}
+            onCanvasOpen={(info) => setState((prev) => onCanvasOpened(prev, info))}
+            onClipboardNotice={(notice) => setClipboardToast(notice)}
+          />
         </div>
       </div>
 

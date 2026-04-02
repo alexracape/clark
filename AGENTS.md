@@ -57,11 +57,25 @@ Large reference files live in `docs/dependencies/`. These are for targeted grep 
 - **tldraw:** Start with `docs/dependencies/tldraw/llms.txt` (index). Grep `llms-docs.txt` for API usage. `llms-full.txt` is grep-only.
 - **MCP:** Grep `docs/dependencies/mcp/llms-full.txt` for specific protocol topics.
 
+## GUI Verification
+
+After modifying files under `gui/src/`, verify the UI renders correctly using `agent-browser`:
+
+1. **Start dev server** (if not running): `bun gui/dev-server.ts` — serves at `http://localhost:1420`
+2. **Open in browser**: `agent-browser open http://localhost:1420 && agent-browser wait --load networkidle`
+3. **Screenshot**: `agent-browser screenshot --annotate` — read the image to visually inspect
+4. **Snapshot elements**: `agent-browser snapshot -i` — verify interactive elements are present
+5. **Check for errors**: `agent-browser eval 'document.body.innerText.trim().length > 0 ? "HAS_CONTENT" : "BLANK"'`
+6. **Clean up**: `agent-browser close`
+
+Run `/verify-gui` for the full verification flow. Always verify after non-trivial GUI changes.
+
 ## Boundaries
 
 **Always:**
 - Use Bun for everything (runtime, packages, tests, builds)
 - Run `bun test` to verify changes
+- Run `/verify-gui` (or manual `agent-browser` checks) after GUI changes
 
 **Never:**
 - Node.js, npm, pnpm, yarn, Express, dotenv, Webpack, Vite, esbuild

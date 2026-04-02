@@ -19,9 +19,6 @@ Core Related
 - Bash tool instead of so many MCP tools
   - Reduce redundant file call tools with one standard bash tool
   - Follow industry standards from Anthropic and Google for how to best set this up
-- Issue in resolve links in read tool:
-  [embed] [[Resources/Images/FullSizeRender.jpg]] → (not found)
-  [embed] [[FullSizeRender.jpg]] → Resources/Images/FullSizeRender.jpg
 
 Low Priority
 - Build out telemetry
