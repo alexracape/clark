@@ -4,9 +4,9 @@
  * Returns the current tier for the given client ID.
  */
 
-import { authenticate } from "../../lib/auth.ts";
-import { createRateLimiter, checkRateLimit } from "../../lib/rate-limit.ts";
-import { methodNotAllowed } from "../../lib/errors.ts";
+import { authenticate } from "../../lib/auth.js";
+import { createRateLimiter, checkRateLimit } from "../../lib/rate-limit.js";
+import { methodNotAllowed } from "../../lib/errors.js";
 
 const limiter = createRateLimiter(10, "60 s");
 

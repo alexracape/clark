@@ -5,10 +5,10 @@
  * Rate-limited aggressively (3 req/min) to prevent brute-force.
  */
 
-import { authenticate } from "../../lib/auth.ts";
-import { createRateLimiter, checkRateLimit } from "../../lib/rate-limit.ts";
-import { getRedis } from "../../lib/redis.ts";
-import { errorResponse, methodNotAllowed } from "../../lib/errors.ts";
+import { authenticate } from "../../lib/auth.js";
+import { createRateLimiter, checkRateLimit } from "../../lib/rate-limit.js";
+import { getRedis } from "../../lib/redis.js";
+import { errorResponse, methodNotAllowed } from "../../lib/errors.js";
 
 const limiter = createRateLimiter(3, "60 s");
 

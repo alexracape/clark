@@ -7,9 +7,9 @@
 
 import { embedMany } from "ai";
 import { gateway } from "@ai-sdk/gateway";
-import { authenticate, requireTier } from "../lib/auth.ts";
-import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.ts";
-import { errorResponse, methodNotAllowed } from "../lib/errors.ts";
+import { authenticate, requireTier } from "../lib/auth.js";
+import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.js";
+import { errorResponse, methodNotAllowed } from "../lib/errors.js";
 
 const embedLimiter = createRateLimiter(20, "60 s");
 const DEFAULT_MODEL = "openai/text-embedding-3-small";

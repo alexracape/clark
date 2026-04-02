@@ -10,10 +10,10 @@
  */
 
 import { streamText, gateway, jsonSchema } from "ai";
-import { authenticate, requireTier } from "../lib/auth.ts";
-import { hashClientId, logDevEvent, isDevLoggingEnabled } from "../lib/dev-logging.ts";
-import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.ts";
-import { errorResponse, methodNotAllowed } from "../lib/errors.ts";
+import { authenticate, requireTier } from "../lib/auth.js";
+import { hashClientId, logDevEvent, isDevLoggingEnabled } from "../lib/dev-logging.js";
+import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.js";
+import { errorResponse, methodNotAllowed } from "../lib/errors.js";
 
 const chatLimiter = createRateLimiter(30, "60 s");
 const UPSTREAM_TIMEOUT_MS = 25_000;

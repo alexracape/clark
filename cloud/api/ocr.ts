@@ -6,9 +6,9 @@
  * Obsidian wikilink format: `![[img-0.jpg]]`.
  */
 
-import { authenticate, requireTier } from "../lib/auth.ts";
-import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.ts";
-import { errorResponse, methodNotAllowed } from "../lib/errors.ts";
+import { authenticate, requireTier } from "../lib/auth.js";
+import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.js";
+import { errorResponse, methodNotAllowed } from "../lib/errors.js";
 
 const ocrLimiter = createRateLimiter(10, "60 s");
 

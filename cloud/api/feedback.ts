@@ -4,9 +4,9 @@
  * Hides the Discord webhook URL from the client binary.
  */
 
-import { authenticate } from "../lib/auth.ts";
-import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.ts";
-import { errorResponse, methodNotAllowed } from "../lib/errors.ts";
+import { authenticate } from "../lib/auth.js";
+import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.js";
+import { errorResponse, methodNotAllowed } from "../lib/errors.js";
 
 const feedbackLimiter = createRateLimiter(5, "60 s");
 

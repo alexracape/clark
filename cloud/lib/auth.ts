@@ -9,7 +9,7 @@
  *   beta     (1) — redeemed a beta code
  */
 
-import { getRedis } from "./redis.ts";
+import { getRedis } from "./redis.js";
 
 export type Tier = "anonymous" | "beta";
 

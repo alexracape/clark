@@ -19,11 +19,6 @@ Core Related
 - Bash tool instead of so many MCP tools
   - Reduce redundant file call tools with one standard bash tool
   - Follow industry standards from Anthropic and Google for how to best set this up
-- move websearch tool to gateway: https://vercel.com/docs/ai-gateway/capabilities#web-search
-  - Reuse existing code and standard tools when possible
-- specify no H1 + Title duplication in prompts
-  - this applies to ingestion and using defined structures
-  - should follow obsidian standard where the filename is displayed at the top of the doc as if it were H1
 - Issue in resolve links in read tool:
   [embed] [[Resources/Images/FullSizeRender.jpg]] → (not found)
   [embed] [[FullSizeRender.jpg]] → Resources/Images/FullSizeRender.jpg

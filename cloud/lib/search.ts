@@ -1,4 +1,4 @@
-import { hashForLogging, logDevEvent } from "./dev-logging.ts";
+import { hashForLogging, logDevEvent } from "./dev-logging.js";
 
 export type SearchBackend = "tavily" | "duckduckgo";
 
@@ -144,51 +144,65 @@ export async function searchTavily(
 
 function extractTavilyError(body: any): string | null {
   if (!body || typeof body !== "object") return null;
-  if (typeof body.message === "string") return body.message;
-  if (typeof body.error === "string") return body.error;
-  if (body.error && typeof body.error === "object" && typeof body.error.message === "string") {
-    return body.error.message;
+  const record = body as Record<string, unknown>;
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.error === "string") return record.error;
+  if (
+    record.error
+    && typeof record.error === "object"
+    && typeof (record.error as Record<string, unknown>).message === "string"
+  ) {
+    return (record.error as Record<string, unknown>).message as string;
   }
-  if (typeof body.detail === "string") return body.detail;
-  if (body.detail && typeof body.detail === "object" && typeof body.detail.error === "string") {
-    return body.detail.error;
+  if (typeof record.detail === "string") return record.detail;
+  if (
+    record.detail
+    && typeof record.detail === "object"
+    && typeof (record.detail as Record<string, unknown>).error === "string"
+  ) {
+    return (record.detail as Record<string, unknown>).error as string;
   }
-  if (Array.isArray(body.detail)) {
-    const firstMessage = body.detail.find((item) =>
-      item
-      && typeof item === "object"
-      && typeof (item as Record<string, unknown>).msg === "string"
-    ) as { msg: string } | undefined;
+  if (Array.isArray(record.detail)) {
+    const firstMessage = record.detail.find((item: unknown): item is { msg: string } => {
+      return Boolean(
+        item
+        && typeof item === "object"
+        && typeof (item as Record<string, unknown>).msg === "string",
+      );
+    });
     if (firstMessage) return firstMessage.msg;
   }
   return null;
 }
 
 function normalizeTavilyResults(body: any): SearchResult[] {
-  if (!body || typeof body !== "object" || !Array.isArray(body.results)) {
+  if (!body || typeof body !== "object") {
     return [];
   }
+  const record = body as Record<string, unknown>;
+  if (!Array.isArray(record.results)) return [];
 
-  return body.results.reduce<SearchResult[]>((acc, result) => {
+  return record.results.reduce<SearchResult[]>((acc: SearchResult[], result: unknown) => {
     if (!result || typeof result !== "object") return acc;
-    if (typeof result.title !== "string" || typeof result.url !== "string") return acc;
-    const date = typeof result.published_date === "string"
-      ? result.published_date
-      : typeof result.date === "string"
-        ? result.date
+    const item = result as Record<string, unknown>;
+    if (typeof item.title !== "string" || typeof item.url !== "string") return acc;
+    const date = typeof item.published_date === "string"
+      ? item.published_date
+      : typeof item.date === "string"
+        ? item.date
         : undefined;
-    const lastUpdated = typeof result.lastUpdated === "string"
-      ? result.lastUpdated
-      : typeof result.last_updated === "string"
-        ? result.last_updated
+    const lastUpdated = typeof item.lastUpdated === "string"
+      ? item.lastUpdated
+      : typeof item.last_updated === "string"
+        ? item.last_updated
         : undefined;
     acc.push({
-      title: result.title,
-      url: result.url,
-      snippet: typeof result.content === "string"
-        ? result.content
-        : typeof result.snippet === "string"
-          ? result.snippet
+      title: item.title,
+      url: item.url,
+      snippet: typeof item.content === "string"
+        ? item.content
+        : typeof item.snippet === "string"
+          ? item.snippet
           : "",
       ...(date ? { date } : {}),
       ...(lastUpdated ? { lastUpdated } : {}),

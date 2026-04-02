@@ -6,7 +6,7 @@
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
-import { getRedis } from "./redis.ts";
+import { getRedis } from "./redis.js";
 
 const REDIS_TIMEOUT_MS = 1000;
 
@@ -114,4 +114,3 @@ export async function checkRateLimit(
 
   return null;
 }
-

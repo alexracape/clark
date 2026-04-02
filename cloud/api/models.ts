@@ -9,8 +9,8 @@
  * redeeming a beta code.
  */
 
-import { getRedis } from "../lib/redis.ts";
-import { errorResponse, methodNotAllowed } from "../lib/errors.ts";
+import { getRedis } from "../lib/redis.js";
+import { errorResponse, methodNotAllowed } from "../lib/errors.js";
 
 const GATEWAY_MODELS_URL = "https://ai-gateway.vercel.sh/v1/models";
 const CACHE_KEY = "models:catalog";

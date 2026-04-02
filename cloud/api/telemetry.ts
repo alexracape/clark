@@ -5,8 +5,8 @@
  * immediately so telemetry cannot mask backend issues elsewhere.
  */
 
-import { authenticate } from "../lib/auth.ts";
-import { errorResponse, methodNotAllowed } from "../lib/errors.ts";
+import { authenticate } from "../lib/auth.js";
+import { errorResponse, methodNotAllowed } from "../lib/errors.js";
 
 export default {
   async fetch(req: Request): Promise<Response> {

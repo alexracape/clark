@@ -1,14 +1,14 @@
-import { authenticate } from "../lib/auth.ts";
-import { hashClientId, hashForLogging, logDevEvent } from "../lib/dev-logging.ts";
-import { errorResponse, methodNotAllowed } from "../lib/errors.ts";
-import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.ts";
+import { authenticate } from "../lib/auth.js";
+import { hashClientId, hashForLogging, logDevEvent } from "../lib/dev-logging.js";
+import { errorResponse, methodNotAllowed } from "../lib/errors.js";
+import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.js";
 import {
   normalizeMaxResults,
   type SearchBackend,
   type SearchResponse,
   searchDuckDuckGo,
   searchTavily,
-} from "../lib/search.ts";
+} from "../lib/search.js";
 
 const SEARCH_RATE_LIMIT = { limit: 10, window: "60 s" } as const;
 
