@@ -9,6 +9,7 @@
 import { authenticate, requireTier } from "../lib/auth.js";
 import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.js";
 import { errorResponse, methodNotAllowed } from "../lib/errors.js";
+import { logCloudError } from "../lib/logging.js";
 
 const ocrLimiter = createRateLimiter(10, "60 s");
 
@@ -97,6 +98,15 @@ export default {
 
     const mistralKey = process.env.MISTRAL_API_KEY;
     if (!mistralKey) {
+      logCloudError("ocr_missing_mistral_key", {
+        endpoint: "/api/ocr",
+        clientId: auth.clientId,
+        request: {
+          mode: pdf ? "pdf" : "image",
+          extractImages: Boolean(extractImages),
+        },
+        error: new Error("Server misconfigured: missing MISTRAL_API_KEY"),
+      });
       return errorResponse(500, "Server misconfigured: missing MISTRAL_API_KEY");
     }
 
@@ -127,6 +137,18 @@ export default {
 
       if (!response.ok) {
         const text = await response.text().catch(() => "");
+        logCloudError("ocr_upstream_failed", {
+          endpoint: "/api/ocr",
+          clientId: auth.clientId,
+          request: {
+            mode: pdf ? "pdf" : "image",
+            extractImages: Boolean(extractImages),
+          },
+          details: {
+            upstreamStatus: response.status,
+          },
+          error: new Error(`Mistral OCR error (${response.status}): ${text}`),
+        });
         return errorResponse(502, `Mistral OCR error (${response.status}): ${text}`);
       }
 
@@ -153,6 +175,15 @@ export default {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logCloudError("ocr_failed", {
+        endpoint: "/api/ocr",
+        clientId: auth.clientId,
+        request: {
+          mode: pdf ? "pdf" : "image",
+          extractImages: Boolean(extractImages),
+        },
+        error: err,
+      });
       return errorResponse(500, `OCR processing failed: ${msg}`);
     }
   },

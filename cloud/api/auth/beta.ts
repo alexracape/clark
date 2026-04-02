@@ -9,6 +9,7 @@ import { authenticate } from "../../lib/auth.js";
 import { createRateLimiter, checkRateLimit } from "../../lib/rate-limit.js";
 import { getRedis } from "../../lib/redis.js";
 import { errorResponse, methodNotAllowed } from "../../lib/errors.js";
+import { logCloudError, logCloudInfo, logCloudWarn } from "../../lib/logging.js";
 
 const limiter = createRateLimiter(3, "60 s");
 
@@ -40,28 +41,54 @@ export default {
 
     const betaCode = process.env.BETA_CODE?.trim();
     if (!betaCode) {
-      console.error("[auth/beta] missing BETA_CODE env");
+      logCloudError("auth_beta_missing_code_env", {
+        endpoint: "/api/auth/beta",
+        clientId,
+        error: new Error("Server misconfigured: missing BETA_CODE"),
+      });
       return errorResponse(500, "Server misconfigured: missing BETA_CODE");
     }
 
     const submittedCode = getSubmittedCode(body);
     if (!submittedCode || submittedCode !== betaCode) {
-      console.warn("[auth/beta] invalid beta code", {
+      logCloudWarn("auth_beta_invalid_code", {
+        endpoint: "/api/auth/beta",
         clientId,
-        hasCode: Boolean(submittedCode),
-        submittedLength: submittedCode.length,
-        expectedLength: betaCode.length,
+        request: {
+          hasCode: Boolean(submittedCode),
+          submittedLength: submittedCode.length,
+          expectedLength: betaCode.length,
+        },
       });
       return errorResponse(401, "Invalid beta code");
     }
 
     const redis = getRedis();
     if (!redis) {
+      logCloudError("auth_beta_missing_redis", {
+        endpoint: "/api/auth/beta",
+        clientId,
+        error: new Error("Server misconfigured: missing Redis"),
+      });
       return errorResponse(500, "Server misconfigured: missing Redis");
     }
 
-    await redis.set(`beta:${clientId}`, "1");
-    console.info("[auth/beta] beta code redeemed", { clientId });
+    try {
+      await redis.set(`beta:${clientId}`, "1");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logCloudError("auth_beta_redis_write_failed", {
+        endpoint: "/api/auth/beta",
+        clientId,
+        error: err,
+      });
+      return errorResponse(500, `Beta redemption failed: ${msg}`);
+    }
+
+    logCloudInfo("auth_beta_redeemed", {
+      endpoint: "/api/auth/beta",
+      clientId,
+    });
 
     return new Response(
       JSON.stringify({ success: true, tier: "beta" }),

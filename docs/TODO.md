@@ -5,14 +5,10 @@ Some future enhancements and things that need fixing, organized into parallel ex
 GUI Related
 - Inline PDF rendering
 - Delete file
-- block latex is black on dark background
 - Thinking indicator / general spinner
 - Animations and micro interactions
 - QR code
-- /note should auto focus on new note title to rename
-- /feedback + enter should not send blank message - cleanly enter
 - Graph view in bottom left of explorer
-
 
 
 Core Related

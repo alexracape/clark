@@ -7,6 +7,7 @@
 import { authenticate } from "../lib/auth.js";
 import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.js";
 import { errorResponse, methodNotAllowed } from "../lib/errors.js";
+import { logCloudError } from "../lib/logging.js";
 
 const feedbackLimiter = createRateLimiter(5, "60 s");
 
@@ -29,6 +30,11 @@ export default {
 
     const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
     if (!webhookUrl) {
+      logCloudError("feedback_missing_webhook", {
+        endpoint: "/api/feedback",
+        clientId: auth.clientId,
+        error: new Error("Server misconfigured: missing DISCORD_WEBHOOK_URL"),
+      });
       return errorResponse(500, "Server misconfigured: missing DISCORD_WEBHOOK_URL");
     }
 
@@ -41,6 +47,14 @@ export default {
       });
 
       if (!response.ok) {
+        logCloudError("feedback_webhook_failed", {
+          endpoint: "/api/feedback",
+          clientId: auth.clientId,
+          details: {
+            upstreamStatus: response.status,
+          },
+          error: new Error(`Discord webhook error: ${response.status}`),
+        });
         return errorResponse(502, `Discord webhook error: ${response.status}`);
       }
 
@@ -50,6 +64,11 @@ export default {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logCloudError("feedback_delivery_failed", {
+        endpoint: "/api/feedback",
+        clientId: auth.clientId,
+        error: err,
+      });
       return errorResponse(500, `Feedback delivery failed: ${msg}`);
     }
   },

@@ -1,6 +1,7 @@
 import { authenticate } from "../lib/auth.js";
 import { hashClientId, hashForLogging, logDevEvent } from "../lib/dev-logging.js";
 import { errorResponse, methodNotAllowed } from "../lib/errors.js";
+import { logCloudError } from "../lib/logging.js";
 import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.js";
 import {
   normalizeMaxResults,
@@ -47,6 +48,16 @@ export default {
       if (auth.tier === "beta") {
         const tavilyKey = process.env.TAVILY_API_KEY;
         if (!tavilyKey) {
+          logCloudError("search_missing_tavily_key", {
+            endpoint: "/api/search",
+            clientId: auth.clientId,
+            request: {
+              tier: auth.tier,
+              queryHash,
+              maxResults,
+            },
+            error: new Error("Server misconfigured: missing TAVILY_API_KEY"),
+          });
           return errorResponse(500, "Server misconfigured: missing TAVILY_API_KEY");
         }
         backend = "tavily";
@@ -91,6 +102,19 @@ export default {
         fallbackReason: auth.tier === "anonymous" ? "anonymous_tier" : null,
         latencyMs: Date.now() - startedAt,
         error: message,
+      });
+      logCloudError("search_failed", {
+        endpoint: "/api/search",
+        clientId: auth.clientId,
+        request: {
+          tier: auth.tier,
+          queryHash,
+          maxResults,
+        },
+        details: {
+          fallbackReason: auth.tier === "anonymous" ? "anonymous_tier" : undefined,
+        },
+        error: err,
       });
       const status = auth.tier === "beta" ? 502 : 500;
       return errorResponse(status, message);

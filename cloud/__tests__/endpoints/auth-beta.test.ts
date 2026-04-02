@@ -6,10 +6,13 @@ import {
   clientRequest,
   anonRequest,
   jsonBody,
+  useConsoleCapture,
 } from "../helpers.ts";
+import { hashClientId } from "../../lib/dev-logging.ts";
 
 describe("POST /api/auth/beta", () => {
   const store = useMockRedis();
+  const logs = useConsoleCapture();
   useCloudEnv({ BETA_CODE: "correct-beta-code" });
 
   test("rejects non-POST methods", async () => {
@@ -43,6 +46,27 @@ describe("POST /api/auth/beta", () => {
     expect(body.error).toContain("Invalid beta code");
   });
 
+  test("logs hashed client id for invalid beta code", async () => {
+    const clientId = "beta-log-client";
+    await handler.fetch(
+      clientRequest("/api/auth/beta", {
+        clientId,
+        body: { code: "wrong-code" },
+      }),
+    );
+
+    expect(logs.warns).toHaveLength(1);
+    expect(logs.warns[0]?.[0]).toBe("[cloud] auth_beta_invalid_code");
+    expect(logs.warns[0]?.[1]).toMatchObject({
+      endpoint: "/api/auth/beta",
+      clientIdHash: hashClientId(clientId),
+      request: {
+        hasCode: true,
+      },
+    });
+    expect(JSON.stringify(logs.warns[0]?.[1])).not.toContain(clientId);
+  });
+
   test("returns 401 when no code provided", async () => {
     const res = await handler.fetch(
       clientRequest("/api/auth/beta", { body: {} }),
@@ -66,6 +90,25 @@ describe("POST /api/auth/beta", () => {
 
     // Verify Redis key was set
     expect(store.get(`beta:${clientId}`)).toBe("1");
+  });
+
+  test("logs hashed client id on successful redemption", async () => {
+    store.clear();
+    const clientId = "redeem-log-client";
+    await handler.fetch(
+      clientRequest("/api/auth/beta", {
+        clientId,
+        body: { code: "correct-beta-code" },
+      }),
+    );
+
+    expect(logs.infos).toHaveLength(1);
+    expect(logs.infos[0]?.[0]).toBe("[cloud] auth_beta_redeemed");
+    expect(logs.infos[0]?.[1]).toMatchObject({
+      endpoint: "/api/auth/beta",
+      clientIdHash: hashClientId(clientId),
+    });
+    expect(JSON.stringify(logs.infos[0]?.[1])).not.toContain(clientId);
   });
 
   test("returns 500 when BETA_CODE env var is not set", async () => {

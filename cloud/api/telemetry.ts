@@ -7,6 +7,7 @@
 
 import { authenticate } from "../lib/auth.js";
 import { errorResponse, methodNotAllowed } from "../lib/errors.js";
+import { logCloudInfo } from "../lib/logging.js";
 
 export default {
   async fetch(req: Request): Promise<Response> {
@@ -24,10 +25,13 @@ export default {
 
     const { version, provider } = body;
 
-    console.info("[telemetry] stubbed", {
+    logCloudInfo("telemetry_stubbed", {
+      endpoint: "/api/telemetry",
       clientId: auth.clientId,
-      version: version ?? null,
-      provider: provider ?? null,
+      request: {
+        version: version ?? null,
+        provider: provider ?? null,
+      },
     });
 
     return new Response(

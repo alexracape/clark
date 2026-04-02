@@ -10,6 +10,7 @@ import { gateway } from "@ai-sdk/gateway";
 import { authenticate, requireTier } from "../lib/auth.js";
 import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.js";
 import { errorResponse, methodNotAllowed } from "../lib/errors.js";
+import { logCloudError } from "../lib/logging.js";
 
 const embedLimiter = createRateLimiter(20, "60 s");
 const DEFAULT_MODEL = "openai/text-embedding-3-small";
@@ -62,6 +63,17 @@ export default {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      logCloudError("embed_failed", {
+        endpoint: "/api/embed",
+        clientId: auth.clientId,
+        request: {
+          model: DEFAULT_MODEL,
+          textCount: texts.length,
+          totalChars: texts.reduce((sum: number, text: unknown) =>
+            sum + (typeof text === "string" ? text.length : 0), 0),
+        },
+        error: err,
+      });
       return errorResponse(500, `Embedding failed: ${msg}`);
     }
   },

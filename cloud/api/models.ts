@@ -11,6 +11,7 @@
 
 import { getRedis } from "../lib/redis.js";
 import { errorResponse, methodNotAllowed } from "../lib/errors.js";
+import { logCloudError } from "../lib/logging.js";
 
 const GATEWAY_MODELS_URL = "https://ai-gateway.vercel.sh/v1/models";
 const CACHE_KEY = "models:catalog";
@@ -168,7 +169,10 @@ export default {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error("[models] failed to fetch model catalog", { error: msg });
+      logCloudError("models_fetch_failed", {
+        endpoint: "/api/models",
+        error: err,
+      });
       return errorResponse(502, `Failed to fetch model catalog: ${msg}`);
     }
   },

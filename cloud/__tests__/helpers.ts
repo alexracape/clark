@@ -166,6 +166,46 @@ export function useFetchMock(
 }
 
 // ---------------------------------------------------------------------------
+// Console capture
+// ---------------------------------------------------------------------------
+
+export function useConsoleCapture() {
+  const errors: unknown[][] = [];
+  const warns: unknown[][] = [];
+  const infos: unknown[][] = [];
+
+  const original = {
+    error: console.error,
+    warn: console.warn,
+    info: console.info,
+  };
+
+  beforeEach(() => {
+    errors.length = 0;
+    warns.length = 0;
+    infos.length = 0;
+
+    console.error = (...args) => {
+      errors.push(args);
+    };
+    console.warn = (...args) => {
+      warns.push(args);
+    };
+    console.info = (...args) => {
+      infos.push(args);
+    };
+  });
+
+  afterEach(() => {
+    console.error = original.error;
+    console.warn = original.warn;
+    console.info = original.info;
+  });
+
+  return { errors, warns, infos };
+}
+
+// ---------------------------------------------------------------------------
 // Response assertion helpers
 // ---------------------------------------------------------------------------
 

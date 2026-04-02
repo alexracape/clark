@@ -14,6 +14,7 @@ import { authenticate, requireTier } from "../lib/auth.js";
 import { hashClientId, logDevEvent, isDevLoggingEnabled } from "../lib/dev-logging.js";
 import { createRateLimiter, checkRateLimit } from "../lib/rate-limit.js";
 import { errorResponse, methodNotAllowed } from "../lib/errors.js";
+import { logCloudError } from "../lib/logging.js";
 
 const chatLimiter = createRateLimiter(30, "60 s");
 const UPSTREAM_TIMEOUT_MS = 25_000;
@@ -83,16 +84,30 @@ function convertMessages(messages: any[]): any[] {
           break;
         }
         case "tool_result": {
-          const text = typeof c.content === "string"
-            ? c.content
-            : JSON.stringify(c.content);
+          let output: any;
+          if (c.isError) {
+            const text = typeof c.content === "string"
+              ? c.content
+              : JSON.stringify(c.content);
+            output = { type: "error-text", value: text };
+          } else if (Array.isArray(c.content)) {
+            // Image-bearing tool results (e.g., read_canvas snapshots)
+            output = {
+              type: "content",
+              value: c.content.map((item: any) =>
+                item.type === "image"
+                  ? { type: "media", data: item.data, mediaType: item.mediaType }
+                  : { type: "text", text: item.text ?? JSON.stringify(item) }
+              ),
+            };
+          } else {
+            output = { type: "text", value: c.content };
+          }
           parts.push({
             type: "tool-result",
             toolCallId: c.toolUseId,
             toolName: toolNameMap.get(c.toolUseId) ?? "unknown",
-            output: c.isError
-              ? { type: "error-text", value: text }
-              : { type: "text", value: text },
+            output,
           });
           break;
         }
@@ -233,14 +248,19 @@ export default {
                   break;
                 }
                 case "error": {
+                  logCloudError("chat_upstream_error_part", {
+                    endpoint: "/api/chat",
+                    clientId: auth.clientId,
+                    request: {
+                      model: gatewayModelId,
+                      messageCount: messages.length,
+                      toolCount: Object.keys(allTools).length,
+                    },
+                    error: part.error,
+                  });
                   const msg = part.error instanceof Error
                     ? part.error.message
                     : JSON.stringify(part.error);
-                  console.error("[chat] upstream error part", {
-                    clientIdHash: hashClientId(auth.clientId),
-                    model: gatewayModelId,
-                    error: msg,
-                  });
                   chunk = JSON.stringify({ type: "error", error: msg });
                   break;
                 }
@@ -267,10 +287,15 @@ export default {
             }
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            console.error("[chat] stream failed", {
-              clientIdHash: hashClientId(auth.clientId),
-              model: gatewayModelId,
-              error: msg,
+            logCloudError("chat_stream_failed", {
+              endpoint: "/api/chat",
+              clientId: auth.clientId,
+              request: {
+                model: gatewayModelId,
+                messageCount: messages.length,
+                toolCount: Object.keys(allTools).length,
+              },
+              error: err,
             });
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ type: "error", error: msg })}\n\n`),
@@ -291,10 +316,15 @@ export default {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error("[chat] handler failed", {
-        clientIdHash: hashClientId(auth.clientId),
-        model,
-        error: msg,
+      logCloudError("chat_handler_failed", {
+        endpoint: "/api/chat",
+        clientId: auth.clientId,
+        request: {
+          model,
+          messageCount: Array.isArray(messages) ? messages.length : undefined,
+          toolCount: Array.isArray(tools) ? tools.length : undefined,
+        },
+        error: err,
       });
       return errorResponse(500, msg);
     }

@@ -7,7 +7,9 @@ import {
   clientRequest,
   anonRequest,
   jsonBody,
+  useConsoleCapture,
 } from "../helpers.ts";
+import { hashClientId } from "../../lib/dev-logging.ts";
 
 const handler = chatHandler.fetch.bind(chatHandler);
 
@@ -69,6 +71,7 @@ const validBody = {
 
 describe("POST /api/chat", () => {
   const store = useBetaClient("test-client-uuid");
+  const logs = useConsoleCapture();
   useCloudEnv({ AI_GATEWAY_API_KEY: "test-gateway-key" });
   let lastGatewayRequestBody: any = null;
 
@@ -281,6 +284,8 @@ describe("POST /api/chat", () => {
 
   test("streams error event when upstream throws", async () => {
     const originalFetch = globalThis.fetch;
+    const clientId = "chat-log-client";
+    store.set(`beta:${clientId}`, "1");
     globalThis.fetch = (async (input: string | URL | Request) => {
       const url = typeof input === "string"
         ? input
@@ -294,7 +299,7 @@ describe("POST /api/chat", () => {
     }) as typeof fetch;
     try {
       const res = await handler(
-        clientRequest("/api/chat", { body: validBody }),
+        clientRequest("/api/chat", { clientId, body: validBody }),
       );
       // The handler catches the error; check for 500 or error in stream
       const text = await res.text();
@@ -305,6 +310,19 @@ describe("POST /api/chat", () => {
 
       const errorEvents = lines.filter((l: any) => l.type === "error");
       expect(errorEvents.length).toBeGreaterThan(0);
+      expect(logs.errors.length).toBeGreaterThan(0);
+      const cloudLog = logs.errors.find((entry) => entry[0] === "[cloud] chat_upstream_error_part");
+      expect(cloudLog).toBeDefined();
+      expect(cloudLog?.[1]).toMatchObject({
+        endpoint: "/api/chat",
+        clientIdHash: hashClientId(clientId),
+        request: {
+          model: "anthropic/claude-sonnet-4-20250514",
+          messageCount: 1,
+          toolCount: 0,
+        },
+      });
+      expect(JSON.stringify(cloudLog?.[1])).not.toContain(clientId);
     } finally {
       globalThis.fetch = originalFetch;
     }

@@ -9,6 +9,19 @@
 
 import type { OCRProvider } from "./provider.ts";
 
+const VERCEL_FUNCTION_BODY_LIMIT_BYTES = 4_500_000;
+const OCR_REQUEST_SAFETY_MARGIN_BYTES = 400_000;
+const MAX_CLOUD_OCR_REQUEST_BYTES = VERCEL_FUNCTION_BODY_LIMIT_BYTES - OCR_REQUEST_SAFETY_MARGIN_BYTES;
+
+function estimateBase64Size(byteLength: number): number {
+  return Math.ceil(byteLength / 3) * 4;
+}
+
+function estimatePdfRequestSize(pdfByteLength: number, extractImages: boolean): number {
+  return estimateBase64Size(pdfByteLength)
+    + Buffer.byteLength(JSON.stringify({ pdf: "", extractImages }));
+}
+
 export interface ExtractedImage {
   /** Image reference ID (e.g. "img-0.jpg") */
   id: string;
@@ -63,6 +76,16 @@ export class CloudOCRProvider implements OCRProvider {
     pdfBuffer: ArrayBuffer,
     opts?: { extractImages?: boolean },
   ): Promise<CloudPDFResult> {
+    const extractImages = opts?.extractImages ?? false;
+    const estimatedRequestSize = estimatePdfRequestSize(pdfBuffer.byteLength, extractImages);
+    if (estimatedRequestSize > MAX_CLOUD_OCR_REQUEST_BYTES) {
+      const estimatedMb = (estimatedRequestSize / (1024 * 1024)).toFixed(1);
+      throw new Error(
+        `PDF too large for Clark Cloud OCR (${estimatedMb} MB request estimate). ` +
+        `Clark Cloud OCR has a request-size ceiling, so try a smaller PDF or split it into parts.`,
+      );
+    }
+
     const base64 = Buffer.from(pdfBuffer).toString("base64");
 
     const res = await fetch(`${this.cloudUrl}/api/ocr`, {
@@ -73,7 +96,7 @@ export class CloudOCRProvider implements OCRProvider {
       },
       body: JSON.stringify({
         pdf: base64,
-        extractImages: opts?.extractImages ?? false,
+        extractImages,
       }),
       signal: AbortSignal.timeout(120_000),
     });

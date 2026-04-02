@@ -6,6 +6,7 @@
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
+import { logCloudError } from "./logging.js";
 import { getRedis } from "./redis.js";
 
 const REDIS_TIMEOUT_MS = 1000;
@@ -60,10 +61,14 @@ export async function checkRateLimit(
   if (_bypass) return null;
 
   if (!limiter) {
-    console.error("[rate-limit] missing Upstash Redis configuration", {
-      hasUrl: Boolean(process.env.UPSTASH_REDIS_REST_URL),
-      hasToken: Boolean(process.env.UPSTASH_REDIS_REST_TOKEN),
+    logCloudError("rate_limit_missing_redis_config", {
+      endpoint: "rate-limit",
       clientId,
+      details: {
+        hasUrl: Boolean(process.env.UPSTASH_REDIS_REST_URL),
+        hasToken: Boolean(process.env.UPSTASH_REDIS_REST_TOKEN),
+      },
+      error: new Error("Server misconfigured: missing Upstash Redis configuration"),
     });
     return new Response(
       JSON.stringify({ error: "Server misconfigured: missing Upstash Redis configuration" }),
@@ -81,9 +86,10 @@ export async function checkRateLimit(
       timeoutAfter<Awaited<ReturnType<Ratelimit["limit"]>>>(REDIS_TIMEOUT_MS),
     ]);
   } catch (err) {
-    console.error("[rate-limit] Upstash Redis request failed", {
+    logCloudError("rate_limit_request_failed", {
+      endpoint: "rate-limit",
       clientId,
-      error: err instanceof Error ? err.message : String(err),
+      error: err,
     });
     return new Response(
       JSON.stringify({ error: "Rate limiting unavailable: Upstash Redis request failed" }),

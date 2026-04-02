@@ -74,6 +74,19 @@ describe("CloudOCRProvider", () => {
       .rejects.toThrow("Cloud OCR error (500)");
   });
 
+  it("rejects oversized PDFs before uploading", async () => {
+    let fetchCalled = false;
+    globalThis.fetch = async () => {
+      fetchCalled = true;
+      return new Response("unexpected", { status: 200 });
+    };
+
+    const provider = new CloudOCRProvider(CLOUD_URL, CLIENT_ID);
+    await expect(provider.transcribePDF(new ArrayBuffer(3_200_000)))
+      .rejects.toThrow("PDF too large for Clark Cloud OCR");
+    expect(fetchCalled).toBe(false);
+  });
+
   it("consolidateTranscript is a pass-through", async () => {
     const provider = new CloudOCRProvider(CLOUD_URL, CLIENT_ID);
     const input = "# Page 1\nContent\n\n# Page 2\nMore content";

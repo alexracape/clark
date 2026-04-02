@@ -7,7 +7,9 @@ import {
   clientRequest,
   anonRequest,
   jsonBody,
+  useConsoleCapture,
 } from "../helpers.ts";
+import { hashClientId } from "../../lib/dev-logging.ts";
 
 const handler = embedHandler.fetch.bind(embedHandler);
 
@@ -34,6 +36,7 @@ mock.module("@ai-sdk/gateway", () => ({
 
 describe("POST /api/embed", () => {
   const store = useBetaClient("test-client-uuid");
+  const logs = useConsoleCapture();
   useCloudEnv({});
 
   beforeEach(() => {
@@ -98,11 +101,29 @@ describe("POST /api/embed", () => {
 
   test("returns 500 when embedMany throws", async () => {
     mockEmbedMany.mockRejectedValueOnce(new Error("Gateway unavailable"));
+    const clientId = "embed-log-client";
+    store.set(`beta:${clientId}`, "1");
     const res = await handler(
-      clientRequest("/api/embed", { body: { texts: ["hello"] } }),
+      clientRequest("/api/embed", { clientId, body: { texts: ["hello"] } }),
     );
     expect(res.status).toBe(500);
     const body = await jsonBody(res);
     expect(body.error).toContain("Gateway unavailable");
+    expect(logs.errors).toHaveLength(1);
+    expect(logs.errors[0]?.[0]).toBe("[cloud] embed_failed");
+    expect(logs.errors[0]?.[1]).toMatchObject({
+      endpoint: "/api/embed",
+      clientIdHash: hashClientId(clientId),
+      request: {
+        model: "openai/text-embedding-3-small",
+        textCount: 1,
+        totalChars: 5,
+      },
+      error: {
+        kind: "internal",
+        message: "Gateway unavailable",
+      },
+    });
+    expect(JSON.stringify(logs.errors[0]?.[1])).not.toContain(clientId);
   });
 });

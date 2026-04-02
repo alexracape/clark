@@ -16,10 +16,10 @@ interface ContextPanelProps {
 }
 
 const CATEGORIES = [
-  { key: "userTokens", label: "User messages", color: "#3D7A5F" },
-  { key: "assistantTokens", label: "Assistant responses", color: "#7EB8C9" },
-  { key: "toolTokens", label: "Tool results", color: "#C9A84C" },
-  { key: "thinkingTokens", label: "Thinking", color: "#6DBFB8" },
+  { key: "userTokens", label: "User messages", color: "var(--lamp-green)" },
+  { key: "assistantTokens", label: "Assistant responses", color: "var(--sky)" },
+  { key: "toolTokens", label: "Tool results", color: "var(--brass)" },
+  { key: "thinkingTokens", label: "Thinking", color: "var(--text-cyan)" },
 ] as const;
 
 export function ContextPanel({ invoke, onClose }: ContextPanelProps) {

@@ -17,11 +17,11 @@ interface TitlebarProps {
 }
 
 const CANVAS_STATUS_COLORS: Record<string, string> = {
-  connected: "#81C784",
-  connecting: "#C4A85A",
-  reconnecting: "#C4A85A",
-  disconnected: "#C47A5A",
-  failed: "#C47A5A",
+  connected: "var(--sage)",
+  connecting: "var(--warning)",
+  reconnecting: "var(--warning)",
+  disconnected: "var(--error)",
+  failed: "var(--error)",
 };
 
 export function Titlebar({
@@ -34,7 +34,7 @@ export function Titlebar({
   onSettingsClick,
 }: TitlebarProps) {
   const canvasDotColor = canvasStatus
-    ? CANVAS_STATUS_COLORS[canvasStatus.status] ?? "#C47A5A"
+    ? CANVAS_STATUS_COLORS[canvasStatus.status] ?? "var(--error)"
     : undefined;
 
   return (
