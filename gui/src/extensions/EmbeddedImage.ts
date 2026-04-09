@@ -14,7 +14,7 @@ const DEFAULT_ASSET_BASE_URL = "http://localhost:3456";
 const DEFAULT_IMAGE_DIR = "Resources/Images/";
 
 function isEmbeddableAssetReference(src: string): boolean {
-  return /\.(png|jpe?g|gif|svg|webp|bmp|tiff?|pdf)$/i.test(src);
+  return /\.(png|jpe?g|gif|svg|webp|bmp|tiff?)$/i.test(src);
 }
 
 function matchEmbeddedAsset(src: string): RegExpMatchArray | null {

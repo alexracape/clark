@@ -333,7 +333,7 @@ export function onCanvasOpened(
 export function applyStreamEvent(state: AppState, event: SidecarStreamEvent): AppState {
   switch (event.type) {
     case "streaming_text":
-      return { ...state, streamingText: event.text, streamingThinking: null };
+      return { ...state, streamingText: event.text };
     case "streaming_thinking":
       return { ...state, streamingThinking: event.text };
     case "streaming_done":

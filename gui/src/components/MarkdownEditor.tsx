@@ -11,6 +11,7 @@ import { WikiLinkSuggestion } from "../extensions/WikiLinkSuggestion.ts";
 import { SmartPairs } from "../extensions/SmartPairs.ts";
 import { SlashCommands } from "../extensions/SlashCommands.ts";
 import { EmbeddedImage } from "../extensions/EmbeddedImage.ts";
+import { EmbeddedPDF } from "../extensions/EmbeddedPDF.ts";
 import { InlineMath } from "../extensions/InlineMath.ts";
 import { BlockMath } from "../extensions/BlockMath.ts";
 import { getSidecarBaseUrl } from "../ipc.ts";
@@ -27,13 +28,14 @@ interface MarkdownEditorProps {
   noteNames: WikilinkTarget[];
   chatItems: ChatItem[];
   streamingText: string | null;
+  streamingThinking: string | null;
   isStreaming: boolean;
   pendingToolCalls: ToolCall[];
   autoEditTitle?: boolean;
   onAutoEditTitleConsumed?: () => void;
 }
 
-export function MarkdownEditor({ file, onSave, onClose, onDirtyChange, onOpenNote, onRename, onNewNote, noteNames, chatItems, streamingText, isStreaming, pendingToolCalls, autoEditTitle, onAutoEditTitleConsumed }: MarkdownEditorProps) {
+export function MarkdownEditor({ file, onSave, onClose, onDirtyChange, onOpenNote, onRename, onNewNote, noteNames, chatItems, streamingText, streamingThinking, isStreaming, pendingToolCalls, autoEditTitle, onAutoEditTitleConsumed }: MarkdownEditorProps) {
   const [assetBaseUrl, setAssetBaseUrl] = useState<string>(
     "http://localhost:3456",
   );
@@ -149,6 +151,9 @@ export function MarkdownEditor({ file, onSave, onClose, onDirtyChange, onOpenNot
       SmartPairs,
       SlashCommands.configure({ noteNames, onNewNote }),
       EmbeddedImage.configure({
+        assetBaseUrl,
+      }),
+      EmbeddedPDF.configure({
         assetBaseUrl,
       }),
       InlineMath,
@@ -298,6 +303,7 @@ export function MarkdownEditor({ file, onSave, onClose, onDirtyChange, onOpenNot
       <ConversationRail
         chatItems={chatItems}
         streamingText={streamingText}
+        streamingThinking={streamingThinking}
         isStreaming={isStreaming}
         pendingToolCalls={pendingToolCalls}
         onExpandToChat={onClose}

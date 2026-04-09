@@ -209,8 +209,10 @@ describe("sidecar API contracts", () => {
 
       if (url.endsWith("/api/chat")) {
         return new Response(
-          "data: {\"type\":\"text_delta\",\"text\":\"Sample Notes\"}\n\n" +
-          "data: {\"type\":\"done\",\"stopReason\":\"end_turn\"}\n\n",
+          "data: {\"type\":\"text-start\",\"id\":\"text-0\"}\n\n" +
+          "data: {\"type\":\"text-delta\",\"id\":\"text-0\",\"text\":\"Sample Notes\"}\n\n" +
+          "data: {\"type\":\"text-end\",\"id\":\"text-0\"}\n\n" +
+          "data: {\"type\":\"finish\",\"finishReason\":\"end_turn\"}\n\n",
           {
             status: 200,
             headers: { "Content-Type": "text/event-stream" },
@@ -277,8 +279,10 @@ describe("sidecar API contracts", () => {
       if (url === "https://cloud.test/api/chat") {
         chatClientId = new Headers(init?.headers).get("X-Clark-Client-Id");
         return new Response(
-          "data: {\"type\":\"text_delta\",\"text\":\"hello\"}\n\n" +
-          "data: {\"type\":\"done\",\"stopReason\":\"end_turn\"}\n\n",
+          "data: {\"type\":\"text-start\",\"id\":\"text-0\"}\n\n" +
+          "data: {\"type\":\"text-delta\",\"id\":\"text-0\",\"text\":\"hello\"}\n\n" +
+          "data: {\"type\":\"text-end\",\"id\":\"text-0\"}\n\n" +
+          "data: {\"type\":\"finish\",\"finishReason\":\"end_turn\"}\n\n",
           {
             status: 200,
             headers: { "Content-Type": "text/event-stream" },

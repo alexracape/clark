@@ -5,6 +5,7 @@ import { renderMarkdown } from "../markdown.ts";
 interface ConversationRailProps {
   chatItems: ChatItem[];
   streamingText: string | null;
+  streamingThinking: string | null;
   isStreaming: boolean;
   pendingToolCalls: ToolCall[];
   onExpandToChat: () => void;
@@ -14,6 +15,7 @@ interface QAPair {
   id: string;
   question: string;
   answer: string;
+  reasoning?: string;
   /** Tool calls that occurred between the user message and the assistant response */
   toolCalls: ToolCall[];
 }
@@ -72,6 +74,7 @@ function hasStreamingPair(chatItems: ChatItem[]): { streaming: boolean; question
 export function ConversationRail({
   chatItems,
   streamingText,
+  streamingThinking,
   isStreaming,
   pendingToolCalls,
   onExpandToChat,
@@ -162,6 +165,7 @@ export function ConversationRail({
           id: streamingPair.id,
           question: streamingPair.question,
           answer: streamingText ?? "",
+          reasoning: streamingThinking ?? "",
           toolCalls: pendingToolCalls,
           type: "streaming" as const,
         }]
@@ -226,11 +230,18 @@ export function ConversationRail({
                 )}
 
                 {/* Thinking indicator when streaming but no text/tools yet */}
-                {isStreamingBar && !bar.answer && bar.toolCalls.length === 0 && (
+                {isStreamingBar && !bar.answer && bar.toolCalls.length === 0 && !bar.reasoning && (
                   <div className="conv-rail__thinking">
                     <span className="conv-rail__tool-spinner" />
                     <span className="conv-rail__tool-name">Thinking...</span>
                   </div>
+                )}
+
+                {isStreamingBar && bar.reasoning && (
+                  <div
+                    className="conv-rail__card-reasoning message__content"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(bar.reasoning) }}
+                  />
                 )}
 
                 {/* Response body */}

@@ -176,9 +176,11 @@ describe("Conversation", () => {
   test("collectStreamResponse merges text deltas", () => {
     const conv = new Conversation();
     const content = conv.collectStreamResponse([
-      { type: "text_delta", text: "Hello " },
-      { type: "text_delta", text: "world" },
-      { type: "done", stopReason: "end_turn" },
+      { type: "text-start", id: "text-0" },
+      { type: "text-delta", id: "text-0", text: "Hello " },
+      { type: "text-delta", id: "text-0", text: "world" },
+      { type: "text-end", id: "text-0" },
+      { type: "finish", finishReason: "end_turn" },
     ]);
 
     expect(content).toHaveLength(1);
@@ -235,14 +237,133 @@ describe("Conversation", () => {
     expect(conv.length).toBe(2); // unchanged
   });
 
+  test("collectStreamResponse handles text-delta without text-start", () => {
+    const conv = new Conversation();
+    const content = conv.collectStreamResponse([
+      { type: "text-delta", id: "text-0", text: "orphan " },
+      { type: "text-delta", id: "text-0", text: "delta" },
+      { type: "text-end", id: "text-0" },
+      { type: "finish", finishReason: "end_turn" },
+    ]);
+
+    // Should auto-create the text part and accumulate deltas
+    expect(content).toHaveLength(1);
+    expect(content[0]).toEqual({ type: "text", text: "orphan delta" });
+  });
+
+  test("collectStreamResponse handles missing text-end before finish", () => {
+    const conv = new Conversation();
+    const content = conv.collectStreamResponse([
+      { type: "text-start", id: "text-0" },
+      { type: "text-delta", id: "text-0", text: "no end" },
+      { type: "finish", finishReason: "end_turn" },
+    ]);
+
+    // Text should still be collected even without explicit text-end
+    expect(content).toHaveLength(1);
+    expect(content[0]).toEqual({ type: "text", text: "no end" });
+  });
+
+  test("collectStreamResponse handles reasoning-delta without reasoning-start", () => {
+    const conv = new Conversation();
+    const content = conv.collectStreamResponse([
+      { type: "reasoning-delta", id: "r-0", text: "orphan thought" },
+      { type: "reasoning-end", id: "r-0" },
+      { type: "text-start", id: "text-0" },
+      { type: "text-delta", id: "text-0", text: "answer" },
+      { type: "text-end", id: "text-0" },
+      { type: "finish", finishReason: "end_turn" },
+    ]);
+
+    // Should auto-create thinking part + have text
+    expect(content).toHaveLength(2);
+    expect(content[0]).toEqual({ type: "thinking", text: "orphan thought" });
+    expect(content[1]).toEqual({ type: "text", text: "answer" });
+  });
+
+  test("collectStreamResponse handles empty text deltas", () => {
+    const conv = new Conversation();
+    const content = conv.collectStreamResponse([
+      { type: "text-start", id: "text-0" },
+      { type: "text-delta", id: "text-0", text: "" },
+      { type: "text-delta", id: "text-0", text: "real content" },
+      { type: "text-delta", id: "text-0", text: "" },
+      { type: "text-end", id: "text-0" },
+      { type: "finish", finishReason: "end_turn" },
+    ]);
+
+    expect(content).toHaveLength(1);
+    expect(content[0]).toEqual({ type: "text", text: "real content" });
+  });
+
+  test("collectStreamResponse handles multiple interleaved text blocks", () => {
+    const conv = new Conversation();
+    const content = conv.collectStreamResponse([
+      { type: "text-start", id: "a" },
+      { type: "text-delta", id: "a", text: "first " },
+      { type: "text-start", id: "b" },
+      { type: "text-delta", id: "b", text: "second " },
+      { type: "text-delta", id: "a", text: "block" },
+      { type: "text-delta", id: "b", text: "block" },
+      { type: "text-end", id: "a" },
+      { type: "text-end", id: "b" },
+      { type: "finish", finishReason: "end_turn" },
+    ]);
+
+    expect(content).toHaveLength(2);
+    expect(content[0]).toEqual({ type: "text", text: "first block" });
+    expect(content[1]).toEqual({ type: "text", text: "second block" });
+  });
+
+  test("collectStreamResponse handles finish with no content", () => {
+    const conv = new Conversation();
+    const content = conv.collectStreamResponse([
+      { type: "finish", finishReason: "end_turn" },
+    ]);
+
+    expect(content).toHaveLength(0);
+  });
+
+  test("collectStreamResponse handles tool input with invalid JSON", () => {
+    const conv = new Conversation();
+
+    expect(() => {
+      conv.collectStreamResponse([
+        { type: "tool-input-start", id: "t1", toolName: "read_file" },
+        { type: "tool-input-delta", id: "t1", delta: "{invalid json" },
+        { type: "tool-input-end", id: "t1" },
+        { type: "finish", finishReason: "tool_use" },
+      ]);
+    }).toThrow(); // JSON.parse should throw SyntaxError
+  });
+
+  test("collectStreamResponse handles tool-call (non-streamed) chunks", () => {
+    const conv = new Conversation();
+    const content = conv.collectStreamResponse([
+      { type: "tool-call", toolCallId: "tc1", toolName: "echo", input: { text: "hi" } },
+      { type: "finish", finishReason: "tool_use" },
+    ]);
+
+    expect(content).toHaveLength(1);
+    expect(content[0]).toEqual({
+      type: "tool_use",
+      id: "tc1",
+      name: "echo",
+      input: { text: "hi" },
+    });
+  });
+
   test("collectStreamResponse handles tool use", () => {
     const conv = new Conversation();
     const content = conv.collectStreamResponse([
-      { type: "text_delta", text: "Let me check." },
-      { type: "tool_use_start", id: "t1", name: "read_canvas" },
-      { type: "tool_input_delta", id: "t1", input: '{"page":' },
-      { type: "tool_input_delta", id: "t1", input: '"1"}' },
-      { type: "done", stopReason: "tool_use" },
+      { type: "text-start", id: "text-0" },
+      { type: "text-delta", id: "text-0", text: "Let me check." },
+      { type: "text-end", id: "text-0" },
+      { type: "tool-input-start", id: "t1", toolName: "read_canvas" },
+      { type: "tool-input-delta", id: "t1", delta: '{"page":' },
+      { type: "tool-input-delta", id: "t1", delta: '"1"}' },
+      { type: "tool-input-end", id: "t1" },
+      { type: "finish", finishReason: "tool_use" },
     ]);
 
     expect(content).toHaveLength(2);

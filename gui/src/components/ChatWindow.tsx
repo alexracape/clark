@@ -58,12 +58,20 @@ export function ChatWindow({
         {/* Thinking indicator */}
         {streamingThinking && (
           <div className="thinking-indicator">
-            <div className="thinking-dots">
-              <span />
-              <span />
-              <span />
+            <div className="thinking-indicator__header">
+              <div className="thinking-dots">
+                <span />
+                <span />
+                <span />
+              </div>
+              <span>Thinking...</span>
             </div>
-            <span>Thinking...</span>
+            <div
+              className="thinking-indicator__content"
+              dangerouslySetInnerHTML={{
+                __html: renderMarkdown(streamingThinking),
+              }}
+            />
           </div>
         )}
 

@@ -106,16 +106,19 @@ class MockLLMProvider implements LLMProvider {
 
     // Yield text deltas in small chunks to simulate streaming
     const chunkSize = 20;
+    yield { type: "text-start" as const, id: "text-0" };
     for (let i = 0; i < responseText.length; i += chunkSize) {
       yield {
-        type: "text_delta" as const,
+        type: "text-delta" as const,
+        id: "text-0" as const,
         text: responseText.slice(i, i + chunkSize),
       };
     }
+    yield { type: "text-end" as const, id: "text-0" };
 
     yield {
-      type: "done" as const,
-      stopReason: "end_turn" as const,
+      type: "finish" as const,
+      finishReason: "end_turn" as const,
     };
   }
 }

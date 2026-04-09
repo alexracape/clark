@@ -45,3 +45,5 @@ tauri/binaries/
 /Clark/
 .vercel
 .env*.local
+
+/docs/design/*.html

@@ -69,7 +69,7 @@ export class VisionOCRProvider implements OCRProvider {
       [],
       TRANSCRIPTION_SYSTEM_PROMPT,
     )) {
-      if (chunk.type === "text_delta") result += chunk.text;
+      if (chunk.type === "text-delta") result += chunk.text;
     }
     return result;
   }
@@ -90,7 +90,7 @@ export class VisionOCRProvider implements OCRProvider {
       [],
       CONSOLIDATION_SYSTEM_PROMPT,
     )) {
-      if (chunk.type === "text_delta") result += chunk.text;
+      if (chunk.type === "text-delta") result += chunk.text;
     }
     return result;
   }

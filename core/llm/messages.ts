@@ -59,6 +59,8 @@ export class Conversation {
     let currentToolId = "";
     let currentToolName = "";
     let currentToolMeta: Record<string, unknown> | undefined;
+    const activeText = new Map<string, { type: "text"; text: string }>();
+    const activeThinking = new Map<string, { type: "thinking"; text: string }>();
 
     const flushTool = () => {
       if (!currentToolId) return;
@@ -70,42 +72,86 @@ export class Conversation {
       };
       if (currentToolMeta) tool.providerMetadata = currentToolMeta;
       content.push(tool);
+      currentToolId = "";
+      currentToolName = "";
+      currentToolInput = "";
+      currentToolMeta = undefined;
     };
 
     for (const chunk of chunks) {
       switch (chunk.type) {
-        case "thinking_delta": {
-          // Merge consecutive thinking deltas
-          const lastThinking = content[content.length - 1];
-          if (lastThinking?.type === "thinking") {
-            lastThinking.text += chunk.text;
-          } else {
-            content.push({ type: "thinking", text: chunk.text });
-          }
+        case "text-start": {
+          flushTool();
+          const part = { type: "text" as const, text: "" };
+          content.push(part);
+          activeText.set(chunk.id, part);
           break;
         }
-        case "text_delta": {
-          // Merge consecutive text deltas
-          const last = content[content.length - 1];
-          if (last?.type === "text") {
-            last.text += chunk.text;
-          } else {
-            content.push({ type: "text", text: chunk.text });
-          }
+        case "text-delta": {
+          flushTool();
+          const part = activeText.get(chunk.id)
+            ?? (() => {
+              const next = { type: "text" as const, text: "" };
+              content.push(next);
+              activeText.set(chunk.id, next);
+              return next;
+            })();
+          part.text += chunk.text;
           break;
         }
-        case "tool_use_start":
+        case "text-end":
+          activeText.delete(chunk.id);
+          break;
+        case "reasoning-start": {
+          flushTool();
+          const part = { type: "thinking" as const, text: "" };
+          content.push(part);
+          activeThinking.set(chunk.id, part);
+          break;
+        }
+        case "reasoning-delta": {
+          flushTool();
+          const part = activeThinking.get(chunk.id)
+            ?? (() => {
+              const next = { type: "thinking" as const, text: "" };
+              content.push(next);
+              activeThinking.set(chunk.id, next);
+              return next;
+            })();
+          part.text += chunk.text;
+          break;
+        }
+        case "reasoning-end":
+          activeThinking.delete(chunk.id);
+          break;
+        case "tool-input-start":
           // Flush any pending tool
           flushTool();
           currentToolId = chunk.id;
-          currentToolName = chunk.name;
+          currentToolName = chunk.toolName;
           currentToolInput = "";
           currentToolMeta = chunk.providerMetadata;
           break;
-        case "tool_input_delta":
-          currentToolInput += chunk.input;
+        case "tool-input-delta":
+          currentToolInput += chunk.delta;
           break;
-        case "done":
+        case "tool-input-end":
+          flushTool();
+          break;
+        case "tool-call": {
+          flushTool();
+          const tool: MessageContent & { type: "tool_use" } = {
+            type: "tool_use",
+            id: chunk.toolCallId,
+            name: chunk.toolName,
+            input: chunk.input,
+          };
+          if (chunk.providerMetadata) tool.providerMetadata = chunk.providerMetadata;
+          content.push(tool);
+          break;
+        }
+        case "finish":
+        case "abort":
           // Flush final tool if pending
           flushTool();
           break;

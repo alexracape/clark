@@ -91,7 +91,7 @@ export class ConversationEngine {
         );
         const stopReason = [...chunks]
           .reverse()
-          .find((c) => c.type === "done")?.stopReason;
+          .find((c) => c.type === "finish")?.finishReason;
 
         // Collect the assistant message content
         const assistantContent =
@@ -176,10 +176,10 @@ export class ConversationEngine {
       effectivePrompt,
     )) {
       chunks.push(chunk);
-      if (chunk.type === "thinking_delta") {
+      if (chunk.type === "reasoning-delta") {
         thinking += chunk.text;
         callbacks?.onStreamingThinking?.(thinking);
-      } else if (chunk.type === "text_delta") {
+      } else if (chunk.type === "text-delta") {
         text += chunk.text;
         callbacks?.onStreamingText?.(text);
       }

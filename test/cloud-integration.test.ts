@@ -207,11 +207,11 @@ describe("CloudLLMProvider integration", () => {
       chunks.push(chunk);
     }
 
-    const textChunks = chunks.filter((c) => c.type === "text_delta");
-    const doneChunks = chunks.filter((c) => c.type === "done");
+    const textChunks = chunks.filter((c) => c.type === "text-delta");
+    const doneChunks = chunks.filter((c) => c.type === "finish");
     expect(textChunks.length).toBeGreaterThan(0);
     expect(doneChunks.length).toBe(1);
-    expect((doneChunks[0] as any).stopReason).toBe("end_turn");
+    expect((doneChunks[0] as any).finishReason).toBe("end_turn");
   });
 
   it("rejects missing client ID", async () => {

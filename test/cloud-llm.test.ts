@@ -39,9 +39,11 @@ describe("CloudLLMProvider", () => {
 
   test("streams text deltas from SSE", async () => {
     const expectedChunks: StreamChunk[] = [
-      { type: "text_delta", text: "Hello" },
-      { type: "text_delta", text: " world" },
-      { type: "done", stopReason: "end_turn" },
+      { type: "text-start", id: "text-0" },
+      { type: "text-delta", id: "text-0", text: "Hello" },
+      { type: "text-delta", id: "text-0", text: " world" },
+      { type: "text-end", id: "text-0" },
+      { type: "finish", finishReason: "end_turn" },
     ];
 
     globalThis.fetch = async () => mockSSEResponse(expectedChunks);
@@ -60,10 +62,33 @@ describe("CloudLLMProvider", () => {
 
   test("streams tool use events", async () => {
     const expectedChunks: StreamChunk[] = [
-      { type: "tool_use_start", id: "t1", name: "read_file" },
-      { type: "tool_input_delta", id: "t1", input: '{"path":' },
-      { type: "tool_input_delta", id: "t1", input: '"test.md"}' },
-      { type: "done", stopReason: "tool_use" },
+      { type: "tool-input-start", id: "t1", toolName: "read_file" },
+      { type: "tool-input-delta", id: "t1", delta: '{"path":' },
+      { type: "tool-input-delta", id: "t1", delta: '"test.md"}' },
+      { type: "tool-input-end", id: "t1" },
+      { type: "finish", finishReason: "tool_use" },
+    ];
+
+    globalThis.fetch = async () => mockSSEResponse(expectedChunks);
+
+    const provider = new CloudLLMProvider(
+      "https://example.com", "client-1", "anthropic/claude-sonnet-4-6",
+    );
+
+    const received: StreamChunk[] = [];
+    for await (const chunk of provider.chat([], [], "")) {
+      received.push(chunk);
+    }
+
+    expect(received).toEqual(expectedChunks);
+  });
+
+  test("streams reasoning events", async () => {
+    const expectedChunks: StreamChunk[] = [
+      { type: "reasoning-start", id: "r1" },
+      { type: "reasoning-delta", id: "r1", text: "working it out" },
+      { type: "reasoning-end", id: "r1" },
+      { type: "finish", finishReason: "end_turn" },
     ];
 
     globalThis.fetch = async () => mockSSEResponse(expectedChunks);
@@ -137,7 +162,7 @@ describe("CloudLLMProvider", () => {
         headers,
         body: JSON.parse(init?.body as string),
       };
-      return mockSSEResponse([{ type: "done", stopReason: "end_turn" }]);
+      return mockSSEResponse([{ type: "finish", finishReason: "end_turn" }]);
     };
 
     const provider = new CloudLLMProvider(

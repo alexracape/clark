@@ -77,36 +77,116 @@ export interface Tool {
 
 // --- Streaming ---
 
-export interface TextDelta {
-  type: "text_delta";
-  text: string;
+type StreamProviderMetadata = Record<string, unknown>;
+
+export type StopReason = "end_turn" | "tool_use" | "max_tokens";
+
+export interface StreamStart {
+  type: "start";
 }
 
-export interface ToolUseDelta {
-  type: "tool_use_start";
+export interface StepStart {
+  type: "start-step";
+}
+
+export interface TextStart {
+  type: "text-start";
   id: string;
-  name: string;
+  providerMetadata?: StreamProviderMetadata;
+}
+
+export interface TextDelta {
+  type: "text-delta";
+  id: string;
+  text: string;
+  providerMetadata?: StreamProviderMetadata;
+}
+
+export interface TextEnd {
+  type: "text-end";
+  id: string;
+  providerMetadata?: StreamProviderMetadata;
+}
+
+export interface ReasoningStart {
+  type: "reasoning-start";
+  id: string;
+  providerMetadata?: StreamProviderMetadata;
+}
+
+export interface ReasoningDelta {
+  type: "reasoning-delta";
+  id: string;
+  text: string;
+  providerMetadata?: StreamProviderMetadata;
+}
+
+export interface ReasoningEnd {
+  type: "reasoning-end";
+  id: string;
+  providerMetadata?: StreamProviderMetadata;
+}
+
+export interface ToolInputStart {
+  type: "tool-input-start";
+  id: string;
+  toolName: string;
   /** Opaque provider metadata (e.g., Google's thoughtSignature). */
-  providerMetadata?: Record<string, unknown>;
+  providerMetadata?: StreamProviderMetadata;
 }
 
 export interface ToolInputDelta {
-  type: "tool_input_delta";
+  type: "tool-input-delta";
   id: string;
-  input: string;
+  delta: string;
 }
 
-export interface ThinkingDelta {
-  type: "thinking_delta";
-  text: string;
+export interface ToolInputEnd {
+  type: "tool-input-end";
+  id: string;
+  providerMetadata?: StreamProviderMetadata;
 }
 
-export interface StreamDone {
-  type: "done";
-  stopReason: "end_turn" | "tool_use" | "max_tokens";
+export interface ToolCall {
+  type: "tool-call";
+  toolCallId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  providerMetadata?: StreamProviderMetadata;
 }
 
-export type StreamChunk = TextDelta | ThinkingDelta | ToolUseDelta | ToolInputDelta | StreamDone;
+export interface StepFinish {
+  type: "finish-step";
+  finishReason: StopReason;
+  providerMetadata?: StreamProviderMetadata;
+}
+
+export interface StreamFinish {
+  type: "finish";
+  finishReason: StopReason;
+}
+
+export interface StreamAbort {
+  type: "abort";
+  reason?: string;
+}
+
+export type StreamChunk =
+  | StreamStart
+  | StepStart
+  | TextStart
+  | TextDelta
+  | TextEnd
+  | ReasoningStart
+  | ReasoningDelta
+  | ReasoningEnd
+  | ToolInputStart
+  | ToolInputDelta
+  | ToolInputEnd
+  | ToolCall
+  | StepFinish
+  | StreamFinish
+  | StreamAbort;
 
 // --- Provider interface ---
 

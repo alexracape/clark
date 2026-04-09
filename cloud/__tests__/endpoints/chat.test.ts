@@ -150,14 +150,14 @@ describe("POST /api/chat", () => {
       .filter((l) => l.startsWith("data: "))
       .map((l) => JSON.parse(l.replace("data: ", "")));
 
-    // Should contain at least a text_delta and a done event
-    const textDeltas = lines.filter((l: any) => l.type === "text_delta");
-    const doneEvents = lines.filter((l: any) => l.type === "done");
+    // Should contain at least a text-delta and a finish event
+    const textDeltas = lines.filter((l: any) => l.type === "text-delta");
+    const doneEvents = lines.filter((l: any) => l.type === "finish");
 
     expect(textDeltas.length).toBeGreaterThan(0);
     expect(textDeltas[0].text).toContain("Hello from Claude!");
     expect(doneEvents.length).toBe(1);
-    expect(doneEvents[0].stopReason).toBe("end_turn");
+    expect(doneEvents[0].finishReason).toBe("end_turn");
   });
 
   test("returns gateway model ID in response header", async () => {

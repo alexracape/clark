@@ -11,8 +11,10 @@ import { Settings } from "./components/Settings.tsx";
 import { Onboarding } from "./components/Onboarding.tsx";
 import { Tutorial } from "./components/Tutorial.tsx";
 import { MarkdownEditor } from "./components/MarkdownEditor.tsx";
+import { PDFViewer } from "./components/PDFViewer.tsx";
+import { ConversationRail } from "./components/ConversationRail.tsx";
 import { SessionPicker } from "./components/SessionPicker.tsx";
-import { invokeCommand, listenEvent } from "./ipc.ts";
+import { invokeCommand, listenEvent, getSidecarBaseUrl } from "./ipc.ts";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   applyFileDropError,
@@ -225,11 +227,18 @@ export function App() {
   const [noteNames, setNoteNames] = useState<WikilinkTarget[]>([]);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const [autoEditTitle, setAutoEditTitle] = useState(false);
+  const [assetBaseUrl, setAssetBaseUrl] = useState("http://localhost:3456");
   const stateRef = useRef(state);
 
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    getSidecarBaseUrl()
+      .then(setAssetBaseUrl)
+      .catch(() => {});
+  }, []);
 
   // Check onboarding + status on mount before revealing the UI
   useEffect(() => {
@@ -346,6 +355,10 @@ export function App() {
 
   const handleFileSelect = useCallback(
     async (path: string) => {
+      if (path.endsWith(".pdf")) {
+        setState((prev) => openEditorFile(prev, path, ""));
+        return;
+      }
       if (!path.endsWith(".md")) return;
       try {
         const data = (await invokeCommand("read_file_content", { path })) as {
@@ -617,7 +630,32 @@ export function App() {
         <Sidebar open={sidebarOpen} invoke={invokeCommand} onFileSelect={handleFileSelect} onNewNote={handleNewNote} refreshKey={sidebarRefreshKey} />
 
         <div className="chat-window">
-          {state.editorFile ? (
+          {state.editorFile?.path.endsWith(".pdf") ? (
+            <div className="markdown-editor">
+              <button className="markdown-editor__close" onClick={() => setState((prev) => closeEditorFile(prev))} title="Close viewer">
+                &times;
+              </button>
+              <div className="markdown-editor__body">
+                <div className="markdown-editor__title-block">
+                  <div className="markdown-editor__title-row">
+                    <h1 className="markdown-editor__title">{state.editorFile.path.split("/").pop()}</h1>
+                  </div>
+                </div>
+                <PDFViewer
+                  src={`${assetBaseUrl}/api/asset?path=${encodeURIComponent(state.editorFile.path)}`}
+                  title={state.editorFile.path.split("/").pop()}
+                />
+              </div>
+              <ConversationRail
+                chatItems={state.chatItems}
+                streamingText={state.streamingText}
+                streamingThinking={state.streamingThinking}
+                isStreaming={state.isStreaming}
+                pendingToolCalls={state.pendingToolCalls}
+                onExpandToChat={() => setState((prev) => closeEditorFile(prev))}
+              />
+            </div>
+          ) : state.editorFile ? (
             <MarkdownEditor
               file={state.editorFile}
               onSave={handleEditorSave}
@@ -637,6 +675,7 @@ export function App() {
               noteNames={noteNames}
               chatItems={state.chatItems}
               streamingText={state.streamingText}
+              streamingThinking={state.streamingThinking}
               isStreaming={state.isStreaming}
               pendingToolCalls={state.pendingToolCalls}
               autoEditTitle={autoEditTitle}

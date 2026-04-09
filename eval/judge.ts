@@ -92,7 +92,7 @@ async function singleTurnChat(
     [],
     systemPrompt,
   )) {
-    if (chunk.type === "text_delta") {
+    if (chunk.type === "text-delta") {
       text += chunk.text;
     }
   }

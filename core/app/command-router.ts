@@ -202,7 +202,7 @@ export function createSlashCommandHandler(options: CommandRouterOptions) {
             [],
             "You are a helpful assistant that summarizes conversations concisely.",
           )) {
-            if (chunk.type === "text_delta") summary += chunk.text;
+            if (chunk.type === "text-delta") summary += chunk.text;
           }
 
           const before = ctx.totalTokens;

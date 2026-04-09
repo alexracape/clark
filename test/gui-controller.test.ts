@@ -95,6 +95,18 @@ describe("gui app controller", () => {
     expect(afterToolResult.pendingToolCalls[0].result).toBe("file contents here");
   });
 
+  test("streaming thinking remains available after text starts", () => {
+    const plan = planSendInput(createInitialAppState(), "explain");
+
+    const duringStream = runEvents(plan.state, [
+      { type: "streaming_thinking", text: "working through the problem" },
+      { type: "streaming_text", text: "Here is the answer" },
+    ]);
+
+    expect(duringStream.streamingThinking).toBe("working through the problem");
+    expect(duringStream.streamingText).toBe("Here is the answer");
+  });
+
   test("duplicate send is prevented while streaming", () => {
     const first = planSendInput(createInitialAppState(), "first");
     const second = planSendInput(first.state, "second");

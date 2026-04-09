@@ -219,10 +219,32 @@ export class OllamaProvider implements LLMProvider {
       ...(this.maxTokens ? { options: { num_predict: this.maxTokens } } : {}),
       stream: true,
     });
+    yield { type: "start" };
+    yield { type: "start-step" };
 
     // State for parsing <think>...</think> tags from deepseek-r1 style models
     let inThinkBlock = false;
     let buffer = "";
+    let nextTextId = 0;
+    let nextReasoningId = 0;
+    let activeTextId: string | null = null;
+    let activeReasoningId: string | null = null;
+
+    const openText = () => {
+      const isNew = activeTextId === null;
+      if (activeTextId === null) {
+        activeTextId = `text-${nextTextId++}`;
+      }
+      return { id: activeTextId, isNew } as { id: string; isNew: boolean };
+    };
+
+    const openReasoning = () => {
+      const isNew = activeReasoningId === null;
+      if (activeReasoningId === null) {
+        activeReasoningId = `reasoning-${nextReasoningId++}`;
+      }
+      return { id: activeReasoningId, isNew } as { id: string; isNew: boolean };
+    };
 
     for await (const chunk of stream) {
       // Text content — parse <think> tags
@@ -234,12 +256,28 @@ export class OllamaProvider implements LLMProvider {
             const closeIdx = buffer.indexOf("</think>");
             if (closeIdx === -1) {
               // Still inside think block, emit all buffered as thinking
-              yield { type: "thinking_delta", text: buffer };
+              const reasoning = openReasoning();
+              if (reasoning.isNew) {
+                yield { type: "reasoning-start", id: reasoning.id };
+              }
+              yield { type: "reasoning-delta", id: reasoning.id, text: buffer };
               buffer = "";
             } else {
               // Emit content before closing tag as thinking
               if (closeIdx > 0) {
-                yield { type: "thinking_delta", text: buffer.slice(0, closeIdx) };
+                const reasoning = openReasoning();
+                if (reasoning.isNew) {
+                  yield { type: "reasoning-start", id: reasoning.id };
+                }
+                yield {
+                  type: "reasoning-delta",
+                  id: reasoning.id,
+                  text: buffer.slice(0, closeIdx),
+                };
+              }
+              if (activeReasoningId !== null) {
+                yield { type: "reasoning-end", id: activeReasoningId };
+                activeReasoningId = null;
               }
               buffer = buffer.slice(closeIdx + "</think>".length);
               inThinkBlock = false;
@@ -248,12 +286,28 @@ export class OllamaProvider implements LLMProvider {
             const openIdx = buffer.indexOf("<think>");
             if (openIdx === -1) {
               // No think tag — emit all as text
-              yield { type: "text_delta", text: buffer };
+              const text = openText();
+              if (text.isNew) {
+                yield { type: "text-start", id: text.id };
+              }
+              yield { type: "text-delta", id: text.id, text: buffer };
               buffer = "";
             } else {
               // Emit content before opening tag as text
               if (openIdx > 0) {
-                yield { type: "text_delta", text: buffer.slice(0, openIdx) };
+                const text = openText();
+                if (text.isNew) {
+                  yield { type: "text-start", id: text.id };
+                }
+                yield {
+                  type: "text-delta",
+                  id: text.id,
+                  text: buffer.slice(0, openIdx),
+                };
+              }
+              if (activeTextId !== null) {
+                yield { type: "text-end", id: activeTextId };
+                activeTextId = null;
               }
               buffer = buffer.slice(openIdx + "<think>".length);
               inThinkBlock = true;
@@ -266,11 +320,11 @@ export class OllamaProvider implements LLMProvider {
       if (chunk.message?.tool_calls) {
         for (const tc of chunk.message.tool_calls) {
           const callId = `ollama-${tc.function.name}-${Date.now()}`;
-          yield { type: "tool_use_start", id: callId, name: tc.function.name };
           yield {
-            type: "tool_input_delta",
-            id: callId,
-            input: JSON.stringify(tc.function.arguments),
+            type: "tool-call",
+            toolCallId: callId,
+            toolName: tc.function.name,
+            input: tc.function.arguments,
           };
         }
       }
@@ -280,22 +334,37 @@ export class OllamaProvider implements LLMProvider {
         // Flush any remaining buffer
         if (buffer.length > 0) {
           if (inThinkBlock) {
-            yield { type: "thinking_delta", text: buffer };
+            const reasoning = openReasoning();
+            if (reasoning.isNew) {
+              yield { type: "reasoning-start", id: reasoning.id };
+            }
+            yield { type: "reasoning-delta", id: reasoning.id, text: buffer };
           } else {
-            yield { type: "text_delta", text: buffer };
+            const text = openText();
+            if (text.isNew) {
+              yield { type: "text-start", id: text.id };
+            }
+            yield { type: "text-delta", id: text.id, text: buffer };
           }
           buffer = "";
         }
+        if (activeReasoningId !== null) {
+          yield { type: "reasoning-end", id: activeReasoningId };
+          activeReasoningId = null;
+        }
+        if (activeTextId !== null) {
+          yield { type: "text-end", id: activeTextId };
+          activeTextId = null;
+        }
 
         const hasToolCalls = !!chunk.message?.tool_calls?.length;
-        yield {
-          type: "done",
-          stopReason: hasToolCalls
-            ? "tool_use"
-            : chunk.done_reason === "length"
-              ? "max_tokens"
-              : "end_turn",
-        };
+        const finishReason = hasToolCalls
+          ? "tool_use"
+          : chunk.done_reason === "length"
+            ? "max_tokens"
+            : "end_turn";
+        yield { type: "finish-step", finishReason };
+        yield { type: "finish", finishReason };
       }
     }
   }

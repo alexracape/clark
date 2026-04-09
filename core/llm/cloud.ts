@@ -104,11 +104,11 @@ export class CloudLLMProvider implements LLMProvider {
           if (!data) continue;
 
           try {
-            const chunk = JSON.parse(data) as StreamChunk & { type: string; error?: string };
-            if (chunk.type === "error") {
-              throw new Error(`Cloud proxy stream error: ${chunk.error}`);
+            const parsed = JSON.parse(data) as { type?: string; error?: string };
+            if (parsed.type === "error") {
+              throw new Error(`Cloud proxy stream error: ${parsed.error}`);
             }
-            yield chunk as StreamChunk;
+            yield parsed as StreamChunk;
           } catch (err) {
             if (err instanceof SyntaxError) continue; // Skip malformed JSON
             throw err;

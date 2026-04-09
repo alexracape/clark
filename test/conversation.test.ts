@@ -49,7 +49,7 @@ async function runConversationTurn(
 
     for await (const chunk of provider.chat(conversation.getMessages(), llmTools, systemPrompt)) {
       chunks.push(chunk);
-      if (chunk.type === "text_delta") {
+      if (chunk.type === "text-delta") {
         text += chunk.text;
       }
     }
@@ -505,7 +505,7 @@ describe("MockProvider", () => {
     const chunks: StreamChunk[] = [];
     for await (const c of provider.chat([], [], "sys")) chunks.push(c);
 
-    const textChunks = chunks.filter((c) => c.type === "text_delta");
+    const textChunks = chunks.filter((c) => c.type === "text-delta");
     expect(textChunks.length).toBeGreaterThan(0);
   });
 
@@ -516,7 +516,7 @@ describe("MockProvider", () => {
 
     const textParts: string[] = [];
     for await (const chunk of provider.chat([], [], "sys")) {
-      if (chunk.type === "text_delta") textParts.push(chunk.text);
+      if (chunk.type === "text-delta") textParts.push(chunk.text);
     }
 
     // Should have multiple chunks (streamed)
@@ -536,17 +536,17 @@ describe("MockProvider", () => {
     const chunks: StreamChunk[] = [];
     for await (const c of provider.chat([], [], "sys")) chunks.push(c);
 
-    const toolStart = chunks.find((c) => c.type === "tool_use_start");
-    expect(toolStart).toBeDefined();
-    if (toolStart?.type === "tool_use_start") {
-      expect(toolStart.name).toBe("read_file");
-      expect(toolStart.id).toBe("t1");
+    const toolCall = chunks.find((c) => c.type === "tool-call");
+    expect(toolCall).toBeDefined();
+    if (toolCall?.type === "tool-call") {
+      expect(toolCall.toolName).toBe("read_file");
+      expect(toolCall.toolCallId).toBe("t1");
     }
 
-    const done = chunks.find((c) => c.type === "done");
-    expect(done).toBeDefined();
-    if (done?.type === "done") {
-      expect(done.stopReason).toBe("tool_use");
+    const finish = chunks.find((c) => c.type === "finish");
+    expect(finish).toBeDefined();
+    if (finish?.type === "finish") {
+      expect(finish.finishReason).toBe("tool_use");
     }
   });
 
@@ -557,10 +557,10 @@ describe("MockProvider", () => {
     const chunks: StreamChunk[] = [];
     for await (const c of provider.chat([], [], "sys")) chunks.push(c);
 
-    const text = chunks
-      .filter((c): c is { type: "text_delta"; text: string } => c.type === "text_delta")
-      .map((c) => c.text)
-      .join("");
+    const text = chunks.reduce(
+      (acc, chunk) => chunk.type === "text-delta" ? acc + chunk.text : acc,
+      "",
+    );
     expect(text).toBe("added later");
   });
 

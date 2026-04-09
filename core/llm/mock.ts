@@ -16,6 +16,8 @@ import {
 
 /** A single canned response the mock will return */
 export interface MockResponse {
+  /** Thinking/reasoning text to stream before the answer */
+  thinking?: string;
   /** Text to stream back */
   text?: string;
   /** Tool calls to emit */
@@ -65,34 +67,65 @@ export class MockProvider implements LLMProvider {
     systemPrompt: string,
   ): AsyncIterable<StreamChunk> {
     this.calls.push({ messages: [...messages], tools: [...tools], systemPrompt });
+    yield { type: "start" };
+    yield { type: "start-step" };
 
     const response = this.responses.shift();
     if (!response) {
-      yield { type: "text_delta", text: "(no more mock responses)" };
-      yield { type: "done", stopReason: "end_turn" };
+      yield { type: "text-start", id: "text-0" };
+      yield { type: "text-delta", id: "text-0", text: "(no more mock responses)" };
+      yield { type: "text-end", id: "text-0" };
+      yield { type: "finish-step", finishReason: "end_turn" };
+      yield { type: "finish", finishReason: "end_turn" };
       return;
+    }
+
+    if (response.thinking) {
+      const reasoningId = "reasoning-0";
+      yield { type: "reasoning-start", id: reasoningId };
+      const chunkSize = 10;
+      for (let i = 0; i < response.thinking.length; i += chunkSize) {
+        yield {
+          type: "reasoning-delta",
+          id: reasoningId,
+          text: response.thinking.slice(i, i + chunkSize),
+        };
+      }
+      yield { type: "reasoning-end", id: reasoningId };
     }
 
     // Stream text character by character (or in small chunks for realism)
     if (response.text) {
+      const textId = "text-0";
+      yield { type: "text-start", id: textId };
       // Simulate streaming with small chunks
       const chunkSize = 10;
       for (let i = 0; i < response.text.length; i += chunkSize) {
-        yield { type: "text_delta", text: response.text.slice(i, i + chunkSize) };
+        yield {
+          type: "text-delta",
+          id: textId,
+          text: response.text.slice(i, i + chunkSize),
+        };
       }
+      yield { type: "text-end", id: textId };
     }
 
     // Emit tool calls
     if (response.toolCalls) {
       for (const tc of response.toolCalls) {
-        yield { type: "tool_use_start", id: tc.id, name: tc.name };
-        yield { type: "tool_input_delta", id: tc.id, input: JSON.stringify(tc.input) };
+        yield {
+          type: "tool-call",
+          toolCallId: tc.id,
+          toolName: tc.name,
+          input: tc.input,
+        };
       }
     }
 
     const stopReason = response.stopReason
       ?? (response.toolCalls?.length ? "tool_use" : "end_turn");
-    yield { type: "done", stopReason };
+    yield { type: "finish-step", finishReason: stopReason };
+    yield { type: "finish", finishReason: stopReason };
   }
 }
 

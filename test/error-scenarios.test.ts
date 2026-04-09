@@ -299,7 +299,7 @@ describe("LLM Provider Errors", () => {
 
 		// Should return fallback response instead of crashing
 		expect(chunks.length).toBeGreaterThan(0);
-		const textChunks = chunks.filter((c) => c.type === "text_delta");
+		const textChunks = chunks.filter((c) => c.type === "text-delta");
 		expect(textChunks.length).toBeGreaterThan(0);
 	});
 

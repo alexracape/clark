@@ -197,7 +197,7 @@ async function simpleLLMCall(
   ];
   let result = "";
   for await (const chunk of provider.chat(messages, [], systemPrompt)) {
-    if (chunk.type === "text_delta") result += chunk.text;
+    if (chunk.type === "text-delta") result += chunk.text;
   }
   return result;
 }

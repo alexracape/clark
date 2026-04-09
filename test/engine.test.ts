@@ -43,18 +43,41 @@ function imageTool(): ToolDefinition {
   };
 }
 
-/** Helper: collect callback events */
+/** Helper: collect callback events with ordering */
 function trackCallbacks() {
-  const events: Array<{ type: string; value?: string }> = [];
+  const events: Array<{ type: string; value?: string; order: number }> = [];
+  let counter = 0;
   const callbacks: TurnCallbacks = {
-    onStreamingText: (t) => events.push({ type: "streaming_text", value: t }),
-    onStreamingThinking: (t) => events.push({ type: "streaming_thinking", value: t }),
-    onStreamingDone: () => events.push({ type: "streaming_done" }),
-    onAssistantMessage: (t) => events.push({ type: "assistant", value: t }),
-    onToolStart: (name) => events.push({ type: "tool_start", value: name }),
-    onSystemMessage: (msg) => events.push({ type: "system", value: msg }),
+    onStreamingText: (t) => events.push({ type: "streaming_text", value: t, order: counter++ }),
+    onStreamingThinking: (t) => events.push({ type: "streaming_thinking", value: t, order: counter++ }),
+    onStreamingDone: () => events.push({ type: "streaming_done", order: counter++ }),
+    onAssistantMessage: (t) => events.push({ type: "assistant", value: t, order: counter++ }),
+    onToolStart: (name) => events.push({ type: "tool_start", value: name, order: counter++ }),
+    onSystemMessage: (msg) => events.push({ type: "system", value: msg, order: counter++ }),
   };
   return { events, callbacks };
+}
+
+/** Assert that event types appear in the given relative order */
+function assertEventOrder(
+  events: Array<{ type: string; order: number }>,
+  expectedOrder: string[],
+) {
+  const positions = expectedOrder.map((type) => {
+    const event = events.find((e) => e.type === type);
+    if (!event) throw new Error(`Expected event "${type}" not found. Got: ${events.map(e => e.type).join(", ")}`);
+    return { type, order: event.order };
+  });
+
+  for (let i = 1; i < positions.length; i++) {
+    const prev = positions[i - 1]!;
+    const curr = positions[i]!;
+    if (prev.order >= curr.order) {
+      throw new Error(
+        `Event "${prev.type}" (order ${prev.order}) should come before "${curr.type}" (order ${curr.order})`,
+      );
+    }
+  }
 }
 
 describe("toLLMTools", () => {
@@ -108,6 +131,32 @@ describe("ConversationEngine", () => {
     expect(events.some((e) => e.type === "streaming_done")).toBe(true);
     // Provider should have been called once
     expect(provider.calls).toHaveLength(1);
+
+    // Verify callback ordering: text before done, done before assistant
+    assertEventOrder(events, ["streaming_text", "streaming_done", "assistant"]);
+
+    // Verify conversation state
+    const messages = conversation.getMessages();
+    expect(messages).toHaveLength(2); // user + assistant
+    expect(messages[0]!.role).toBe("user");
+    expect(messages[1]!.role).toBe("assistant");
+  });
+
+  test("streams reasoning before text when available", async () => {
+    const provider = new MockProvider([
+      { thinking: "let me think", text: "Here is the answer" },
+    ]);
+    const { events, callbacks } = trackCallbacks();
+
+    conversation.addUserMessage("Hi");
+    await engine.runTurn(provider, callbacks);
+
+    expect(events.some((e) => e.type === "streaming_thinking" && e.value?.includes("let me think"))).toBe(true);
+    expect(events.some((e) => e.type === "assistant" && e.value === "Here is the answer")).toBe(true);
+
+    // Engine fires an initial empty streaming_text to clear the display, then thinking, then text content, then done
+    // Verify thinking fires before done, and done fires before assistant
+    assertEventOrder(events, ["streaming_thinking", "streaming_done", "assistant"]);
   });
 
   test("tool call and follow-up response", async () => {
@@ -130,6 +179,19 @@ describe("ConversationEngine", () => {
     expect(events.some((e) => e.type === "assistant" && e.value === "The echo said: ping")).toBe(true);
     // Provider called twice (initial + after tool result)
     expect(provider.calls).toHaveLength(2);
+
+    // Verify ordering: first stream done, then tool, then second stream, then assistant
+    assertEventOrder(events, ["streaming_done", "tool_start", "assistant"]);
+
+    // Verify conversation state: user → assistant (tool_use) → tool → assistant (text)
+    const messages = conversation.getMessages();
+    expect(messages).toHaveLength(4);
+    expect(messages[0]!.role).toBe("user");
+    expect(messages[1]!.role).toBe("assistant");
+    expect(messages[1]!.content.some((c) => c.type === "tool_use")).toBe(true);
+    expect(messages[2]!.role).toBe("tool");
+    expect(messages[3]!.role).toBe("assistant");
+    expect(messages[3]!.content.some((c) => c.type === "text")).toBe(true);
   });
 
   test("unknown tool returns error result", async () => {

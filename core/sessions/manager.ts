@@ -155,7 +155,7 @@ export class SessionManager {
 
       let title = "";
       for await (const chunk of provider.chat(messages, [], systemPrompt)) {
-        if (chunk.type === "text_delta") title += chunk.text;
+        if (chunk.type === "text-delta") title += chunk.text;
       }
 
       title = title.trim().replace(/[^\w\s'-]/g, "").trim();

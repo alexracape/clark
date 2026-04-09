@@ -40,6 +40,17 @@ function inferProviderFromLegacyId(model: string): string {
   throw new Error(`Cannot infer provider for model: ${model}`);
 }
 
+function toStopReason(reason: string | undefined): "end_turn" | "tool_use" | "max_tokens" {
+  if (reason === "tool-calls") return "tool_use";
+  if (reason === "length") return "max_tokens";
+  return "end_turn";
+}
+
+function supportsAnthropicThinking(model: string): boolean {
+  return model.startsWith("anthropic/claude-opus-4")
+    || model.startsWith("anthropic/claude-sonnet-4");
+}
+
 /**
  * Convert Clark's Message[] format to AI SDK v6 ModelMessage[] format.
  */
@@ -177,11 +188,22 @@ export default {
         });
       }
 
+      const providerOptions = providerName === "anthropic"
+        && supportsAnthropicThinking(gatewayModelId)
+        ? {
+            anthropic: {
+              // Request surfaced thinking parts for supported Claude models.
+              thinking: { type: "enabled", budgetTokens: 4096 },
+            },
+          }
+        : undefined;
+
       const result = streamText({
         model: gateway(gatewayModelId),
         messages: convertedMessages,
         system: systemPrompt,
         ...(Object.keys(allTools).length > 0 ? { tools: allTools } : {}),
+        ...(providerOptions ? { providerOptions } : {}),
         maxOutputTokens: body.maxTokens ?? 4096,
         abortSignal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       });
@@ -199,18 +221,62 @@ export default {
               let chunk: string | null = null;
 
               switch (part.type) {
+                case "start":
+                  chunk = JSON.stringify({ type: "start" });
+                  break;
+                case "start-step":
+                  chunk = JSON.stringify({ type: "start-step" });
+                  break;
+                case "text-start":
+                  chunk = JSON.stringify({
+                    type: "text-start",
+                    id: part.id,
+                    ...(part.providerMetadata ? { providerMetadata: part.providerMetadata } : {}),
+                  });
+                  break;
                 case "text-delta":
-                  chunk = JSON.stringify({ type: "text_delta", text: part.text });
+                  chunk = JSON.stringify({
+                    type: "text-delta",
+                    id: part.id,
+                    text: part.text,
+                    ...(part.providerMetadata ? { providerMetadata: part.providerMetadata } : {}),
+                  });
+                  break;
+                case "text-end":
+                  chunk = JSON.stringify({
+                    type: "text-end",
+                    id: part.id,
+                    ...(part.providerMetadata ? { providerMetadata: part.providerMetadata } : {}),
+                  });
+                  break;
+                case "reasoning-start":
+                  chunk = JSON.stringify({
+                    type: "reasoning-start",
+                    id: part.id,
+                    ...(part.providerMetadata ? { providerMetadata: part.providerMetadata } : {}),
+                  });
                   break;
                 case "reasoning-delta":
-                  chunk = JSON.stringify({ type: "thinking_delta", text: part.text });
+                  chunk = JSON.stringify({
+                    type: "reasoning-delta",
+                    id: part.id,
+                    text: part.text,
+                    ...(part.providerMetadata ? { providerMetadata: part.providerMetadata } : {}),
+                  });
+                  break;
+                case "reasoning-end":
+                  chunk = JSON.stringify({
+                    type: "reasoning-end",
+                    id: part.id,
+                    ...(part.providerMetadata ? { providerMetadata: part.providerMetadata } : {}),
+                  });
                   break;
                 case "tool-input-start": {
                   streamedToolIds.add(part.id);
                   const startChunk: any = {
-                    type: "tool_use_start",
+                    type: "tool-input-start",
                     id: part.id,
-                    name: part.toolName,
+                    toolName: part.toolName,
                   };
                   if (part.providerMetadata) {
                     startChunk.providerMetadata = part.providerMetadata;
@@ -220,30 +286,27 @@ export default {
                 }
                 case "tool-input-delta":
                   chunk = JSON.stringify({
-                    type: "tool_input_delta",
+                    type: "tool-input-delta",
                     id: part.id,
-                    input: part.delta,
+                    delta: part.delta,
+                  });
+                  break;
+                case "tool-input-end":
+                  chunk = JSON.stringify({
+                    type: "tool-input-end",
+                    id: part.id,
+                    ...(part.providerMetadata ? { providerMetadata: part.providerMetadata } : {}),
                   });
                   break;
                 case "tool-call": {
                   // Skip if already streamed via tool-input-start/delta
                   if (streamedToolIds.has(part.toolCallId)) break;
-                  // Non-streaming tool call — emit start + input as a single pair
-                  const tcStart: any = {
-                    type: "tool_use_start",
-                    id: part.toolCallId,
-                    name: part.toolName,
-                  };
-                  if (part.providerMetadata) {
-                    tcStart.providerMetadata = part.providerMetadata;
-                  }
-                  controller.enqueue(
-                    encoder.encode(`data: ${JSON.stringify(tcStart)}\n\n`),
-                  );
                   chunk = JSON.stringify({
-                    type: "tool_input_delta",
-                    id: part.toolCallId,
-                    input: JSON.stringify(part.input),
+                    type: "tool-call",
+                    toolCallId: part.toolCallId,
+                    toolName: part.toolName,
+                    input: part.input,
+                    ...(part.providerMetadata ? { providerMetadata: part.providerMetadata } : {}),
                   });
                   break;
                 }
@@ -264,20 +327,29 @@ export default {
                   chunk = JSON.stringify({ type: "error", error: msg });
                   break;
                 }
+                case "finish-step":
+                  chunk = JSON.stringify({
+                    type: "finish-step",
+                    finishReason: toStopReason(part.finishReason),
+                    ...(part.providerMetadata ? { providerMetadata: part.providerMetadata } : {}),
+                  });
+                  break;
                 case "finish":
                   chunk = JSON.stringify({
-                    type: "done",
-                    stopReason: part.finishReason === "tool-calls"
-                      ? "tool_use"
-                      : part.finishReason === "length"
-                        ? "max_tokens"
-                        : "end_turn",
+                    type: "finish",
+                    finishReason: toStopReason(part.finishReason),
                   });
                   if (isDevLoggingEnabled()) {
                     logDevEvent("chat_stream_finished", {
                       finishReason: part.finishReason,
                     });
                   }
+                  break;
+                case "abort":
+                  chunk = JSON.stringify({
+                    type: "abort",
+                    ...(part.reason ? { reason: part.reason } : {}),
+                  });
                   break;
               }
 
